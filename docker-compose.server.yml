@@ -1,0 +1,83 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:stable
+    container_name: smart-home-homeassistant
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - homeassistant_config:/config
+      - /etc/localtime:/etc/localtime:ro
+
+  postgres:
+    image: postgres:15
+    container_name: smart-home-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-smart_home}
+      POSTGRES_USER: ${POSTGRES_USER:-smart_home_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      TZ: ${TZ:-Asia/Shanghai}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-smart_home_user} -d ${POSTGRES_DB:-smart_home}"
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  backend:
+    build:
+      context: ./backend
+    container_name: smart-home-backend
+    restart: unless-stopped
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      POSTGRES_DB: ${POSTGRES_DB:-smart_home}
+      POSTGRES_USER: ${POSTGRES_USER:-smart_home_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change_me}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-smart_home_user}:${POSTGRES_PASSWORD:-change_me}@postgres:5432/${POSTGRES_DB:-smart_home}
+      BACKEND_PORT: ${BACKEND_PORT:-8000}
+      HOME_ASSISTANT_WS_URL: ${HOME_ASSISTANT_WS_URL:-ws://host.docker.internal:8123/api/websocket}
+      HOME_ASSISTANT_REST_URL: ${HOME_ASSISTANT_REST_URL:-http://host.docker.internal:8123/api}
+      HOME_ASSISTANT_ACCESS_TOKEN: ${HOME_ASSISTANT_ACCESS_TOKEN:-}
+    volumes:
+      - backend_data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_WS_URL: ${VITE_WS_URL:-}
+    container_name: smart-home-frontend
+    restart: unless-stopped
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_WS_URL: ${VITE_WS_URL:-}
+    depends_on:
+      backend:
+        condition: service_started
+    ports:
+      - "80:80"
+
+volumes:
+  homeassistant_config:
+  postgres_data:
+  backend_data:
