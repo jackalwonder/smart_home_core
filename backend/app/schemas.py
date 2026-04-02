@@ -44,6 +44,7 @@ class DeviceCreate(StrictSchema):
     room_id: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=100)
     ha_entity_id: str = Field(min_length=3, max_length=255)
+    ha_device_id: str | None = Field(default=None, max_length=255)
     device_type: DeviceType
     current_status: DeviceStatus = DeviceStatus.UNKNOWN
 
@@ -55,8 +56,22 @@ class DeviceRead(StrictSchema):
     room_id: int
     name: str
     ha_entity_id: str
+    ha_device_id: str | None = None
     device_type: DeviceType
     current_status: DeviceStatus
+    entity_domain: str
+    raw_state: str | None = None
+    device_class: str | None = None
+    can_control: bool = False
+    control_kind: str | None = None
+    control_options: list[str] = Field(default_factory=list)
+    number_value: float | None = None
+    min_value: float | None = None
+    max_value: float | None = None
+    step: float | None = None
+    unit_of_measurement: str | None = None
+    appliance_name: str | None = None
+    appliance_type: str | None = None
 
 
 class RoomStateRead(StrictSchema):
@@ -76,15 +91,46 @@ class DeviceControlAction(str, Enum):
     TOGGLE = "toggle"
 
 
+class DeviceControlKind(str, Enum):
+    TOGGLE = "toggle"
+    NUMBER = "number"
+    SELECT = "select"
+    BUTTON = "button"
+
+
 class DeviceControlRequest(StrictSchema):
     device_id: int = Field(gt=0)
-    action: DeviceControlAction
+    control_kind: DeviceControlKind
+    action: DeviceControlAction | None = None
+    value: float | None = None
+    option: str | None = Field(default=None, min_length=1, max_length=255)
+
+    @model_validator(mode="after")
+    def validate_control_payload(self) -> "DeviceControlRequest":
+        if self.control_kind == DeviceControlKind.TOGGLE:
+            if self.action is None:
+                self.action = DeviceControlAction.TOGGLE
+            return self
+        if self.control_kind == DeviceControlKind.NUMBER:
+            if self.value is None:
+                raise ValueError("value is required for number controls.")
+            return self
+        if self.control_kind == DeviceControlKind.SELECT:
+            if self.option is None:
+                raise ValueError("option is required for select controls.")
+            return self
+        if self.control_kind == DeviceControlKind.BUTTON:
+            return self
+        raise ValueError("Unsupported control payload.")
 
 
 class DeviceControlResponse(StrictSchema):
     device_id: int
     ha_entity_id: str
-    action: DeviceControlAction
+    control_kind: DeviceControlKind
+    action: DeviceControlAction | None = None
+    value: float | None = None
+    option: str | None = None
     forwarded_service: str
     accepted: bool
     result_count: int = Field(ge=0)
@@ -128,3 +174,13 @@ class AutomationWebhookResponse(StrictSchema):
     workflow_name: str
     executed_calls: int = Field(ge=0)
     results: list[AutomationExecutionResult] = Field(default_factory=list)
+
+
+class HomeAssistantImportResponse(StrictSchema):
+    zone_name: str
+    imported_room_count: int = Field(ge=0)
+    imported_device_count: int = Field(ge=0)
+    created_room_count: int = Field(ge=0)
+    created_device_count: int = Field(ge=0)
+    updated_device_count: int = Field(ge=0)
+    removed_device_count: int = Field(ge=0)

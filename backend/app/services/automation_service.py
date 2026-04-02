@@ -10,6 +10,7 @@ from app.schemas import (
     AutomationWebhookRequest,
     AutomationWebhookResponse,
     DeviceControlAction,
+    DeviceControlKind,
     DeviceControlRequest,
     DeviceControlResponse,
 )
@@ -23,14 +24,18 @@ logger = logging.getLogger(__name__)
 async def control_device(db: Session, payload: DeviceControlRequest) -> DeviceControlResponse:
     device = catalog_service.get_device(db, payload.device_id)
     client = HomeAssistantRestClient.from_env()
-    service_name = _service_name_for_action(payload.action)
-    result = await client.call_service(service_name, entity_id=device.ha_entity_id)
-    _optimistically_update_device_state(db, device.id, payload.action)
-    logger.info("Forwarded device control action %s for %s.", payload.action.value, device.ha_entity_id)
+    service_name, service_data = _service_call_for_payload(device.ha_entity_id, payload)
+    result = await client.call_service(service_name, entity_id=device.ha_entity_id, service_data=service_data)
+    if payload.control_kind == DeviceControlKind.TOGGLE and payload.action is not None:
+        _optimistically_update_device_state(db, device.id, payload.action)
+    logger.info("Forwarded device control command %s for %s.", payload.control_kind.value, device.ha_entity_id)
     return DeviceControlResponse(
         device_id=device.id,
         ha_entity_id=device.ha_entity_id,
+        control_kind=payload.control_kind,
         action=payload.action,
+        value=payload.value,
+        option=payload.option,
         forwarded_service=service_name,
         accepted=True,
         result_count=len(result),
@@ -86,6 +91,21 @@ def _service_name_for_action(action: DeviceControlAction) -> str:
         DeviceControlAction.TOGGLE: "homeassistant.toggle",
     }
     return action_map[action]
+
+
+def _service_call_for_payload(entity_id: str, payload: DeviceControlRequest) -> tuple[str, dict[str, object] | None]:
+    entity_domain = entity_id.split(".", 1)[0]
+
+    if payload.control_kind == DeviceControlKind.TOGGLE:
+        action = payload.action or DeviceControlAction.TOGGLE
+        return _service_name_for_action(action), None
+    if payload.control_kind == DeviceControlKind.NUMBER:
+        return f"{entity_domain}.set_value", {"value": payload.value}
+    if payload.control_kind == DeviceControlKind.SELECT:
+        return f"{entity_domain}.select_option", {"option": payload.option}
+    if payload.control_kind == DeviceControlKind.BUTTON:
+        return f"{entity_domain}.press", None
+    raise ValueError(f"Unsupported control kind: {payload.control_kind}")
 
 
 def _optimistically_update_device_state(db: Session, device_id: int, action: DeviceControlAction) -> None:

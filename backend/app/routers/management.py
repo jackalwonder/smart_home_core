@@ -3,11 +3,19 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, status
 
 from app.dependencies import DbSession
-from app.schemas import DeviceCreate, DeviceRead, RoomCreate, RoomRead, ZoneCreate, ZoneRead
-from app.services import catalog_service
-from app.services.errors import ConflictError, NotFoundError
+from app.schemas import (
+    DeviceCreate,
+    DeviceRead,
+    HomeAssistantImportResponse,
+    RoomCreate,
+    RoomRead,
+    ZoneCreate,
+    ZoneRead,
+)
+from app.services import catalog_service, home_assistant_import_service
+from app.services.errors import ConfigurationError, ConflictError, ExternalServiceError, NotFoundError
 
-router = APIRouter(tags=["management"])
+router = APIRouter(tags=["管理接口"])
 
 
 @router.post("/zones", response_model=ZoneRead, status_code=status.HTTP_201_CREATED)
@@ -51,3 +59,13 @@ def create_device(payload: DeviceCreate, db: DbSession):
 @router.get("/devices", response_model=list[DeviceRead])
 def list_devices(db: DbSession):
     return catalog_service.list_devices(db)
+
+
+@router.post("/integrations/home-assistant/import", response_model=HomeAssistantImportResponse)
+async def import_home_assistant_entities(db: DbSession):
+    try:
+        return await home_assistant_import_service.import_home_assistant_entities(db)
+    except ConfigurationError as exc:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
+    except ExternalServiceError as exc:
+        raise HTTPException(status_code=status.HTTP_502_BAD_GATEWAY, detail=str(exc)) from exc

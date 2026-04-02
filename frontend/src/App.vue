@@ -18,20 +18,19 @@ const {
   lastMessageAt,
   selectedRoomId,
   selectedRoom,
-} =
-  storeToRefs(smartHomeStore)
+} = storeToRefs(smartHomeStore)
 
 const connectionLabel = computed(() => {
   const labels = {
-    idle: 'Idle',
-    connecting: 'Connecting',
-    connected: 'Live',
-    reconnecting: 'Reconnecting',
-    disconnected: 'Disconnected',
-    error: 'Connection issue',
+    idle: '待连接',
+    connecting: '连接中',
+    connected: '实时在线',
+    reconnecting: '重连中',
+    disconnected: '已断开',
+    error: '连接异常',
   }
 
-  return labels[connectionStatus.value] ?? 'Unknown'
+  return labels[connectionStatus.value] ?? '未知状态'
 })
 
 const connectionClass = computed(() => {
@@ -49,10 +48,14 @@ const connectionClass = computed(() => {
 
 const formattedLastMessage = computed(() => {
   if (!lastMessageAt.value) {
-    return 'Waiting for updates'
+    return '正在等待设备状态更新'
   }
 
-  return `Last update ${new Date(lastMessageAt.value).toLocaleTimeString()}`
+  return `最近同步于 ${new Date(lastMessageAt.value).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })}`
 })
 
 onMounted(() => {
@@ -89,30 +92,30 @@ onBeforeUnmount(() => {
   >
     <div
       v-if="error"
-      class="m-6 rounded-[1.75rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 lg:m-8"
+      class="m-4 rounded-[1.75rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 sm:m-6 xl:m-8"
     >
       {{ error }}
     </div>
 
     <div
       v-else-if="isLoading"
-      class="grid gap-5 p-6 md:grid-cols-2 lg:p-8"
+      class="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:p-8"
     >
       <div
-        v-for="placeholder in 6"
+        v-for="placeholder in 5"
         :key="placeholder"
-        class="h-72 animate-pulse rounded-[2rem] bg-slate-100"
+        class="h-60 animate-pulse rounded-[2rem] bg-slate-100"
       />
     </div>
 
     <div
       v-else-if="rooms.length === 0"
-      class="flex h-full min-h-[480px] items-center justify-center px-6 py-10 lg:px-8"
+      class="flex min-h-[420px] items-center justify-center px-4 py-8 sm:px-6 xl:min-h-[520px] xl:px-8"
     >
-      <div class="rounded-[2rem] bg-slate-50 px-8 py-10 text-center">
-        <h2 class="text-xl font-semibold text-ink">No rooms found yet</h2>
-        <p class="mt-2 text-slate-500">
-          Create rooms and devices from the management API, then this dashboard will light up.
+      <div class="max-w-xl rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-8 text-center sm:px-8">
+        <h2 class="text-xl font-semibold text-ink sm:text-2xl">还没有可展示的房间</h2>
+        <p class="mt-3 text-sm leading-6 text-slate-500 sm:text-base">
+          当前 Home Assistant 里还没有同步出适合主面板展示的设备。等设备分配到房间并拥有可控能力后，这里会自动出现。
         </p>
       </div>
     </div>

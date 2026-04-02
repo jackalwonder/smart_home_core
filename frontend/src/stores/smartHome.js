@@ -8,6 +8,7 @@ function resolveApiUrl(path) {
   if (!API_BASE_URL) {
     return path
   }
+
   return new URL(path, API_BASE_URL).toString()
 }
 
@@ -30,14 +31,18 @@ function resolveWebSocketUrl(path = '/ws/devices') {
 }
 
 function sortRooms(rooms) {
-  return [...rooms].sort((left, right) => left.name.localeCompare(right.name))
+  return [...rooms].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
 }
 
 function normalizeRoom(room) {
   return {
     ...room,
-    devices: [...(room.devices ?? [])].sort((left, right) => left.name.localeCompare(right.name)),
+    devices: [...(room.devices ?? [])].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
   }
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 export const useSmartHomeStore = defineStore('smartHome', () => {
@@ -55,12 +60,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const pendingDeviceIds = ref([])
 
   const roomCount = computed(() => rooms.value.length)
-  const deviceCount = computed(() =>
-    rooms.value.reduce((total, room) => total + (room.devices?.length ?? 0), 0),
-  )
-  const selectedRoom = computed(() =>
-    rooms.value.find((room) => room.id === selectedRoomId.value) ?? rooms.value[0] ?? null,
-  )
+  const deviceCount = computed(() => rooms.value.reduce((total, room) => total + (room.devices?.length ?? 0), 0))
+  const selectedRoom = computed(() => rooms.value.find((room) => room.id === selectedRoomId.value) ?? rooms.value[0] ?? null)
 
   async function fetchInitialState() {
     isLoading.value = true
@@ -69,19 +70,44 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     try {
       const response = await fetch(resolveApiUrl('/api/rooms'))
       if (!response.ok) {
-        throw new Error(`Failed to fetch rooms: ${response.status}`)
+        throw new Error(`获取房间列表失败：${response.status}`)
       }
 
       const payload = await response.json()
       rooms.value = sortRooms(payload.map(normalizeRoom))
+
       if (!selectedRoomId.value && rooms.value.length > 0) {
         selectedRoomId.value = rooms.value[0].id
       }
     } catch (fetchError) {
-      error.value = fetchError instanceof Error ? fetchError.message : 'Failed to fetch smart home data.'
+      error.value = fetchError instanceof Error ? fetchError.message : '获取智能家居数据失败。'
       throw fetchError
     } finally {
       isLoading.value = false
+    }
+  }
+
+  async function fetchRoomDevices(roomId) {
+    try {
+      const response = await fetch(resolveApiUrl(`/api/devices/${roomId}`))
+      if (!response.ok) {
+        throw new Error(`获取房间设备失败：${response.status}`)
+      }
+
+      const devices = await response.json()
+      rooms.value = rooms.value.map((room) => {
+        if (room.id !== roomId) {
+          return room
+        }
+
+        return {
+          ...room,
+          devices: [...devices].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
+        }
+      })
+    } catch (fetchError) {
+      actionError.value = fetchError instanceof Error ? fetchError.message : '刷新房间设备失败。'
+      throw fetchError
     }
   }
 
@@ -108,7 +134,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         const payload = JSON.parse(event.data)
         handleRealtimeMessage(payload)
       } catch (parseError) {
-        console.error('Failed to parse smart home WebSocket message.', parseError)
+        console.error('解析实时消息失败。', parseError)
       }
     })
 
@@ -188,7 +214,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
       return {
         ...room,
-        devices: nextDevices.sort((left, right) => left.name.localeCompare(right.name)),
+        devices: nextDevices.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
       }
     })
 
@@ -201,49 +227,40 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     selectedRoomId.value = roomId
   }
 
-  async function fetchRoomDevices(roomId) {
-    try {
-      const response = await fetch(resolveApiUrl(`/api/devices/${roomId}`))
-      if (!response.ok) {
-        throw new Error(`Failed to fetch room devices: ${response.status}`)
-      }
-
-      const devices = await response.json()
-      rooms.value = rooms.value.map((room) => {
-        if (room.id !== roomId) {
-          return room
-        }
-
-        return {
-          ...room,
-          devices: [...devices].sort((left, right) => left.name.localeCompare(right.name)),
-        }
-      })
-    } catch (fetchError) {
-      actionError.value =
-        fetchError instanceof Error ? fetchError.message : 'Failed to refresh room devices.'
-      throw fetchError
-    }
-  }
-
   function isDevicePending(deviceId) {
     return pendingDeviceIds.value.includes(deviceId)
   }
 
-  async function toggleDevice(deviceId) {
+  function findDevice(deviceId) {
+    return rooms.value.flatMap((room) => room.devices).find((device) => device.id === deviceId) ?? null
+  }
+
+  function markPending(deviceId) {
+    pendingDeviceIds.value = [...pendingDeviceIds.value, deviceId]
+  }
+
+  function unmarkPending(deviceId) {
+    pendingDeviceIds.value = pendingDeviceIds.value.filter((pendingId) => pendingId !== deviceId)
+  }
+
+  async function runDeviceControl(deviceId, payload, optimisticUpdate) {
+    const device = findDevice(deviceId)
+    if (!device) {
+      throw new Error(`未找到设备 ${deviceId}。`)
+    }
+
     if (isDevicePending(deviceId)) {
       return
     }
 
-    const device = rooms.value.flatMap((room) => room.devices).find((entry) => entry.id === deviceId)
-    if (!device) {
-      throw new Error(`Device ${deviceId} not found.`)
-    }
-
     actionError.value = ''
-    pendingDeviceIds.value = [...pendingDeviceIds.value, deviceId]
+    markPending(deviceId)
 
     try {
+      if (typeof optimisticUpdate === 'function') {
+        optimisticUpdate(device)
+      }
+
       const response = await fetch(resolveApiUrl('/api/device/control'), {
         method: 'POST',
         headers: {
@@ -251,22 +268,46 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         },
         body: JSON.stringify({
           device_id: deviceId,
-          action: 'toggle',
+          ...payload,
         }),
       })
 
       if (!response.ok) {
-        throw new Error(`Failed to control device: ${response.status}`)
+        const responseText = await response.text()
+        throw new Error(`设备控制失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
       }
 
-      applyDeviceActionLocally(deviceId, 'toggle')
-    } catch (toggleError) {
-      actionError.value =
-        toggleError instanceof Error ? toggleError.message : 'Failed to send device command.'
-      throw toggleError
+      await wait(450)
+      await fetchRoomDevices(device.room_id)
+      return await response.json()
+    } catch (controlError) {
+      actionError.value = controlError instanceof Error ? controlError.message : '发送设备控制指令失败。'
+      throw controlError
     } finally {
-      pendingDeviceIds.value = pendingDeviceIds.value.filter((pendingId) => pendingId !== deviceId)
+      unmarkPending(deviceId)
     }
+  }
+
+  async function toggleDevice(deviceId) {
+    return runDeviceControl(
+      deviceId,
+      { control_kind: 'toggle', action: 'toggle' },
+      () => {
+        applyDeviceActionLocally(deviceId, 'toggle')
+      },
+    )
+  }
+
+  async function setDeviceNumber(deviceId, value) {
+    return runDeviceControl(deviceId, { control_kind: 'number', value })
+  }
+
+  async function selectDeviceOption(deviceId, option) {
+    return runDeviceControl(deviceId, { control_kind: 'select', option })
+  }
+
+  async function pressDeviceButton(deviceId) {
+    return runDeviceControl(deviceId, { control_kind: 'button' })
   }
 
   function applyDeviceActionLocally(deviceId, action) {
@@ -294,6 +335,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         return {
           ...device,
           current_status: nextStatus,
+          raw_state: nextStatus,
         }
       }),
     }))
@@ -323,6 +365,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     setSelectedRoom,
     isDevicePending,
     toggleDevice,
+    setDeviceNumber,
+    selectDeviceOption,
+    pressDeviceButton,
     initialize,
   }
 })

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import asyncio
+from typing import Any
+
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -7,6 +10,23 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import Device, Room, Zone
 from app.schemas import DeviceCreate, RoomCreate, ZoneCreate
 from app.services.errors import ConflictError, NotFoundError
+from app.services.home_assistant_api import HomeAssistantRestClient
+from app.services.home_assistant_import_service import RegistryEntityInfo, fetch_entity_registry_snapshot_from_env
+
+NOISE_ENTITY_PREFIXES = (
+    "conversation.",
+    "event.backup_",
+    "sensor.backup_",
+    "sensor.sun_",
+    "sun.",
+    "tts.",
+)
+
+TOGGLE_DOMAINS = {"fan", "light", "switch"}
+HIDDEN_DASHBOARD_DOMAINS = {"event", "notify", "person", "zone", "weather", "conversation", "tts", "sun", "todo"}
+VISIBLE_SENSOR_DEVICE_CLASSES = {"temperature", "humidity", "moisture"}
+UNSAFE_BUTTON_KEYWORDS = ("恢复", "重置", "reset", "默认", "删除", "唤醒", "同步", "请求")
+AGGREGATED_APPLIANCE_TYPES = {"fridge", "air_conditioner", "tv", "media", "purifier", "washer", "speaker", "router"}
 
 
 def create_zone(db: Session, payload: ZoneCreate) -> Zone:
@@ -16,7 +36,7 @@ def create_zone(db: Session, payload: ZoneCreate) -> Zone:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise ConflictError("Zone name already exists.") from exc
+        raise ConflictError("区域名称已存在。") from exc
     db.refresh(zone)
     return zone
 
@@ -28,7 +48,7 @@ def list_zones(db: Session) -> list[Zone]:
 def create_room(db: Session, payload: RoomCreate) -> Room:
     zone = db.get(Zone, payload.zone_id)
     if zone is None:
-        raise NotFoundError("Zone not found.")
+        raise NotFoundError("未找到对应区域。")
 
     room = Room(name=payload.name, description=payload.description, zone_id=payload.zone_id)
     db.add(room)
@@ -36,7 +56,7 @@ def create_room(db: Session, payload: RoomCreate) -> Room:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise ConflictError("Room name already exists in this zone.") from exc
+        raise ConflictError("该区域下的房间名称已存在。") from exc
     db.refresh(room)
     return room
 
@@ -48,11 +68,12 @@ def list_rooms(db: Session) -> list[Room]:
 def create_device(db: Session, payload: DeviceCreate) -> Device:
     room = db.get(Room, payload.room_id)
     if room is None:
-        raise NotFoundError("Room not found.")
+        raise NotFoundError("未找到对应房间。")
 
     device = Device(
         name=payload.name,
         ha_entity_id=payload.ha_entity_id,
+        ha_device_id=payload.ha_device_id,
         device_type=payload.device_type,
         current_status=payload.current_status,
         room_id=payload.room_id,
@@ -62,7 +83,7 @@ def create_device(db: Session, payload: DeviceCreate) -> Device:
         db.commit()
     except IntegrityError as exc:
         db.rollback()
-        raise ConflictError("Device entity ID already exists.") from exc
+        raise ConflictError("设备实体 ID 已存在。") from exc
     db.refresh(device)
     return device
 
@@ -74,14 +95,14 @@ def list_devices(db: Session) -> list[Device]:
 def get_device(db: Session, device_id: int) -> Device:
     device = db.get(Device, device_id)
     if device is None:
-        raise NotFoundError("Device not found.")
+        raise NotFoundError("未找到对应设备。")
     return device
 
 
 def list_devices_by_room(db: Session, room_id: int) -> list[Device]:
     room = db.get(Room, room_id)
     if room is None:
-        raise NotFoundError("Room not found.")
+        raise NotFoundError("未找到对应房间。")
 
     stmt = select(Device).where(Device.room_id == room_id).order_by(Device.name)
     return list(db.scalars(stmt).all())
@@ -94,3 +115,241 @@ def list_room_snapshots(db: Session) -> list[Room]:
         .order_by(Room.zone_id, Room.name)
     )
     return list(db.scalars(stmt).unique().all())
+
+
+async def list_room_snapshots_for_ui(db: Session) -> list[dict[str, Any]]:
+    rooms = list_room_snapshots(db)
+    state_map, registry_map = await _load_home_assistant_context()
+
+    snapshots: list[dict[str, Any]] = []
+    for room in rooms:
+        devices = [
+            device_view
+            for device in room.devices
+            if not _is_noise_entity(device.ha_entity_id)
+            for device_view in [_serialize_device(device, state_map.get(device.ha_entity_id), registry_map.get(device.ha_entity_id))]
+            if _should_include_in_dashboard(device_view)
+        ]
+        if not devices:
+            continue
+        snapshots.append(
+            {
+                "id": room.id,
+                "zone_id": room.zone_id,
+                "name": room.name,
+                "description": room.description,
+                "zone": {
+                    "id": room.zone.id,
+                    "name": room.zone.name,
+                    "description": room.zone.description,
+                },
+                "devices": sorted(devices, key=lambda item: item["name"]),
+            }
+        )
+
+    return snapshots
+
+
+async def list_devices_by_room_for_ui(db: Session, room_id: int) -> list[dict[str, Any]]:
+    devices = list_devices_by_room(db, room_id)
+    state_map, registry_map = await _load_home_assistant_context()
+    return sorted(
+        [
+            device_view
+            for device in devices
+            if not _is_noise_entity(device.ha_entity_id)
+            for device_view in [_serialize_device(device, state_map.get(device.ha_entity_id), registry_map.get(device.ha_entity_id))]
+            if _should_include_in_dashboard(device_view)
+        ],
+        key=lambda item: item["name"],
+    )
+
+
+async def _load_home_assistant_context() -> tuple[dict[str, dict[str, Any]], dict[str, RegistryEntityInfo]]:
+    state_task = asyncio.create_task(_load_state_map())
+    registry_task = asyncio.create_task(_load_registry_map())
+    return await asyncio.gather(state_task, registry_task)
+
+
+def _serialize_device(
+    device: Device,
+    state: dict[str, Any] | None,
+    registry_info: RegistryEntityInfo | None,
+) -> dict[str, Any]:
+    entity_domain = device.ha_entity_id.split(".", 1)[0]
+    attributes = state.get("attributes", {}) if isinstance(state, dict) else {}
+    raw_state = str(state.get("state")) if isinstance(state, dict) and state.get("state") is not None else None
+    control_kind = _control_kind(entity_domain, attributes)
+    device_class = _string_attribute(attributes, "device_class")
+    appliance_name = _appliance_name(device.name, registry_info)
+    appliance_type = _appliance_type(entity_domain, device.name, registry_info)
+
+    return {
+        "id": device.id,
+        "room_id": device.room_id,
+        "name": device.name,
+        "ha_entity_id": device.ha_entity_id,
+        "ha_device_id": device.ha_device_id or (registry_info.device_id if registry_info else None),
+        "device_type": device.device_type,
+        "current_status": device.current_status,
+        "entity_domain": entity_domain,
+        "raw_state": raw_state,
+        "device_class": device_class,
+        "can_control": control_kind is not None,
+        "control_kind": control_kind,
+        "control_options": _control_options(entity_domain, attributes),
+        "number_value": _number_value(entity_domain, raw_state),
+        "min_value": _float_attribute(attributes, "min"),
+        "max_value": _float_attribute(attributes, "max"),
+        "step": _float_attribute(attributes, "step"),
+        "unit_of_measurement": _string_attribute(attributes, "unit_of_measurement"),
+        "appliance_name": appliance_name,
+        "appliance_type": appliance_type,
+    }
+
+
+async def _load_state_map() -> dict[str, dict[str, Any]]:
+    try:
+        client = HomeAssistantRestClient.from_env()
+        states = await client.get_states()
+    except Exception:
+        return {}
+
+    return {
+        item["entity_id"]: item
+        for item in states
+        if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
+    }
+
+
+async def _load_registry_map() -> dict[str, RegistryEntityInfo]:
+    try:
+        return await fetch_entity_registry_snapshot_from_env()
+    except Exception:
+        return {}
+
+
+def _control_kind(entity_domain: str, attributes: dict[str, Any]) -> str | None:
+    if entity_domain in TOGGLE_DOMAINS:
+        return "toggle"
+    if entity_domain == "number" and _float_attribute(attributes, "min") is not None:
+        return "number"
+    if entity_domain == "select" and isinstance(attributes.get("options"), list):
+        return "select"
+    if entity_domain == "button":
+        return "button"
+    return None
+
+
+def _control_options(entity_domain: str, attributes: dict[str, Any]) -> list[str]:
+    if entity_domain != "select":
+        return []
+    options = attributes.get("options")
+    if not isinstance(options, list):
+        return []
+    return [str(option) for option in options]
+
+
+def _number_value(entity_domain: str, raw_state: str | None) -> float | None:
+    if entity_domain != "number" or raw_state is None:
+        return None
+    try:
+        return float(raw_state)
+    except (TypeError, ValueError):
+        return None
+
+
+def _float_attribute(attributes: dict[str, Any], key: str) -> float | None:
+    value = attributes.get(key)
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _string_attribute(attributes: dict[str, Any], key: str) -> str | None:
+    value = attributes.get(key)
+    if value is None:
+        return None
+    return str(value)
+
+
+def _is_noise_entity(entity_id: str) -> bool:
+    return entity_id.startswith(NOISE_ENTITY_PREFIXES)
+
+
+def _should_include_in_dashboard(device_view: dict[str, Any]) -> bool:
+    domain = device_view["entity_domain"]
+    if domain in HIDDEN_DASHBOARD_DOMAINS:
+        return False
+
+    control_kind = device_view["control_kind"]
+    if control_kind in {"toggle", "number", "select"}:
+        return True
+
+    if control_kind == "button":
+        lowered_name = device_view["name"].lower()
+        return not any(keyword in lowered_name for keyword in UNSAFE_BUTTON_KEYWORDS)
+
+    if domain == "sensor":
+        device_class = device_view.get("device_class")
+        if device_class in VISIBLE_SENSOR_DEVICE_CLASSES:
+            return True
+        if device_view.get("unit_of_measurement") in {"°C", "%"}:
+            return True
+        return False
+
+    if domain == "binary_sensor":
+        return device_view.get("device_class") in {"door", "window", "moisture", "motion"}
+
+    return False
+
+
+def _appliance_name(device_name: str, registry_info: RegistryEntityInfo | None) -> str:
+    if registry_info and registry_info.device_name:
+        return registry_info.device_name
+
+    base = device_name.split(" * ")[0].split("  ")[0].strip()
+    return base or device_name
+
+
+def _appliance_type(
+    entity_domain: str,
+    device_name: str,
+    registry_info: RegistryEntityInfo | None,
+) -> str:
+    text = " ".join(
+        part
+        for part in [
+            entity_domain,
+            device_name,
+            registry_info.device_name if registry_info else None,
+            registry_info.device_model if registry_info else None,
+            registry_info.manufacturer if registry_info else None,
+        ]
+        if part
+    ).lower()
+
+    if any(keyword in text for keyword in ("冰箱", "refrigerator", "fridge")):
+        return "fridge"
+    if any(keyword in text for keyword in ("空调", "air conditioner", "ac", "hvac")) or entity_domain == "climate":
+        return "air_conditioner"
+    if any(keyword in text for keyword in ("电视", "tv", "xiaomi tv", "bravia")):
+        return "tv"
+    if entity_domain == "media_player":
+        return "media"
+    if any(keyword in text for keyword in ("净化", "purifier", "空气净化")):
+        return "purifier"
+    if any(keyword in text for keyword in ("洗衣", "washer", "laundry")):
+        return "washer"
+    if any(keyword in text for keyword in ("音箱", "speaker", "soundbar", "homepod")):
+        return "speaker"
+    if any(keyword in text for keyword in ("路由", "router", "mesh")):
+        return "router"
+    return "generic"
+
+
+def is_aggregated_appliance_type(appliance_type: str | None) -> bool:
+    return appliance_type in AGGREGATED_APPLIANCE_TYPES

@@ -27,6 +27,16 @@ engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
 
+def ensure_runtime_schema() -> None:
+    with engine.begin() as connection:
+        connection.exec_driver_sql(
+            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS ha_device_id VARCHAR(255)"
+        )
+        connection.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_devices_ha_device_id ON devices (ha_device_id)"
+        )
+
+
 def get_db_session() -> Generator[Session, None, None]:
     session = SessionLocal()
     try:

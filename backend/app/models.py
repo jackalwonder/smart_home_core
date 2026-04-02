@@ -67,6 +67,7 @@ class Device(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), index=True)
     ha_entity_id: Mapped[str] = mapped_column(String(255), unique=True, index=True)
+    ha_device_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     device_type: Mapped[DeviceType] = mapped_column(
         SqlEnum(DeviceType, name="device_type_enum"),
         index=True,

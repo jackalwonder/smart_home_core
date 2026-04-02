@@ -17,6 +17,7 @@ def serialize_device(device: Device) -> dict[str, Any]:
         "room_id": device.room_id,
         "name": device.name,
         "ha_entity_id": device.ha_entity_id,
+        "ha_device_id": device.ha_device_id,
         "device_type": device.device_type.value,
         "current_status": device.current_status.value,
     }

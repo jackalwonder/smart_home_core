@@ -23,10 +23,14 @@ class HomeAssistantRestClient:
         access_token = os.getenv("HOME_ASSISTANT_ACCESS_TOKEN", "").strip()
         if not base_url or not access_token:
             raise ConfigurationError(
-                "Home Assistant REST API is not configured. Set HOME_ASSISTANT_REST_URL and "
-                "HOME_ASSISTANT_ACCESS_TOKEN."
+                "Home Assistant REST API 尚未配置，请设置 HOME_ASSISTANT_REST_URL 和 "
+                "HOME_ASSISTANT_ACCESS_TOKEN。"
             )
         return cls(base_url=base_url, access_token=access_token)
+
+    @property
+    def websocket_url(self) -> str:
+        return _derive_websocket_url_from_rest(self.base_url)
 
     async def call_service(
         self,
@@ -54,11 +58,11 @@ class HomeAssistantRestClient:
             body = exc.response.text
             logger.exception("Home Assistant service %s failed with %s.", service, exc.response.status_code)
             raise ExternalServiceError(
-                f"Home Assistant rejected service call {service}: {exc.response.status_code} {body}"
+                f"Home Assistant 拒绝了服务调用 {service}：{exc.response.status_code} {body}"
             ) from exc
         except httpx.HTTPError as exc:
             logger.exception("Failed to reach Home Assistant REST API for service %s.", service)
-            raise ExternalServiceError(f"Failed to reach Home Assistant REST API: {exc}") from exc
+            raise ExternalServiceError(f"无法连接到 Home Assistant REST API：{exc}") from exc
 
         if not response.content:
             return []
@@ -74,13 +78,39 @@ class HomeAssistantRestClient:
             return [data]
         return []
 
+    async def get_states(self) -> list[dict[str, Any]]:
+        url = f"{self.base_url}/states"
+        headers = {
+            "Authorization": f"Bearer {self.access_token}",
+            "Content-Type": "application/json",
+        }
+
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.get(url, headers=headers)
+                response.raise_for_status()
+        except httpx.HTTPStatusError as exc:
+            body = exc.response.text
+            logger.exception("Home Assistant states request failed with %s.", exc.response.status_code)
+            raise ExternalServiceError(
+                f"获取 Home Assistant 实体列表失败：{exc.response.status_code} {body}"
+            ) from exc
+        except httpx.HTTPError as exc:
+            logger.exception("Failed to reach Home Assistant REST API for states request.")
+            raise ExternalServiceError(f"无法连接到 Home Assistant REST API：{exc}") from exc
+
+        data = response.json()
+        if not isinstance(data, list):
+            raise ExternalServiceError("Home Assistant /states 返回了非列表数据。")
+        return [item for item in data if isinstance(item, dict)]
+
     @staticmethod
     def _split_service(service: str) -> tuple[str, str]:
         if "." not in service:
-            raise ExternalServiceError(f"Invalid Home Assistant service name: {service}")
+            raise ExternalServiceError(f"无效的 Home Assistant 服务名称：{service}")
         domain, service_name = service.split(".", 1)
         if not domain or not service_name:
-            raise ExternalServiceError(f"Invalid Home Assistant service name: {service}")
+            raise ExternalServiceError(f"无效的 Home Assistant 服务名称：{service}")
         return domain, service_name
 
 
@@ -92,4 +122,12 @@ def _derive_rest_url_from_websocket() -> str:
         return websocket_url.replace("ws://", "http://", 1).removesuffix("/websocket")
     if websocket_url.startswith("wss://"):
         return websocket_url.replace("wss://", "https://", 1).removesuffix("/websocket")
+    return ""
+
+
+def _derive_websocket_url_from_rest(base_url: str) -> str:
+    if base_url.startswith("http://"):
+        return base_url.replace("http://", "ws://", 1).rstrip("/") + "/websocket"
+    if base_url.startswith("https://"):
+        return base_url.replace("https://", "wss://", 1).rstrip("/") + "/websocket"
     return ""

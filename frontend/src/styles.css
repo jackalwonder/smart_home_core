@@ -3,15 +3,34 @@
 @tailwind utilities;
 
 @layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
   body {
     @apply min-h-screen bg-shell text-ink antialiased;
     background-image:
       radial-gradient(circle at top left, rgba(16, 185, 129, 0.18), transparent 32%),
       radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.14), transparent 26%);
   }
+
+  #app {
+    min-height: 100vh;
+  }
 }
 
 @layer components {
+  .app-shell {
+    padding-top: max(0.75rem, env(safe-area-inset-top));
+    padding-right: max(0.75rem, env(safe-area-inset-right));
+    padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
+    padding-left: max(0.75rem, env(safe-area-inset-left));
+  }
+
   .status-pill {
     @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
   }

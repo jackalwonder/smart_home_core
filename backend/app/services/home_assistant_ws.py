@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 from itertools import count
 from typing import Any
 
@@ -13,6 +14,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 
 from app.database import SessionLocal
 from app.models import Device, DeviceStatus
+from app.services import home_assistant_import_service
 from app.services.realtime import build_device_update_event, device_realtime_hub
 
 logger = logging.getLogger(__name__)
@@ -25,13 +27,17 @@ class HomeAssistantWebSocketListener:
         access_token: str,
         reconnect_min_delay: float = 2.0,
         reconnect_max_delay: float = 30.0,
+        auto_import_cooldown: float = 15.0,
     ) -> None:
         self.websocket_url = websocket_url
         self.access_token = access_token
         self.reconnect_min_delay = reconnect_min_delay
         self.reconnect_max_delay = reconnect_max_delay
+        self.auto_import_cooldown = auto_import_cooldown
         self._stop_event = asyncio.Event()
         self._task: asyncio.Task[None] | None = None
+        self._auto_import_lock = asyncio.Lock()
+        self._last_auto_import_at = 0.0
 
     @classmethod
     def from_env(cls) -> "HomeAssistantWebSocketListener | None":
@@ -171,8 +177,28 @@ class HomeAssistantWebSocketListener:
         updated = await asyncio.to_thread(self._update_device_state, entity_id, mapped_status)
         if updated:
             logger.info("Updated device %s to status %s.", entity_id, mapped_status.value)
-        else:
-            logger.debug("No tracked device found for Home Assistant entity %s.", entity_id)
+            return
+
+        logger.info("Discovered unknown Home Assistant entity %s; scheduling automatic import.", entity_id)
+        await self._attempt_auto_import(entity_id, mapped_status)
+
+    async def _attempt_auto_import(self, entity_id: str, status: DeviceStatus) -> None:
+        if self._auto_import_lock.locked():
+            logger.debug("Skipping automatic import for %s because another import is already running.", entity_id)
+            return
+
+        now = time.monotonic()
+        if now - self._last_auto_import_at < self.auto_import_cooldown:
+            logger.debug("Skipping automatic import for %s because cooldown is active.", entity_id)
+            return
+
+        async with self._auto_import_lock:
+            self._last_auto_import_at = time.monotonic()
+            imported = await asyncio.to_thread(self._import_and_publish_entity, entity_id, status)
+            if imported:
+                logger.info("Automatically imported newly discovered Home Assistant entity %s.", entity_id)
+            else:
+                logger.debug("Automatic import completed but entity %s is still not tracked.", entity_id)
 
     def _update_device_state(self, entity_id: str, status: DeviceStatus) -> bool:
         session = SessionLocal()
@@ -191,6 +217,37 @@ class HomeAssistantWebSocketListener:
             return False
         finally:
             session.close()
+
+    def _import_and_publish_entity(self, entity_id: str, status: DeviceStatus) -> bool:
+        session = SessionLocal()
+        try:
+            asyncio.run(home_assistant_import_service.import_home_assistant_entities(session))
+            device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
+            if device is None:
+                return False
+
+            if device.current_status != status:
+                device.current_status = status
+                session.commit()
+                session.refresh(device)
+
+            siblings = self._load_related_devices(session, device)
+            for sibling in siblings:
+                device_realtime_hub.publish_threadsafe(build_device_update_event(sibling))
+            return True
+        except Exception:
+            session.rollback()
+            logger.exception("Failed to auto-import newly discovered entity %s.", entity_id)
+            return False
+        finally:
+            session.close()
+
+    @staticmethod
+    def _load_related_devices(session, device: Device) -> list[Device]:
+        if device.ha_device_id:
+            stmt = select(Device).where(Device.ha_device_id == device.ha_device_id).order_by(Device.name)
+            return list(session.scalars(stmt).all())
+        return [device]
 
     @staticmethod
     def _map_home_assistant_state(raw_state: str) -> DeviceStatus:
