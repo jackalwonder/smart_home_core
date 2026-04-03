@@ -49,6 +49,11 @@ services:
       HOME_ASSISTANT_WS_URL: ${HOME_ASSISTANT_WS_URL:-ws://homeassistant:8123/api/websocket}
       HOME_ASSISTANT_REST_URL: ${HOME_ASSISTANT_REST_URL:-http://homeassistant:8123/api}
       HOME_ASSISTANT_ACCESS_TOKEN: ${HOME_ASSISTANT_ACCESS_TOKEN:-}
+      APP_READ_API_KEY: ${APP_READ_API_KEY:-}
+      APP_CONTROL_API_KEY: ${APP_CONTROL_API_KEY:-}
+      APP_ADMIN_API_KEY: ${APP_ADMIN_API_KEY:-}
+      APP_WEBHOOK_SECRET: ${APP_WEBHOOK_SECRET:-}
+      APP_WEBHOOK_MAX_SKEW_SECONDS: ${APP_WEBHOOK_MAX_SKEW_SECONDS:-300}
     volumes:
       - backend_data:/app/data
     depends_on:
@@ -62,12 +67,14 @@ services:
       context: ./frontend
       args:
         VITE_API_BASE_URL: ${VITE_API_BASE_URL:-}
+        VITE_API_KEY: ${VITE_API_KEY:-}
         VITE_WS_URL: ${VITE_WS_URL:-}
     container_name: smart-home-frontend
     restart: unless-stopped
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       VITE_API_BASE_URL: ${VITE_API_BASE_URL:-http://localhost:8000}
+      VITE_API_KEY: ${VITE_API_KEY:-}
       VITE_WS_URL: ${VITE_WS_URL:-}
     depends_on:
       backend:

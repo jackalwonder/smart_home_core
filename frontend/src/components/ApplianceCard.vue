@@ -58,73 +58,73 @@ const applianceMeta = computed(() => {
     fridge: {
       eyebrow: '冰箱控制面板',
       badge: '温控设备',
-      cardClass: 'border-sky-200 bg-gradient-to-br from-white via-sky-50 to-cyan-50',
+      cardClass: 'border-sky-200/70 bg-gradient-to-br from-white via-sky-50/85 to-cyan-50/70 shadow-panel',
       iconWrapperClass: 'bg-sky-500 text-white',
-      sectionClass: 'border-sky-100 bg-white/95',
+      sectionClass: 'border-sky-100 bg-white/82',
       chipClass: 'bg-sky-100 text-sky-700',
     },
     air_conditioner: {
       eyebrow: '空调控制面板',
       badge: '环境设备',
-      cardClass: 'border-teal-200 bg-gradient-to-br from-white via-teal-50 to-cyan-50',
+      cardClass: 'border-teal-200/70 bg-gradient-to-br from-white via-teal-50/85 to-cyan-50/70 shadow-panel',
       iconWrapperClass: 'bg-teal-500 text-white',
-      sectionClass: 'border-teal-100 bg-white/95',
+      sectionClass: 'border-teal-100 bg-white/82',
       chipClass: 'bg-teal-100 text-teal-700',
     },
     tv: {
       eyebrow: '电视控制面板',
       badge: '影音设备',
-      cardClass: 'border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-slate-50',
+      cardClass: 'border-indigo-200/70 bg-gradient-to-br from-white via-indigo-50/88 to-slate-50/72 shadow-panel',
       iconWrapperClass: 'bg-indigo-500 text-white',
-      sectionClass: 'border-indigo-100 bg-white/95',
+      sectionClass: 'border-indigo-100 bg-white/82',
       chipClass: 'bg-indigo-100 text-indigo-700',
     },
     media: {
       eyebrow: '影音设备面板',
       badge: '媒体设备',
-      cardClass: 'border-violet-200 bg-gradient-to-br from-white via-violet-50 to-slate-50',
+      cardClass: 'border-violet-200/70 bg-gradient-to-br from-white via-violet-50/88 to-slate-50/72 shadow-panel',
       iconWrapperClass: 'bg-violet-500 text-white',
-      sectionClass: 'border-violet-100 bg-white/95',
+      sectionClass: 'border-violet-100 bg-white/82',
       chipClass: 'bg-violet-100 text-violet-700',
     },
     purifier: {
       eyebrow: '净化设备面板',
       badge: '空气设备',
-      cardClass: 'border-emerald-200 bg-gradient-to-br from-white via-emerald-50 to-teal-50',
+      cardClass: 'border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/88 to-teal-50/70 shadow-panel',
       iconWrapperClass: 'bg-emerald-500 text-white',
-      sectionClass: 'border-emerald-100 bg-white/95',
+      sectionClass: 'border-emerald-100 bg-white/82',
       chipClass: 'bg-emerald-100 text-emerald-700',
     },
     washer: {
       eyebrow: '洗护设备面板',
       badge: '家务设备',
-      cardClass: 'border-blue-200 bg-gradient-to-br from-white via-blue-50 to-cyan-50',
+      cardClass: 'border-blue-200/70 bg-gradient-to-br from-white via-blue-50/85 to-cyan-50/70 shadow-panel',
       iconWrapperClass: 'bg-blue-500 text-white',
-      sectionClass: 'border-blue-100 bg-white/95',
+      sectionClass: 'border-blue-100 bg-white/82',
       chipClass: 'bg-blue-100 text-blue-700',
     },
     speaker: {
       eyebrow: '音箱控制面板',
       badge: '声音设备',
-      cardClass: 'border-fuchsia-200 bg-gradient-to-br from-white via-fuchsia-50 to-pink-50',
+      cardClass: 'border-fuchsia-200/70 bg-gradient-to-br from-white via-fuchsia-50/85 to-pink-50/70 shadow-panel',
       iconWrapperClass: 'bg-fuchsia-500 text-white',
-      sectionClass: 'border-fuchsia-100 bg-white/95',
+      sectionClass: 'border-fuchsia-100 bg-white/82',
       chipClass: 'bg-fuchsia-100 text-fuchsia-700',
     },
     router: {
       eyebrow: '网络设备面板',
       badge: '连接设备',
-      cardClass: 'border-slate-200 bg-gradient-to-br from-white via-slate-50 to-zinc-50',
+      cardClass: 'border-slate-200/70 bg-gradient-to-br from-white via-slate-50/88 to-zinc-50/72 shadow-panel',
       iconWrapperClass: 'bg-slate-700 text-white',
-      sectionClass: 'border-slate-200 bg-white/95',
+      sectionClass: 'border-slate-200 bg-white/82',
       chipClass: 'bg-slate-100 text-slate-700',
     },
     generic: {
       eyebrow: '设备归并视图',
       badge: '家庭设备',
-      cardClass: 'border-amber-200 bg-gradient-to-br from-white via-amber-50/70 to-orange-50',
+      cardClass: 'border-amber-200/80 bg-gradient-to-br from-white via-amber-50/80 to-orange-50/72 shadow-panel',
       iconWrapperClass: 'bg-amber-500 text-white',
-      sectionClass: 'border-amber-100 bg-white/95',
+      sectionClass: 'border-amber-100 bg-white/82',
       chipClass: 'bg-amber-100 text-amber-700',
     },
   }
@@ -199,11 +199,11 @@ async function handleButtonPress(deviceId) {
 
 <template>
   <article
-    class="overflow-hidden rounded-[2rem] border p-5 shadow-sm sm:p-6"
+    class="overflow-hidden rounded-[2rem] border p-5 sm:p-6"
     :class="applianceMeta.cardClass"
   >
     <div class="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-start lg:justify-between" :class="applianceMeta.sectionClass">
-      <div class="flex items-start gap-4 rounded-[1.5rem] border px-4 py-4" :class="applianceMeta.sectionClass">
+      <div class="flex items-start gap-4 rounded-[1.65rem] border px-4 py-4" :class="applianceMeta.sectionClass">
         <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm" :class="applianceMeta.iconWrapperClass">
           <svg v-if="applianceType === 'fridge'" class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M7 3h10" />
@@ -244,7 +244,7 @@ async function handleButtonPress(deviceId) {
 
         <div>
           <p class="text-xs font-semibold uppercase tracking-[0.28em]" :class="applianceMeta.chipClass">{{ applianceMeta.eyebrow }}</p>
-          <h3 class="mt-2 text-2xl font-semibold tracking-tight text-ink sm:text-[1.9rem]">{{ title }}</h3>
+          <h3 class="font-display mt-3 text-[2rem] leading-none text-ink sm:text-[2.25rem]">{{ title }}</h3>
           <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base">
             这张卡片已经按 Home Assistant 的设备维度聚合，后续同一台电视、空调、冰箱新增的相关实体也会优先并入这里。
           </p>

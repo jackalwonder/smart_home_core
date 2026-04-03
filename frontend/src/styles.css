@@ -5,6 +5,12 @@
 @layer base {
   :root {
     color-scheme: light;
+    --shell-base: #f5f1e7;
+    --shell-ink: #0d1321;
+    --shell-accent: #0f766e;
+    --shell-gold: #d3a85f;
+    --font-ui: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", sans-serif;
+    --font-display: "Iowan Old Style", "Palatino Linotype", "Book Antiqua", Georgia, serif;
   }
 
   html {
@@ -12,10 +18,14 @@
   }
 
   body {
-    @apply min-h-screen bg-shell text-ink antialiased;
+    @apply min-h-screen text-ink antialiased;
+    font-family: var(--font-ui);
+    background-color: var(--shell-base);
     background-image:
-      radial-gradient(circle at top left, rgba(16, 185, 129, 0.18), transparent 32%),
-      radial-gradient(circle at bottom right, rgba(14, 165, 233, 0.14), transparent 26%);
+      radial-gradient(circle at top left, rgba(211, 168, 95, 0.28), transparent 26%),
+      radial-gradient(circle at 85% 15%, rgba(15, 118, 110, 0.18), transparent 24%),
+      radial-gradient(circle at bottom right, rgba(27, 43, 74, 0.18), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(245, 241, 231, 0.96));
   }
 
   #app {
@@ -29,6 +39,22 @@
     padding-right: max(0.75rem, env(safe-area-inset-right));
     padding-bottom: max(0.75rem, env(safe-area-inset-bottom));
     padding-left: max(0.75rem, env(safe-area-inset-left));
+  }
+
+  .font-display {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
+  .glass-panel {
+    background: rgba(255, 255, 255, 0.62);
+    backdrop-filter: blur(20px);
+  }
+
+  .glass-dark {
+    background:
+      linear-gradient(180deg, rgba(15, 23, 42, 0.96), rgba(10, 15, 29, 0.94));
+    backdrop-filter: blur(20px);
   }
 
   .status-pill {

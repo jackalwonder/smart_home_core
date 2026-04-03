@@ -30,6 +30,13 @@ def build_device_update_event(device: Device) -> dict[str, Any]:
     }
 
 
+def build_catalog_refresh_event(reason: str) -> dict[str, Any]:
+    return {
+        "type": "catalog_updated",
+        "reason": reason,
+    }
+
+
 class DeviceRealtimeHub:
     def __init__(self) -> None:
         self._connections: set[WebSocket] = set()

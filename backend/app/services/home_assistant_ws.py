@@ -15,7 +15,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from app.database import SessionLocal
 from app.models import Device, DeviceStatus
 from app.services import home_assistant_import_service
-from app.services.realtime import build_device_update_event, device_realtime_hub
+from app.services.realtime import build_catalog_refresh_event, build_device_update_event, device_realtime_hub
 
 logger = logging.getLogger(__name__)
 
@@ -231,9 +231,9 @@ class HomeAssistantWebSocketListener:
                 session.commit()
                 session.refresh(device)
 
-            siblings = self._load_related_devices(session, device)
-            for sibling in siblings:
-                device_realtime_hub.publish_threadsafe(build_device_update_event(sibling))
+            device_realtime_hub.publish_threadsafe(
+                build_catalog_refresh_event("home_assistant_auto_import")
+            )
             return True
         except Exception:
             session.rollback()
@@ -241,13 +241,6 @@ class HomeAssistantWebSocketListener:
             return False
         finally:
             session.close()
-
-    @staticmethod
-    def _load_related_devices(session, device: Device) -> list[Device]:
-        if device.ha_device_id:
-            stmt = select(Device).where(Device.ha_device_id == device.ha_device_id).order_by(Device.name)
-            return list(session.scalars(stmt).all())
-        return [device]
 
     @staticmethod
     def _map_home_assistant_state(raw_state: str) -> DeviceStatus:

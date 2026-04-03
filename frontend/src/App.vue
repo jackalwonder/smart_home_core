@@ -92,7 +92,7 @@ onBeforeUnmount(() => {
   >
     <div
       v-if="error"
-      class="m-4 rounded-[1.75rem] border border-rose-200 bg-rose-50 px-5 py-4 text-sm text-rose-700 sm:m-6 xl:m-8"
+      class="m-4 rounded-[1.9rem] border border-rose-200 bg-rose-50/90 px-5 py-4 text-sm text-rose-700 shadow-sm sm:m-6 xl:m-8"
     >
       {{ error }}
     </div>
@@ -104,7 +104,7 @@ onBeforeUnmount(() => {
       <div
         v-for="placeholder in 5"
         :key="placeholder"
-        class="h-60 animate-pulse rounded-[2rem] bg-slate-100"
+        class="h-60 animate-pulse rounded-[2rem] border border-white/80 bg-white/65 shadow-sm"
       />
     </div>
 
@@ -112,8 +112,9 @@ onBeforeUnmount(() => {
       v-else-if="rooms.length === 0"
       class="flex min-h-[420px] items-center justify-center px-4 py-8 sm:px-6 xl:min-h-[520px] xl:px-8"
     >
-      <div class="max-w-xl rounded-[2rem] border border-slate-200 bg-slate-50 px-6 py-8 text-center sm:px-8">
-        <h2 class="text-xl font-semibold text-ink sm:text-2xl">还没有可展示的房间</h2>
+      <div class="max-w-2xl rounded-[2.2rem] border border-white/80 bg-gradient-to-br from-white via-white/85 to-amber-50/70 px-6 py-8 text-center shadow-sm sm:px-8">
+        <p class="text-[11px] uppercase tracking-[0.34em] text-lagoon">Curated Empty State</p>
+        <h2 class="font-display mt-4 text-[2rem] text-ink sm:text-[2.5rem]">还没有可展示的房间</h2>
         <p class="mt-3 text-sm leading-6 text-slate-500 sm:text-base">
           当前 Home Assistant 里还没有同步出适合主面板展示的设备。等设备分配到房间并拥有可控能力后，这里会自动出现。
         </p>

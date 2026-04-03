@@ -9,9 +9,15 @@ export default {
         mist: '#e2f3f2',
         ember: '#f97316',
         shell: '#f8fafc',
+        obsidian: '#0b1020',
+        lagoon: '#0b6b73',
+        auric: '#d3a85f',
+        pearl: '#fcfbf7',
+        smoke: '#667085',
       },
       boxShadow: {
         panel: '0 20px 50px rgba(15, 23, 42, 0.12)',
+        float: '0 30px 80px rgba(11, 16, 32, 0.18)',
       },
       backgroundImage: {
         'smart-grid':

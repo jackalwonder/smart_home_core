@@ -2,6 +2,7 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || ''
+const API_KEY = import.meta.env.VITE_API_KEY?.trim() || ''
 const EXPLICIT_WS_URL = import.meta.env.VITE_WS_URL?.trim() || ''
 
 function resolveApiUrl(path) {
@@ -13,8 +14,18 @@ function resolveApiUrl(path) {
 }
 
 function resolveWebSocketUrl(path = '/ws/devices') {
+  const applyAuthToken = (value) => {
+    if (!API_KEY) {
+      return value
+    }
+
+    const url = new URL(value, window.location.origin)
+    url.searchParams.set('token', API_KEY)
+    return API_BASE_URL || EXPLICIT_WS_URL ? url.toString() : `${url.pathname}${url.search}`
+  }
+
   if (EXPLICIT_WS_URL) {
-    return EXPLICIT_WS_URL
+    return applyAuthToken(EXPLICIT_WS_URL)
   }
 
   if (API_BASE_URL) {
@@ -23,11 +34,22 @@ function resolveWebSocketUrl(path = '/ws/devices') {
     url.pathname = path
     url.search = ''
     url.hash = ''
-    return url.toString()
+    return applyAuthToken(url.toString())
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return `${protocol}//${window.location.host}${path}`
+  return applyAuthToken(`${protocol}//${window.location.host}${path}`)
+}
+
+function authHeaders(headers = {}) {
+  if (!API_KEY) {
+    return headers
+  }
+
+  return {
+    ...headers,
+    'X-API-Key': API_KEY,
+  }
 }
 
 function sortRooms(rooms) {
@@ -68,12 +90,14 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     error.value = ''
 
     try {
-      const response = await fetch(resolveApiUrl('/api/rooms'))
-      if (!response.ok) {
-        throw new Error(`获取房间列表失败：${response.status}`)
+      const authenticatedResponse = await fetch(resolveApiUrl('/api/rooms'), {
+        headers: authHeaders(),
+      })
+      if (!authenticatedResponse.ok) {
+        throw new Error(`获取房间列表失败：${authenticatedResponse.status}`)
       }
 
-      const payload = await response.json()
+      const payload = await authenticatedResponse.json()
       rooms.value = sortRooms(payload.map(normalizeRoom))
 
       if (!selectedRoomId.value && rooms.value.length > 0) {
@@ -89,7 +113,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
   async function fetchRoomDevices(roomId) {
     try {
-      const response = await fetch(resolveApiUrl(`/api/devices/${roomId}`))
+      const response = await fetch(resolveApiUrl(`/api/devices/${roomId}`), {
+        headers: authHeaders(),
+      })
       if (!response.ok) {
         throw new Error(`获取房间设备失败：${response.status}`)
       }
@@ -185,6 +211,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return
     }
 
+    if (message.type === 'catalog_updated') {
+      fetchInitialState().catch(() => {})
+      return
+    }
+
     if (message.type === 'device_state_updated' && message.device) {
       upsertDevice(message.device)
     }
@@ -235,6 +266,22 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     return rooms.value.flatMap((room) => room.devices).find((device) => device.id === deviceId) ?? null
   }
 
+  function snapshotDevice(deviceId) {
+    const device = findDevice(deviceId)
+    return device ? { ...device } : null
+  }
+
+  function restoreDeviceSnapshot(snapshot) {
+    if (!snapshot) {
+      return
+    }
+
+    rooms.value = rooms.value.map((room) => ({
+      ...room,
+      devices: room.devices.map((device) => (device.id === snapshot.id ? { ...device, ...snapshot } : device)),
+    }))
+  }
+
   function markPending(deviceId) {
     pendingDeviceIds.value = [...pendingDeviceIds.value, deviceId]
   }
@@ -255,6 +302,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     actionError.value = ''
     markPending(deviceId)
+    const previousSnapshot = typeof optimisticUpdate === 'function' ? snapshotDevice(deviceId) : null
 
     try {
       if (typeof optimisticUpdate === 'function') {
@@ -264,6 +312,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const response = await fetch(resolveApiUrl('/api/device/control'), {
         method: 'POST',
         headers: {
+          ...authHeaders(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -281,6 +330,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       await fetchRoomDevices(device.room_id)
       return await response.json()
     } catch (controlError) {
+      restoreDeviceSnapshot(previousSnapshot)
       actionError.value = controlError instanceof Error ? controlError.message : '发送设备控制指令失败。'
       throw controlError
     } finally {

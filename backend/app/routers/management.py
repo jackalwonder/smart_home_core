@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
+from app.auth import ADMIN_SCOPE, require_scope
 from app.dependencies import DbSession
 from app.schemas import (
+    DeviceAdminRead,
     DeviceCreate,
-    DeviceRead,
     HomeAssistantImportResponse,
     RoomCreate,
     RoomRead,
@@ -15,7 +16,7 @@ from app.schemas import (
 from app.services import catalog_service, home_assistant_import_service
 from app.services.errors import ConfigurationError, ConflictError, ExternalServiceError, NotFoundError
 
-router = APIRouter(tags=["管理接口"])
+router = APIRouter(tags=["管理接口"], dependencies=[Depends(require_scope(ADMIN_SCOPE))])
 
 
 @router.post("/zones", response_model=ZoneRead, status_code=status.HTTP_201_CREATED)
@@ -46,7 +47,7 @@ def list_rooms(db: DbSession):
     return catalog_service.list_rooms(db)
 
 
-@router.post("/devices", response_model=DeviceRead, status_code=status.HTTP_201_CREATED)
+@router.post("/devices", response_model=DeviceAdminRead, status_code=status.HTTP_201_CREATED)
 def create_device(payload: DeviceCreate, db: DbSession):
     try:
         return catalog_service.create_device(db, payload)
@@ -56,7 +57,7 @@ def create_device(payload: DeviceCreate, db: DbSession):
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
 
 
-@router.get("/devices", response_model=list[DeviceRead])
+@router.get("/devices", response_model=list[DeviceAdminRead])
 def list_devices(db: DbSession):
     return catalog_service.list_devices(db)
 

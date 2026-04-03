@@ -38,33 +38,54 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
 </script>
 
 <template>
-  <main class="app-shell min-h-screen px-3 py-3 sm:px-4 sm:py-4 lg:px-6 xl:px-8">
-    <div class="mx-auto grid max-w-[1680px] gap-4 xl:grid-cols-[360px_minmax(0,1fr)] xl:gap-6">
+  <main class="app-shell relative min-h-screen overflow-hidden px-3 py-3 sm:px-4 sm:py-4 lg:px-6 xl:px-8">
+    <div class="pointer-events-none absolute inset-0 overflow-hidden">
+      <div class="absolute left-[-4rem] top-[-2rem] h-56 w-56 rounded-full bg-auric/20 blur-3xl sm:h-72 sm:w-72" />
+      <div class="absolute right-[-3rem] top-[12rem] h-56 w-56 rounded-full bg-lagoon/20 blur-3xl sm:h-80 sm:w-80" />
+      <div class="absolute bottom-[-4rem] left-[22%] h-48 w-48 rounded-full bg-obsidian/12 blur-3xl sm:h-72 sm:w-72" />
+    </div>
+
+    <div class="relative mx-auto grid max-w-[1720px] gap-5 xl:grid-cols-[390px_minmax(0,1fr)] xl:gap-7">
       <aside
-        class="overflow-hidden rounded-[2rem] border border-white/70 bg-ink text-white shadow-panel xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:rounded-[2.5rem]"
+        class="glass-dark overflow-hidden rounded-[2rem] border border-white/10 text-white shadow-float xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:rounded-[2.8rem]"
       >
-        <div class="border-b border-white/10 px-5 py-5 sm:px-6 sm:py-6">
-          <p class="text-[11px] font-semibold uppercase tracking-[0.35em] text-emerald-200/80 sm:text-xs">
-            智能家居总览
+        <div class="relative border-b border-white/10 px-5 py-5 sm:px-6 sm:py-6">
+          <div class="absolute right-0 top-0 h-32 w-32 rounded-full bg-auric/15 blur-3xl" />
+          <p class="text-[11px] font-semibold uppercase tracking-[0.42em] text-amber-200/80 sm:text-xs">
+            Residence Console
           </p>
-          <h1 class="mt-3 text-2xl font-semibold tracking-tight text-white sm:text-3xl">
-            按房间管理设备，在一个面板里完成查看与控制。
+          <h1 class="font-display mt-4 text-[2rem] leading-tight text-white sm:text-[2.55rem]">
+            更安静、更精致的
+            <br>
+            家庭控制中心
           </h1>
-          <p class="mt-3 max-w-md text-sm leading-6 text-slate-300">
-            这套面板会自动展示 Home Assistant 已同步、且适合家庭控制的主设备。手机上便于单手操作，平板和电脑上也能快速切换房间。
+          <p class="mt-4 max-w-md text-sm leading-6 text-slate-300">
+            以房间为入口，把 Home Assistant 里真正适合日常操作的实体提纯为一张高级、克制、可快速浏览的家庭仪表盘。
           </p>
+
+          <div class="mt-5 flex flex-wrap gap-2">
+            <span class="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-200">
+              Home Assistant
+            </span>
+            <span class="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-200">
+              Realtime Sync
+            </span>
+            <span class="rounded-full border border-amber-300/20 bg-amber-300/12 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-amber-100">
+              Curated Devices
+            </span>
+          </div>
         </div>
 
         <div class="grid grid-cols-3 gap-3 px-5 py-5 sm:px-6">
-          <div class="rounded-2xl bg-white/8 px-3 py-4 sm:px-4">
+          <div class="rounded-[1.6rem] border border-white/8 bg-white/6 px-3 py-4 sm:px-4">
             <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">房间</p>
-            <p class="mt-2 text-2xl font-semibold">{{ roomCount }}</p>
+            <p class="mt-2 text-2xl font-semibold text-white">{{ roomCount }}</p>
           </div>
-          <div class="rounded-2xl bg-tide/70 px-3 py-4 sm:px-4">
+          <div class="rounded-[1.6rem] border border-emerald-300/12 bg-gradient-to-br from-lagoon/90 to-tide/70 px-3 py-4 sm:px-4">
             <p class="text-[11px] uppercase tracking-[0.2em] text-emerald-100/70">设备</p>
-            <p class="mt-2 text-2xl font-semibold">{{ deviceCount }}</p>
+            <p class="mt-2 text-2xl font-semibold text-white">{{ deviceCount }}</p>
           </div>
-          <div class="rounded-2xl bg-white px-3 py-4 text-ink sm:px-4">
+          <div class="rounded-[1.6rem] border border-white/20 bg-white px-3 py-4 text-ink sm:px-4">
             <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">实时</p>
             <span class="status-pill mt-2" :class="connectionClass">
               {{ connectionLabel }}
@@ -73,90 +94,98 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
         </div>
 
         <div class="border-t border-white/10 px-5 py-5 sm:px-6 sm:py-6">
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="text-xs uppercase tracking-[0.28em] text-slate-400">当前房间</p>
-              <p class="mt-2 text-xl font-semibold text-white sm:text-2xl">
-                {{ selectedRoom?.name ?? '未选择房间' }}
-              </p>
-            </div>
-            <div class="rounded-2xl bg-white/8 px-3 py-2 text-right">
-              <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">最近同步</p>
-              <p class="mt-2 text-sm font-medium text-slate-100">{{ formattedLastMessage }}</p>
+          <div class="rounded-[1.8rem] border border-white/10 bg-white/6 p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div>
+                <p class="text-[11px] uppercase tracking-[0.28em] text-slate-400">当前房间</p>
+                <p class="font-display mt-3 text-[1.7rem] text-white sm:text-[2rem]">
+                  {{ selectedRoom?.name ?? '未选择房间' }}
+                </p>
+                <p class="mt-2 text-sm leading-6 text-slate-300">
+                  {{ selectedRoom?.description || '从房间入口切换整屋设备与状态，保证浏览路径稳定且轻量。' }}
+                </p>
+              </div>
+              <div class="rounded-[1.4rem] border border-white/10 bg-black/15 px-3 py-3 text-right">
+                <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">最近同步</p>
+                <p class="mt-2 max-w-[9rem] text-sm font-medium leading-5 text-slate-100">{{ formattedLastMessage }}</p>
+              </div>
             </div>
           </div>
 
-          <div class="mt-5">
-            <p class="text-xs uppercase tracking-[0.28em] text-slate-400">房间导航</p>
+          <div class="mt-6 flex items-center justify-between">
+            <p class="text-xs uppercase tracking-[0.32em] text-slate-400">房间导航</p>
+            <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[11px] tracking-[0.18em] text-slate-300">
+              {{ props.rooms.length }} Rooms
+            </span>
+          </div>
 
-            <div class="mt-4 flex gap-3 overflow-x-auto pb-2 snap-x xl:hidden">
-              <button
-                v-for="room in props.rooms"
-                :key="room.id"
-                type="button"
-                class="min-w-[190px] snap-start rounded-[1.5rem] border px-4 py-4 text-left transition duration-300"
-                :class="
-                  room.id === props.selectedRoomId
-                    ? 'border-emerald-300 bg-white text-ink shadow-lg shadow-emerald-950/10'
-                    : 'border-white/10 bg-white/5 text-slate-200'
-                "
-                @click="$emit('select-room', room.id)"
+          <div class="mt-4 flex gap-3 overflow-x-auto pb-2 snap-x xl:hidden">
+            <button
+              v-for="room in props.rooms"
+              :key="room.id"
+              type="button"
+              class="min-w-[220px] snap-start rounded-[1.7rem] border px-4 py-4 text-left transition duration-300"
+              :class="
+                room.id === props.selectedRoomId
+                  ? 'border-amber-300/35 bg-gradient-to-br from-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
+                  : 'border-white/10 bg-white/5 text-slate-200'
+              "
+              @click="$emit('select-room', room.id)"
+            >
+              <p
+                class="text-[11px] uppercase tracking-[0.24em]"
+                :class="room.id === props.selectedRoomId ? 'text-lagoon' : 'text-slate-400'"
               >
-                <p
-                  class="text-[11px] uppercase tracking-[0.24em]"
-                  :class="room.id === props.selectedRoomId ? 'text-tide' : 'text-slate-400'"
-                >
-                  {{ room.zone.name }}
-                </p>
-                <p class="mt-2 text-lg font-semibold">{{ room.name }}</p>
-                <p class="mt-2 text-sm" :class="room.id === props.selectedRoomId ? 'text-slate-500' : 'text-slate-400'">
-                  {{ room.devices.length }} 个主设备项
-                </p>
-              </button>
-            </div>
+                {{ room.zone.name }}
+              </p>
+              <p class="font-display mt-3 text-[1.35rem]">{{ room.name }}</p>
+              <p class="mt-3 text-sm" :class="room.id === props.selectedRoomId ? 'text-slate-500' : 'text-slate-400'">
+                {{ room.devices.length }} 个主设备项
+              </p>
+            </button>
+          </div>
 
-            <div class="mt-4 hidden space-y-3 xl:block">
-              <button
-                v-for="room in props.rooms"
-                :key="room.id"
-                type="button"
-                class="w-full rounded-[1.6rem] border px-4 py-4 text-left transition duration-300"
-                :class="
-                  room.id === props.selectedRoomId
-                    ? 'border-emerald-300 bg-white text-ink shadow-lg shadow-emerald-950/10'
-                    : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/20 hover:bg-white/10'
-                "
-                @click="$emit('select-room', room.id)"
-              >
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p
-                      class="text-[11px] uppercase tracking-[0.24em]"
-                      :class="room.id === props.selectedRoomId ? 'text-tide' : 'text-slate-400'"
-                    >
-                      {{ room.zone.name }}
-                    </p>
-                    <p class="mt-2 text-lg font-semibold">{{ room.name }}</p>
-                  </div>
-                  <div
-                    class="rounded-full px-3 py-1 text-xs font-semibold"
-                    :class="room.id === props.selectedRoomId ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-200'"
+          <div class="mt-4 hidden space-y-3 xl:block">
+            <button
+              v-for="room in props.rooms"
+              :key="room.id"
+              type="button"
+              class="w-full rounded-[1.75rem] border px-4 py-4 text-left transition duration-300"
+              :class="
+                room.id === props.selectedRoomId
+                  ? 'border-amber-300/35 bg-gradient-to-br from-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
+                  : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/20 hover:bg-white/10'
+              "
+              @click="$emit('select-room', room.id)"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p
+                    class="text-[11px] uppercase tracking-[0.24em]"
+                    :class="room.id === props.selectedRoomId ? 'text-lagoon' : 'text-slate-400'"
                   >
-                    {{ room.devices.length }}
-                  </div>
+                    {{ room.zone.name }}
+                  </p>
+                  <p class="font-display mt-3 text-[1.45rem]">{{ room.name }}</p>
                 </div>
+                <div
+                  class="rounded-full px-3 py-1 text-xs font-semibold"
+                  :class="room.id === props.selectedRoomId ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-200'"
+                >
+                  {{ room.devices.length }}
+                </div>
+              </div>
 
-                <p class="mt-3 text-sm" :class="room.id === props.selectedRoomId ? 'text-slate-500' : 'text-slate-400'">
-                  {{ room.description || '按 Home Assistant 房间自动整理的家庭控制入口。' }}
-                </p>
-              </button>
-            </div>
+              <p class="mt-3 text-sm leading-6" :class="room.id === props.selectedRoomId ? 'text-slate-500' : 'text-slate-400'">
+                {{ room.description || '按 Home Assistant 房间自动整理的家庭控制入口。' }}
+              </p>
+            </button>
           </div>
         </div>
       </aside>
 
       <section
-        class="overflow-hidden rounded-[2rem] border border-white/70 bg-white/82 shadow-panel backdrop-blur xl:rounded-[2.5rem]"
+        class="glass-panel overflow-hidden rounded-[2rem] border border-white/70 shadow-float xl:rounded-[2.8rem]"
       >
         <slot />
       </section>

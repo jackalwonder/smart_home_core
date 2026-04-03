@@ -49,6 +49,18 @@ class DeviceCreate(StrictSchema):
     current_status: DeviceStatus = DeviceStatus.UNKNOWN
 
 
+class DeviceAdminRead(StrictSchema):
+    model_config = ConfigDict(from_attributes=True, extra="forbid")
+
+    id: int
+    room_id: int
+    name: str
+    ha_entity_id: str
+    ha_device_id: str | None = None
+    device_type: DeviceType
+    current_status: DeviceStatus
+
+
 class DeviceRead(StrictSchema):
     model_config = ConfigDict(from_attributes=True, extra="forbid")
 

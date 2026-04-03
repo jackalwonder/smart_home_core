@@ -66,12 +66,12 @@ const statusLabels = {
 
 const cardClass = computed(() =>
   isActive.value
-    ? 'border-emerald-200 bg-gradient-to-br from-emerald-50 via-white to-sky-50'
-    : 'border-slate-200 bg-white/92',
+    ? 'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/85 to-teal-50/70 shadow-panel'
+    : 'border-white/80 bg-white/72 shadow-sm',
 )
 
-const glowClass = computed(() => (isActive.value ? 'from-emerald-400/25 to-sky-400/10' : 'from-slate-200/0 to-slate-200/0'))
-const iconClass = computed(() => (isActive.value ? 'text-tide' : 'text-slate-500'))
+const glowClass = computed(() => (isActive.value ? 'from-emerald-400/25 via-amber-200/10 to-sky-400/10' : 'from-slate-200/0 to-slate-200/0'))
+const iconClass = computed(() => (isActive.value ? 'text-lagoon' : 'text-slate-500'))
 
 const deviceTypeLabel = computed(() => deviceTypeLabels[props.device.device_type] ?? props.device.entity_domain)
 
@@ -174,15 +174,16 @@ async function handleButtonPress() {
 
 <template>
   <article
-    class="group relative overflow-hidden rounded-[2rem] border p-5 shadow-sm transition duration-300 hover:-translate-y-1 hover:shadow-panel"
+    class="group relative overflow-hidden rounded-[2rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-panel"
     :class="cardClass"
   >
     <div class="absolute inset-0 bg-gradient-to-br transition duration-500" :class="glowClass" />
+    <div class="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-80" />
 
     <div class="relative flex items-start justify-between gap-4">
       <div class="flex items-center gap-4">
         <div
-          class="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/60 bg-white/90 shadow-sm"
+          class="flex h-14 w-14 items-center justify-center rounded-[1.35rem] border border-white/70 bg-white/88 shadow-sm"
           :class="iconClass"
         >
           <svg
@@ -307,19 +308,19 @@ async function handleButtonPress() {
         <div class="min-w-0">
           <p class="truncate text-lg font-semibold text-ink">{{ device.name }}</p>
           <p class="mt-1 text-sm text-slate-500">{{ deviceTypeLabel }}</p>
-          <p class="mt-1 truncate text-xs uppercase tracking-[0.18em] text-slate-400">{{ device.ha_entity_id }}</p>
+          <p class="mt-2 truncate text-[11px] uppercase tracking-[0.24em] text-slate-400">{{ device.ha_entity_id }}</p>
         </div>
       </div>
 
       <div
-        class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
-        :class="isActive ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-200 text-slate-600'"
+        class="shrink-0 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
+        :class="isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'"
       >
         {{ displayState }}
       </div>
     </div>
 
-    <div class="relative mt-6 rounded-[1.5rem] bg-slate-950/[0.03] px-4 py-4">
+    <div class="relative mt-6 rounded-[1.6rem] border border-white/70 bg-white/55 px-4 py-4">
       <p class="text-sm font-medium text-ink">
         {{ isInteractive ? '可执行控制' : '只读状态' }}
       </p>
@@ -332,9 +333,9 @@ async function handleButtonPress() {
 
         <button
           type="button"
-          class="relative inline-flex h-8 w-16 shrink-0 items-center rounded-full transition duration-300"
+          class="relative inline-flex h-8 w-16 shrink-0 items-center rounded-full border transition duration-300"
           :class="[
-            isActive ? 'bg-tide' : 'bg-slate-300',
+            isActive ? 'border-lagoon/40 bg-lagoon' : 'border-slate-300 bg-slate-300',
             isInteractive ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
             isPending ? 'animate-pulse' : '',
           ]"
@@ -374,7 +375,7 @@ async function handleButtonPress() {
       <div v-else-if="isSelect" class="mt-4">
         <select
           v-model="selectedOption"
-          class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition focus:border-tide"
+          class="w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition focus:border-lagoon"
           :disabled="!isInteractive || isPending"
           @change="handleSelectChange"
         >
