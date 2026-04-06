@@ -22,11 +22,23 @@ NOISE_ENTITY_PREFIXES = (
     "tts.",
 )
 
-TOGGLE_DOMAINS = {"fan", "light", "switch"}
+TOGGLE_DOMAINS = {"fan", "light", "switch", "climate", "media_player", "cover", "lock"}
 HIDDEN_DASHBOARD_DOMAINS = {"event", "notify", "person", "zone", "weather", "conversation", "tts", "sun", "todo"}
 VISIBLE_SENSOR_DEVICE_CLASSES = {"temperature", "humidity", "moisture"}
 UNSAFE_BUTTON_KEYWORDS = ("恢复", "重置", "reset", "默认", "删除", "唤醒", "同步", "请求")
-AGGREGATED_APPLIANCE_TYPES = {"fridge", "air_conditioner", "tv", "media", "purifier", "washer", "speaker", "router"}
+AGGREGATED_APPLIANCE_TYPES = {
+    "fridge",
+    "air_conditioner",
+    "tv",
+    "media",
+    "purifier",
+    "washer",
+    "speaker",
+    "router",
+    "nas",
+    "computer",
+    "camera",
+}
 
 
 def create_zone(db: Session, payload: ZoneCreate) -> Zone:
@@ -203,6 +215,13 @@ def _serialize_device(
         "max_value": _float_attribute(attributes, "max"),
         "step": _float_attribute(attributes, "step"),
         "unit_of_measurement": _string_attribute(attributes, "unit_of_measurement"),
+        "target_temperature": _climate_target_temperature(entity_domain, attributes),
+        "current_temperature": _climate_current_temperature(entity_domain, attributes),
+        "hvac_mode": raw_state if entity_domain == "climate" else None,
+        "hvac_modes": _climate_hvac_modes(entity_domain, attributes),
+        "media_volume_level": _media_volume_level(entity_domain, attributes),
+        "media_source": _string_attribute(attributes, "source") if entity_domain == "media_player" else None,
+        "media_source_options": _media_source_options(entity_domain, attributes),
         "appliance_name": appliance_name,
         "appliance_type": appliance_type,
     }
@@ -276,6 +295,45 @@ def _string_attribute(attributes: dict[str, Any], key: str) -> str | None:
     return str(value)
 
 
+def _climate_target_temperature(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "climate":
+        return None
+    return _float_attribute(attributes, "temperature")
+
+
+def _climate_current_temperature(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "climate":
+        return None
+    return _float_attribute(attributes, "current_temperature")
+
+
+def _climate_hvac_modes(entity_domain: str, attributes: dict[str, Any]) -> list[str]:
+    if entity_domain != "climate":
+        return []
+    values = attributes.get("hvac_modes")
+    if not isinstance(values, list):
+        return []
+    return [str(value) for value in values if str(value).strip()]
+
+
+def _media_volume_level(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "media_player":
+        return None
+    value = _float_attribute(attributes, "volume_level")
+    if value is None:
+        return None
+    return round(value * 100, 2)
+
+
+def _media_source_options(entity_domain: str, attributes: dict[str, Any]) -> list[str]:
+    if entity_domain != "media_player":
+        return []
+    values = attributes.get("source_list")
+    if not isinstance(values, list):
+        return []
+    return [str(value) for value in values if str(value).strip()]
+
+
 def _is_noise_entity(entity_id: str) -> bool:
     return entity_id.startswith(NOISE_ENTITY_PREFIXES)
 
@@ -338,6 +396,12 @@ def _appliance_type(
         return "air_conditioner"
     if any(keyword in text for keyword in ("电视", "tv", "xiaomi tv", "bravia")):
         return "tv"
+    if any(keyword in text for keyword in ("nas", "network attached storage", "synology", "qnap")):
+        return "nas"
+    if any(keyword in text for keyword in ("pc", "desktop", "computer", "windows pc")):
+        return "computer"
+    if entity_domain == "camera" or any(keyword in text for keyword in ("camera", "cam", "鎽勫儚")):
+        return "camera"
     if entity_domain == "media_player":
         return "media"
     if any(keyword in text for keyword in ("净化", "purifier", "空气净化")):

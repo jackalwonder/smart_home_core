@@ -117,17 +117,23 @@ async def _execute_actions(client: HomeAssistantRestClient, actions: list[dict[s
             logger.warning("Skipping voice action because ha_entity_id is missing: {}", action)
             continue
 
-        service_name = _service_name_for_action(action_name)
+        service_name, service_data = _build_service_call(ha_entity_id, action_name, value)
         if service_name is None:
-            logger.warning("Skipping unsupported voice action '{}': {}", action_name, action)
+            logger.warning(
+                "Skipping unsupported voice action '{}' for entity '{}' with value '{}': {}",
+                action_name,
+                ha_entity_id,
+                value,
+                action,
+            )
             continue
 
-        service_data = {"value": value} if value is not None else None
         logger.info(
-            "Executing voice action '{}' for entity '{}' with value '{}'.",
+            "Executing voice action '{}' for entity '{}' via service '{}' with payload '{}'.",
             action_name,
             ha_entity_id,
-            value,
+            service_name,
+            service_data,
         )
         await client.call_service(service_name, entity_id=ha_entity_id, service_data=service_data)
 
@@ -143,3 +149,72 @@ def _service_name_for_action(action_name: Any) -> str | None:
         "toggle": "homeassistant.toggle",
     }
     return action_map.get(normalized_action)
+
+
+def _build_service_call(
+    ha_entity_id: str,
+    action_name: Any,
+    value: Any,
+) -> tuple[str | None, dict[str, Any] | None]:
+    domain = ha_entity_id.split(".", 1)[0].lower() if "." in ha_entity_id else ""
+    normalized_action = str(action_name).strip().lower() if isinstance(action_name, str) else ""
+
+    if domain == "number":
+        if normalized_action in {"set_value", "set_temperature", "turn_on"} and value is not None:
+            numeric_value = _coerce_numeric_value(value)
+            if numeric_value is None:
+                return None, None
+            return "number.set_value", {"value": numeric_value}
+        return None, None
+
+    if domain == "select":
+        if normalized_action in {"select_option", "set_hvac_mode", "turn_on"} and isinstance(value, str) and value.strip():
+            return "select.select_option", {"option": value.strip()}
+        return None, None
+
+    if domain == "button":
+        if normalized_action in {"press", "turn_on", "toggle"}:
+            return "button.press", None
+        return None, None
+
+    if domain == "climate":
+        if normalized_action in {"set_temperature", "set_value"} and value is not None:
+            numeric_value = _coerce_numeric_value(value)
+            if numeric_value is None:
+                return None, None
+            return "climate.set_temperature", {"temperature": numeric_value}
+        if normalized_action in {"set_hvac_mode", "select_option"} and isinstance(value, str) and value.strip():
+            return "climate.set_hvac_mode", {"hvac_mode": value.strip()}
+        generic_service = _service_name_for_action(normalized_action)
+        return generic_service, None
+
+    if domain == "media_player":
+        if normalized_action in {"select_option"} and isinstance(value, str) and value.strip():
+            return "media_player.select_source", {"source": value.strip()}
+        if normalized_action in {"set_value"} and value is not None:
+            numeric_value = _coerce_numeric_value(value)
+            if numeric_value is None:
+                return None, None
+            volume_level = numeric_value / 100 if numeric_value > 1 else numeric_value
+            return "media_player.volume_set", {"volume_level": max(0.0, min(volume_level, 1.0))}
+        generic_service = _service_name_for_action(normalized_action)
+        return generic_service, None
+
+    generic_service = _service_name_for_action(normalized_action)
+    if generic_service is None:
+        return None, None
+    return generic_service, None
+
+
+def _coerce_numeric_value(value: Any) -> float | None:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return float(stripped)
+        except ValueError:
+            return None
+    return None

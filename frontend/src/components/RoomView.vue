@@ -56,7 +56,7 @@ function shouldAggregate(devices) {
     return true
   }
 
-  if (['fridge', 'air_conditioner', 'tv', 'media', 'purifier', 'washer', 'speaker', 'router'].includes(applianceType)) {
+  if (['fridge', 'air_conditioner', 'tv', 'media', 'purifier', 'washer', 'speaker', 'router', 'nas', 'computer', 'camera'].includes(applianceType)) {
     return true
   }
 

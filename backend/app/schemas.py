@@ -82,6 +82,13 @@ class DeviceRead(StrictSchema):
     max_value: float | None = None
     step: float | None = None
     unit_of_measurement: str | None = None
+    target_temperature: float | None = None
+    current_temperature: float | None = None
+    hvac_mode: str | None = None
+    hvac_modes: list[str] = Field(default_factory=list)
+    media_volume_level: float | None = None
+    media_source: str | None = None
+    media_source_options: list[str] = Field(default_factory=list)
     appliance_name: str | None = None
     appliance_type: str | None = None
 

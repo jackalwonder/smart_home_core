@@ -100,8 +100,19 @@ def _service_call_for_payload(entity_id: str, payload: DeviceControlRequest) -> 
         action = payload.action or DeviceControlAction.TOGGLE
         return _service_name_for_action(action), None
     if payload.control_kind == DeviceControlKind.NUMBER:
+        if entity_domain == "climate":
+            return "climate.set_temperature", {"temperature": payload.value}
+        if entity_domain == "media_player":
+            volume_level = float(payload.value or 0)
+            volume_level = volume_level / 100 if volume_level > 1 else volume_level
+            volume_level = max(0.0, min(volume_level, 1.0))
+            return "media_player.volume_set", {"volume_level": volume_level}
         return f"{entity_domain}.set_value", {"value": payload.value}
     if payload.control_kind == DeviceControlKind.SELECT:
+        if entity_domain == "climate":
+            return "climate.set_hvac_mode", {"hvac_mode": payload.option}
+        if entity_domain == "media_player":
+            return "media_player.select_source", {"source": payload.option}
         return f"{entity_domain}.select_option", {"option": payload.option}
     if payload.control_kind == DeviceControlKind.BUTTON:
         return f"{entity_domain}.press", None
