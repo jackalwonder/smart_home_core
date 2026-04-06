@@ -1,0 +1,155 @@
+from __future__ import annotations
+
+import json
+import os
+from collections import defaultdict
+from typing import Any
+
+import openai
+from loguru import logger
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.models import Device, Room
+from app.services.home_assistant_api import HomeAssistantRestClient
+
+AMBIGUOUS_LOCATION = "AMBIGUOUS"
+DEFAULT_DEEPSEEK_MODEL = "deepseek-chat"
+FALLBACK_REPLY = "抱歉，我暂时没能理解这条家居指令，请换一种说法再试一次。"
+AMBIGUOUS_REPLY = "我还不能确定你指的是哪个房间。请告诉我是哪个房间。"
+
+
+class LlmAction(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    ha_entity_id: str = Field(min_length=3)
+    action: str
+    value: str | float | int | None = None
+
+
+class LlmIntentResponse(BaseModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=True)
+
+    actions: list[LlmAction] = Field(default_factory=list)
+    reply: str = Field(min_length=1)
+
+
+async def analyze_smart_home_intent(db: Session, user_command: str, location: str) -> dict[str, Any]:
+    logger.info("Analyzing smart home intent. location='{}' command='{}'", location, user_command)
+
+    device_context = await _build_device_context(db)
+    system_prompt = _build_system_prompt(device_context=device_context, location=location)
+
+    if location == AMBIGUOUS_LOCATION:
+        logger.info("Location is ambiguous. Returning clarification response without LLM action execution intent.")
+        return LlmIntentResponse(actions=[], reply=AMBIGUOUS_REPLY).model_dump()
+
+    try:
+        client = _build_async_client()
+        response = await client.chat.completions.create(
+            model=os.getenv("DEEPSEEK_MODEL", DEFAULT_DEEPSEEK_MODEL),
+            temperature=0,
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_command.strip()},
+            ],
+            response_format={"type": "json_object"},
+        )
+        content = response.choices[0].message.content if response.choices else ""
+        logger.info("Received LLM response payload: {}", content)
+        return _parse_llm_response(content)
+    except ValidationError as exc:
+        logger.warning("LLM response validation failed: {}", exc)
+        return LlmIntentResponse(actions=[], reply=FALLBACK_REPLY).model_dump()
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.warning("LLM response parsing failed: {}", exc)
+        return LlmIntentResponse(actions=[], reply=FALLBACK_REPLY).model_dump()
+    except Exception as exc:
+        logger.exception("LLM intent analysis failed: {}", exc)
+        return LlmIntentResponse(actions=[], reply=FALLBACK_REPLY).model_dump()
+
+
+async def _build_device_context(db: Session) -> str:
+    client = HomeAssistantRestClient.from_env()
+    states = await client.get_states()
+    state_map = {
+        item["entity_id"]: item
+        for item in states
+        if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
+    }
+
+    devices = list(
+        db.scalars(
+            select(Device)
+            .join(Room, Device.room_id == Room.id)
+            .order_by(Room.name, Device.name)
+        ).all()
+    )
+
+    grouped_lines: dict[str, list[str]] = defaultdict(list)
+    room_names = {
+        room.id: room.name
+        for room in db.scalars(select(Room)).all()
+    }
+
+    for device in devices:
+        room_name = room_names.get(device.room_id, "未分配房间")
+        state = state_map.get(device.ha_entity_id, {})
+        raw_state = state.get("state")
+        normalized_state = str(raw_state).strip() if raw_state is not None else device.current_status.value
+        grouped_lines[room_name].append(f"{device.name} ({device.ha_entity_id}) is {normalized_state}")
+
+    if not grouped_lines:
+        return "No tracked devices are currently available."
+
+    context_lines = [
+        f"{room_name}: " + "; ".join(entries)
+        for room_name, entries in sorted(grouped_lines.items(), key=lambda item: item[0])
+    ]
+    return "\n".join(context_lines)
+
+
+def _build_system_prompt(device_context: str, location: str) -> str:
+    ambiguity_rule = (
+        "If the provided location is 'AMBIGUOUS', you must return an empty actions list and a polite clarification "
+        f"question in the reply field, for example '{AMBIGUOUS_REPLY}'."
+    )
+
+    return (
+        "You are the intent planner for a smart home management system.\n"
+        "You must decide which Home Assistant entities should be controlled based on the user's command.\n"
+        "Always return strictly valid JSON with this exact schema:\n"
+        '{"actions": [{"ha_entity_id": "string", "action": "turn_on|turn_off|toggle", "value": "optional numeric or string"}], "reply": "string"}\n'
+        "Rules:\n"
+        f"- User location: {location}\n"
+        f"- {ambiguity_rule}\n"
+        "- Only reference entities that appear in the device context.\n"
+        "- If you are unsure, return an empty actions list and explain what is missing in the reply.\n"
+        "- Do not output markdown, explanations, or text outside JSON.\n"
+        "- The reply should be short, natural Chinese.\n"
+        "Current device context:\n"
+        f"{device_context}"
+    )
+
+
+def _build_async_client():
+    api_key = os.getenv("DEEPSEEK_API_KEY", "").strip()
+    base_url = os.getenv("DEEPSEEK_BASE_URL", "").strip()
+    if not api_key or not base_url:
+        raise ValueError("DEEPSEEK_API_KEY and DEEPSEEK_BASE_URL must be configured.")
+
+    client_factory = getattr(openai, "AsyncClient", None) or getattr(openai, "AsyncOpenAI", None)
+    if client_factory is None:
+        raise RuntimeError("The installed openai package does not expose an async client.")
+
+    return client_factory(api_key=api_key, base_url=base_url)
+
+
+def _parse_llm_response(content: str | None) -> dict[str, Any]:
+    if not content:
+        raise ValueError("The LLM returned an empty response.")
+
+    payload = json.loads(content)
+    validated = LlmIntentResponse.model_validate(payload)
+    return validated.model_dump()
