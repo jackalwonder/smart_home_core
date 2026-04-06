@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
 from app.models import DeviceStatus
@@ -22,12 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 async def control_device(db: Session, payload: DeviceControlRequest) -> DeviceControlResponse:
-    device = catalog_service.get_device(db, payload.device_id)
+    device = await run_in_threadpool(catalog_service.get_device, db, payload.device_id)
     client = HomeAssistantRestClient.from_env()
     service_name, service_data = _service_call_for_payload(device.ha_entity_id, payload)
     result = await client.call_service(service_name, entity_id=device.ha_entity_id, service_data=service_data)
     if payload.control_kind == DeviceControlKind.TOGGLE and payload.action is not None:
-        _optimistically_update_device_state(db, device.id, payload.action)
+        await run_in_threadpool(_optimistically_update_device_state, db, device.id, payload.action)
     logger.info("Forwarded device control command %s for %s.", payload.control_kind.value, device.ha_entity_id)
     return DeviceControlResponse(
         device_id=device.id,

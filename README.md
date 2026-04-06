@@ -1,105 +1,113 @@
 # smart_home_core
 
-一个基于 Home Assistant 的家庭智能管理系统，包含前端控制台、后端编排服务、实时状态同步和语音指令链路。
+一个基于 Home Assistant 的家庭智能管理系统，包含前端控制台、后端编排服务、实时状态同步、语音控制链路和 Apple Siri 接入能力。
 
 ## 功能概览
 
-- 多房间设备面板（Vue 3 + Pinia + Tailwind）
-- 设备控制与自动化 Webhook（FastAPI）
-- Home Assistant WebSocket 实时状态同步
-- PostgreSQL 持久化设备与房间数据
-- 语音控制异步入口（`/api/chat/`）
-  - 空间仲裁（spatial service）
-  - 短期意图记忆（pending intent）
-  - LLM 意图分析（DeepSeek）
-  - TTS 播报反馈（Home Assistant `tts.speak`）
+- 多房间设备看板：Vue 3 + Pinia + Tailwind CSS
+- 后端控制与自动化接口：FastAPI + Pydantic
+- 设备与房间数据持久化：SQLAlchemy 2.0 + PostgreSQL
+- Home Assistant REST / WebSocket 双通道同步
+- 语音控制入口：`POST /api/chat/`
+- 空间仲裁、短期意图记忆、DeepSeek 意图分析、TTS 反馈
 
-## 架构
+## 技术栈
 
-```text
-Home Assistant <-> FastAPI backend <-> Vue frontend
-        |                 |
-        |                 -> PostgreSQL
-        |
-        -> HomeKit Bridge / Apple Home
-```
+- Backend：FastAPI、SQLAlchemy 2.0、Pydantic、websockets、Loguru
+- Database：PostgreSQL 15
+- Frontend：Vue 3、Pinia、Tailwind CSS、Nginx
+- AI / Integration：DeepSeek API、Home Assistant
 
 ## 仓库结构
 
 ```text
 smart_home_core/
-├─ backend/                     # FastAPI 服务
+├─ backend/
 │  ├─ app/
-│  │  ├─ routers/               # API 路由（含 /api/chat）
-│  │  ├─ services/              # HA/LLM/空间/意图服务
-│  │  ├─ models.py              # SQLAlchemy 模型
-│  │  └─ schemas.py             # Pydantic 模型
-│  └─ requirements.txt
-├─ frontend/                    # Vue 3 前端
+│  │  ├─ routers/                # REST、Webhook、Chat、Realtime 路由
+│  │  ├─ services/               # HA、LLM、空间、意图、导入服务
+│  │  ├─ models.py               # SQLAlchemy 模型
+│  │  ├─ schemas.py              # Pydantic 模型
+│  │  └─ main.py                 # FastAPI 入口
+│  ├─ tests/                     # 单元测试
+│  ├─ requirements.txt
+│  └─ .env.example               # 后端环境变量模板
+├─ frontend/
 ├─ docs/
-│  └─ DEPLOYMENT.md             # 部署与配置详解
-├─ docker-compose.yml           # 本地开发/测试
-├─ docker-compose.server.yml    # 服务器部署
-└─ .env.example                 # 环境变量模板
+│  ├─ DEPLOYMENT.md              # 部署、联调与排障
+│  └─ VOICE_CONTROL_SETUP.md     # iOS Siri 快捷指令接入指南
+├─ docker-compose.yml
+└─ docker-compose.server.yml
 ```
 
 ## 快速开始
 
-1. 创建环境变量文件：
+1. 创建后端环境变量文件
 
 ```bash
-cp .env.example .env
+cp backend/.env.example backend/.env
 ```
 
-2. 按 [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) 填写 `.env`。
+Windows PowerShell：
 
-3. 启动服务：
+```powershell
+Copy-Item backend/.env.example backend/.env
+```
+
+2. 根据 [docs/DEPLOYMENT.md](D:/Documents/New%20project/smart_home_core_repo/docs/DEPLOYMENT.md) 填写 `backend/.env`
+3. 启动服务
 
 ```bash
 docker compose up -d --build
 ```
 
-4. 打开页面：
+4. 打开服务
 
 - 前端：`http://localhost`
-- 后端文档：`http://localhost:8000/docs`
+- 后端 OpenAPI：`http://localhost:8000/docs`
 - Home Assistant：`http://localhost:8123`
 
-## 安全与鉴权
+## 鉴权说明
 
 后端接口按权限分级：
 
-- `APP_READ_API_KEY`：读取房间和设备
-- `APP_CONTROL_API_KEY`：读取 + 控制设备（推荐给前端）
-- `APP_ADMIN_API_KEY`：管理接口（导入、后台维护）
+- `APP_READ_API_KEY`：读取房间和设备状态
+- `APP_CONTROL_API_KEY`：读取并控制设备、调用语音入口
+- `APP_ADMIN_API_KEY`：导入、管理和维护接口
 
-`/api/webhook/automation` 使用 `HMAC-SHA256` 请求签名，不依赖 API Key。
+`/api/webhook/automation` 额外使用 HMAC-SHA256 请求签名。
 
 ## 语音控制链路
 
-`POST /api/chat/` 是异步语音入口，请求会立即返回：
+`POST /api/chat/` 会立即返回：
 
 ```json
 {"status":"processing","reply":"收到，正在为您安排..."}
 ```
 
-后台任务会继续执行：
+后台会继续执行以下流程：
 
-1. 合并短期上下文（PendingIntent，60 秒窗口）
-2. 空间判定（静态设备映射 + 雷达占用判决）
-3. 调用 DeepSeek 输出控制动作 JSON
-4. 转发到 Home Assistant 执行动作
-5. 通过 Home Assistant TTS 播报结果
+1. 检查短期意图记忆
+2. 根据 `source_device` 和雷达占用做空间仲裁
+3. 调用 DeepSeek 输出动作 JSON
+4. 转发到 Home Assistant 执行
+5. 通过 TTS 播报处理结果
 
 ## 开发校验
 
-后端：
+后端语法检查：
 
 ```bash
 python -m compileall backend/app
 ```
 
-前端：
+单元测试：
+
+```bash
+PYTHONPATH=backend python -m pytest backend/tests -q
+```
+
+前端构建：
 
 ```bash
 npm --prefix frontend ci
@@ -109,10 +117,11 @@ npm --prefix frontend run build
 Compose 配置检查：
 
 ```bash
-docker compose --env-file .env.example config
-docker compose --env-file .env.example -f docker-compose.server.yml config
+docker compose config
+docker compose -f docker-compose.server.yml config
 ```
 
 ## 文档
 
-- 部署配置与联调： [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- 部署与联调：[docs/DEPLOYMENT.md](D:/Documents/New%20project/smart_home_core_repo/docs/DEPLOYMENT.md)
+- Siri 语音接入：[docs/VOICE_CONTROL_SETUP.md](D:/Documents/New%20project/smart_home_core_repo/docs/VOICE_CONTROL_SETUP.md)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
@@ -12,6 +14,8 @@ from app.schemas import DeviceCreate, RoomCreate, ZoneCreate
 from app.services.errors import ConflictError, NotFoundError
 from app.services.home_assistant_api import HomeAssistantRestClient
 from app.services.home_assistant_import_service import RegistryEntityInfo, fetch_entity_registry_snapshot_from_env
+
+logger = logging.getLogger(__name__)
 
 NOISE_ENTITY_PREFIXES = (
     "conversation.",
@@ -130,7 +134,7 @@ def list_room_snapshots(db: Session) -> list[Room]:
 
 
 async def list_room_snapshots_for_ui(db: Session) -> list[dict[str, Any]]:
-    rooms = list_room_snapshots(db)
+    rooms = await run_in_threadpool(list_room_snapshots, db)
     state_map, registry_map = await _load_home_assistant_context()
 
     snapshots: list[dict[str, Any]] = []
@@ -163,7 +167,7 @@ async def list_room_snapshots_for_ui(db: Session) -> list[dict[str, Any]]:
 
 
 async def list_devices_by_room_for_ui(db: Session, room_id: int) -> list[dict[str, Any]]:
-    devices = list_devices_by_room(db, room_id)
+    devices = await run_in_threadpool(list_devices_by_room, db, room_id)
     state_map, registry_map = await _load_home_assistant_context()
     return sorted(
         [
@@ -232,6 +236,7 @@ async def _load_state_map() -> dict[str, dict[str, Any]]:
         client = HomeAssistantRestClient.from_env()
         states = await client.get_states()
     except Exception:
+        logger.exception("Failed to load Home Assistant states for catalog serialization.")
         return {}
 
     return {
@@ -245,6 +250,7 @@ async def _load_registry_map() -> dict[str, RegistryEntityInfo]:
     try:
         return await fetch_entity_registry_snapshot_from_env()
     except Exception:
+        logger.exception("Failed to load Home Assistant registry metadata for catalog serialization.")
         return {}
 
 

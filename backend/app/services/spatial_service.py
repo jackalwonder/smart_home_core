@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from typing import Any
+
+from fastapi.concurrency import run_in_threadpool
+from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
-from loguru import logger
 
 from app.models import Device, Room
 from app.services.home_assistant_api import HomeAssistantRestClient
@@ -42,23 +45,34 @@ async def get_contextual_room(source_device: str, db: Session) -> str:
         )
         return AMBIGUOUS_ROOM
 
-    room_name = _room_name_for_entity_id(db, active_radar_entity_ids[0])
+    target_entity_id = active_radar_entity_ids[0]
+
+    def _lookup_room_name() -> str | None:
+        stmt = (
+            select(Room.name)
+            .join(Device, Device.room_id == Room.id)
+            .where(Device.ha_entity_id == target_entity_id)
+            .limit(1)
+        )
+        return db.scalar(stmt)
+
+    room_name = await run_in_threadpool(_lookup_room_name)
     if room_name is None:
         logger.warning(
             "Active radar entity {} is not mapped to any room in the database.",
-            active_radar_entity_ids[0],
+            target_entity_id,
         )
         return AMBIGUOUS_ROOM
 
     logger.info(
         "Resolved contextual room {} from active radar entity {}.",
         room_name,
-        active_radar_entity_ids[0],
+        target_entity_id,
     )
     return room_name
 
 
-def _active_radar_entity_id(state: dict[str, object]) -> str | None:
+def _active_radar_entity_id(state: dict[str, Any]) -> str | None:
     entity_id = state.get("entity_id")
     if not isinstance(entity_id, str) or not entity_id.startswith("binary_sensor."):
         return None
@@ -75,13 +89,3 @@ def _active_radar_entity_id(state: dict[str, object]) -> str | None:
         return None
 
     return entity_id
-
-
-def _room_name_for_entity_id(db: Session, entity_id: str) -> str | None:
-    stmt = (
-        select(Room.name)
-        .join(Device, Device.room_id == Room.id)
-        .where(Device.ha_entity_id == entity_id)
-        .limit(1)
-    )
-    return db.scalar(stmt)

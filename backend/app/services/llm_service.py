@@ -5,6 +5,7 @@ import os
 from typing import Any
 
 import openai
+from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
@@ -79,18 +80,21 @@ async def _build_device_context(db: Session) -> str:
         if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
     }
 
-    devices = list(
-        db.scalars(
-            select(Device)
-            .join(Room, Device.room_id == Room.id)
-            .order_by(Room.name, Device.name)
-        ).all()
-    )
+    def _load_devices_and_rooms() -> tuple[list[Device], dict[int, str]]:
+        devices = list(
+            db.scalars(
+                select(Device)
+                .join(Room, Device.room_id == Room.id)
+                .order_by(Room.name, Device.name)
+            ).all()
+        )
+        room_names = {
+            room.id: room.name
+            for room in db.scalars(select(Room)).all()
+        }
+        return devices, room_names
 
-    room_names = {
-        room.id: room.name
-        for room in db.scalars(select(Room)).all()
-    }
+    devices, room_names = await run_in_threadpool(_load_devices_and_rooms)
 
     context_lines: list[str] = []
     for device in devices:

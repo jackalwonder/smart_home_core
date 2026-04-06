@@ -5,6 +5,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
+from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from websockets.asyncio.client import connect
@@ -113,7 +114,7 @@ async def import_home_assistant_entities(db: Session) -> HomeAssistantImportResp
     registry_snapshot = await fetch_entity_registry_snapshot(client.websocket_url, client.access_token)
     entities = _build_import_entities(states, registry_snapshot)
 
-    summary = _sync_entities_to_database(db, entities)
+    summary = await run_in_threadpool(_sync_entities_to_database, db, entities)
     logger.info(
         "Imported %s Home Assistant entities into zone %s.",
         summary.imported_device_count,
@@ -138,11 +139,13 @@ async def fetch_entity_registry_snapshot(
         async with connect(websocket_url, open_timeout=15, close_timeout=10, max_size=2_000_000) as websocket:
             greeting = await _receive_json(websocket)
             if greeting.get("type") != "auth_required":
+                logger.error("Unexpected Home Assistant registry handshake payload: %s", greeting)
                 return {}
 
             await websocket.send(json.dumps({"type": "auth", "access_token": access_token}))
             auth_result = await _receive_json(websocket)
             if auth_result.get("type") != "auth_ok":
+                logger.error("Home Assistant registry authentication failed: %s", auth_result)
                 return {}
 
             await websocket.send(json.dumps({"id": 1, "type": "config/area_registry/list"}))
