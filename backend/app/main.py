@@ -6,7 +6,9 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
+from app import models as _models  # noqa: F401
 from app.database import Base, SessionLocal, engine, ensure_runtime_schema
+from app.routers import chat
 from app.routers.api import router as api_router
 from app.routers.management import router as management_router
 from app.routers.realtime import router as realtime_router
@@ -56,6 +58,7 @@ app = FastAPI(
 app.include_router(management_router)
 app.include_router(api_router)
 app.include_router(realtime_router)
+app.include_router(chat.router, prefix="/api/chat", tags=["Voice Chat"])
 
 
 @app.get("/health", tags=["系统"])
