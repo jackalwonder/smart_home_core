@@ -13,13 +13,14 @@ from fastapi.staticfiles import StaticFiles
 
 from app import models as _models  # noqa: F401
 from app.database import Base, MEDIA_DIR, engine, ensure_runtime_schema
+from app.middleware import RequestIDMiddleware, general_exception_handler, smart_home_exception_handler
 from app.routers import chat
 from app.routers.api import router as api_router
 from app.routers.management import router as management_router
 from app.routers.realtime import router as realtime_router
 from app.routers.spatial import router as spatial_router
 from app.services import home_assistant_import_service, intent_service
-from app.services.errors import ConfigurationError, ExternalServiceError
+from app.services.exceptions import ServiceConfigurationError, ExternalServiceUnavailableError
 from app.services.home_assistant_ws import HomeAssistantWebSocketListener
 from app.services.realtime import device_realtime_hub
 
@@ -51,9 +52,9 @@ async def lifespan(app: FastAPI):
 
     try:
         await home_assistant_import_service.import_home_assistant_entities()
-    except ConfigurationError:
+    except ServiceConfigurationError:
         logger.info("Skipped Home Assistant entity import at startup because integration is not configured.")
-    except ExternalServiceError:
+    except ExternalServiceUnavailableError:
         logger.exception("Home Assistant entity import failed during startup.")
     except Exception:
         logger.exception("Unexpected error during Home Assistant entity import at startup.")
@@ -80,6 +81,14 @@ app = FastAPI(
     version="0.1.0",
     lifespan=lifespan,
 )
+
+# 添加中间件和异常处理器
+from app.services.exceptions import SmartHomeException
+
+app.add_middleware(RequestIDMiddleware)
+app.add_exception_handler(SmartHomeException, smart_home_exception_handler)
+app.add_exception_handler(Exception, general_exception_handler)
+
 app.include_router(management_router)
 app.include_router(api_router)
 app.include_router(realtime_router)
