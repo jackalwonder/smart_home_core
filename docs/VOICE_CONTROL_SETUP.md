@@ -1,35 +1,73 @@
-# iOS Siri 语音控制接入指南
+# Siri / 快捷指令语音接入指南
 
-这份文档用于把 iPhone 上的 Siri 快捷指令接到智能家居后端的 `/api/chat/` 接口，完成语音输入、房间判定、LLM 意图分析、Home Assistant 执行和 TTS 播报这一整条链路。
+这份文档用于把 iPhone 上的 Siri / 快捷指令接到项目当前的 `POST /api/chat/` 语音入口，完成：
 
-## 前置条件
+- 语音转文本
+- 空间仲裁
+- 短期意图记忆拼接
+- DeepSeek 意图分析
+- Home Assistant 执行
+- TTS 播报
+
+## 1. 前置条件
 
 开始之前，请先确认：
 
-- Home Assistant、FastAPI 后端和数据库已经正常运行
-- 后端已经配置好 `APP_CONTROL_API_KEY`
-- 后端已经配置好 `DEEPSEEK_API_KEY` 和 `DEEPSEEK_BASE_URL`
-- 如果要让系统播报结果，已经配置好 `HOME_ASSISTANT_TTS_ENTITY_ID`
-- iPhone 可以访问运行后端的电脑或服务器地址
+- 前端、后端、数据库和 Home Assistant 都已经正常运行
+- 已配置 `APP_CONTROL_API_KEY`
+- 已配置 `HOME_ASSISTANT_ACCESS_TOKEN`
+- 已配置 `DEEPSEEK_API_KEY`
+- 如果需要语音播报，已配置 `HOME_ASSISTANT_TTS_ENTITY_ID` 和 `HOME_ASSISTANT_TTS_MEDIA_PLAYER`
+- iPhone 能访问你的电脑或服务器
 
-推荐先在后端环境变量里补齐以下配置：
+如果还没部署项目，请先看 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
-```dotenv
-APP_CONTROL_API_KEY=replace_with_control_api_key
-DEEPSEEK_API_KEY=replace_with_deepseek_api_key
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-HOME_ASSISTANT_TTS_ENTITY_ID=replace_with_tts_entity_id
-HOME_ASSISTANT_TTS_MEDIA_PLAYER=replace_with_media_player_entity_id_or_all
+## 2. 先选一种接入方式
+
+当前项目支持两种接法。
+
+### 方式 A：走前端同域代理
+
+请求地址：
+
+```text
+http://<你的电脑或服务器地址>/api/chat/
 ```
 
-## 接口信息
+特点：
 
-Siri 快捷指令需要调用的接口如下：
+- 不需要在快捷指令里手动填写 `X-API-Key`
+- 前端 Nginx 会自动把 `APP_CONTROL_API_KEY` 注入到请求里
+- 配置最省事
 
-- 方法：`POST`
-- URL：`http://<你的电脑或服务器IP>:8000/api/chat/`
+适用场景：
 
-请求体示例：
+- 家庭局域网
+- 受信任内网
+- 前端入口已经被其他网关 / VPN / 登录层保护
+
+注意：
+
+- 当前前端代理会为所有 `/api/*` 请求自动注入控制权限
+- 如果你把前端入口直接暴露在公网，这种方式并不安全
+
+### 方式 B：直连后端
+
+请求地址：
+
+```text
+http://<你的电脑或服务器地址>:8000/api/chat/
+```
+
+特点：
+
+- 需要在快捷指令里手动加 `X-API-Key`
+- 鉴权边界更清晰
+- 更适合调试和受控接入
+
+## 3. 当前接口字段
+
+语音入口当前要求的请求体如下：
 
 ```json
 {
@@ -39,102 +77,126 @@ Siri 快捷指令需要调用的接口如下：
 }
 ```
 
-## 在快捷指令中创建 Siri 语音入口
+字段说明：
 
-### 1. 新建快捷指令
+- `text`
+  - 用户说出的自然语言
+  - 例如“把客厅空调打开”
+- `source_device`
+  - 语音来源设备名称
+  - 后端会用它做空间仲裁
+- `user_id`
+  - 同一个语音入口的稳定标识
+  - 后端会用它关联短期意图记忆
+  - 建议每台语音入口固定一个值，不要每次变化
 
-在 iPhone 上打开“快捷指令”App，新建一个快捷指令，例如命名为“智能家居语音控制”。
+推荐做法：
 
-### 2. 获取用户语音内容
+- 一台 iPhone 一个固定 `user_id`
+- 一台 HomePod 一个固定 `user_id`
+- `source_device` 尽量和真实设备名保持一致
 
-添加动作：
+## 4. `source_device` 如何影响房间判断
 
-- `听写文本`
+后端会先尝试用静态设备名映射判定房间，再在必要时回退到雷达 / 占用传感器仲裁。
 
-这个动作会把你说的话保存成一个变量，后面用于映射到 JSON 里的 `text` 字段。
+当前静态映射定义在：
 
-如果你更喜欢每次手动输入，也可以使用：
+- [backend/app/services/spatial_service.py](../backend/app/services/spatial_service.py)
 
-- `询问输入`
-
-但用于 Siri 时，通常更推荐 `听写文本`。
-
-### 3. 获取当前设备名称
-
-添加动作：
-
-- `获取设备详细信息`
-
-配置方式：
-
-- 对象选择：`当前设备`
-- 字段选择：`名称`
-
-这个动作的输出用来映射到 JSON 里的 `source_device` 字段。
-
-建议让这个设备名称和后端 [spatial_service.py](D:/Documents/New%20project/smart_home_core_repo/backend/app/services/spatial_service.py) 里的静态映射名称尽量一致，例如：
+如果你希望基于设备名直接命中房间，建议让快捷指令传入的 `source_device` 尽量贴近这些名称风格，例如：
 
 - `主卧的 HomePod`
 - `客厅的 HomePod`
 - `书房的 iPhone`
 
-如果暂时取不到设备名动作，也可以先用一个“文本”动作手动写死，例如：
+如果静态映射没有命中，后端会继续读取 Home Assistant 的雷达 / 占用实体，在“恰好只有一个房间有人”的情况下推断当前房间。
+
+## 5. 在 iPhone 快捷指令中创建语音入口
+
+### 5.1 新建快捷指令
+
+在 iPhone 上打开“快捷指令”App，新建一个快捷指令，例如命名为：
+
+```text
+智能家居语音控制
+```
+
+### 5.2 采集用户语音
+
+添加动作：
+
+- `听写文本`
+
+这个动作的输出会映射到 JSON 中的 `text`。
+
+### 5.3 获取当前设备名称
+
+推荐再添加动作：
+
+- `获取设备详细信息`
+
+配置：
+
+- 对象：`当前设备`
+- 字段：`名称`
+
+这个输出建议映射到 JSON 中的 `source_device`。
+
+如果你拿不到设备名，也可以先用一个固定“文本”动作临时写死，例如：
 
 ```text
 Jack 的 iPhone
 ```
 
-### 4. 配置 “获取 URL 内容”
+### 5.4 配置“获取 URL 内容”
 
 添加动作：
 
 - `获取 URL 内容`
 
-按下面方式设置：
+把方法设置为：
 
-- URL：`http://<你的电脑或服务器IP>:8000/api/chat/`
-- 方法：`POST`
-- 请求正文：`JSON`
+- `POST`
 
-### 5. 配置 Headers
+把请求正文设置为：
 
-在“获取 URL 内容”动作里展开 Headers，添加以下两项：
+- `JSON`
+
+## 6. URL 和 Header 怎么填
+
+### 6.1 如果你走方式 A：前端代理
+
+URL：
+
+```text
+http://<你的电脑或服务器地址>/api/chat/
+```
+
+Headers 只需要：
+
+```text
+Content-Type: application/json
+```
+
+### 6.2 如果你走方式 B：直连后端
+
+URL：
+
+```text
+http://<你的电脑或服务器地址>:8000/api/chat/
+```
+
+Headers 需要：
 
 ```text
 Content-Type: application/json
 X-API-Key: <你的 APP_CONTROL_API_KEY>
 ```
 
-说明：
+## 7. JSON Body 怎么填
 
-- `Content-Type` 固定为 `application/json`
-- `X-API-Key` 必须填写后端配置中的 `APP_CONTROL_API_KEY`
-
-### 6. 配置 JSON Body
-
-在“获取 URL 内容”的 JSON Body 里添加 3 个字段：
-
-```json
-{
-  "text": "听写文本的结果",
-  "source_device": "当前设备名称",
-  "user_id": "iphone-jack"
-}
-```
-
-实际映射建议如下：
-
-- `text`
-  - 绑定到动作 `听写文本` 的输出
-  - 也就是 Siri 听到的自然语言命令
-- `source_device`
-  - 绑定到动作 `获取设备详细信息 -> 名称` 的输出
-  - 用于后端做空间仲裁
-- `user_id`
-  - 建议填写一个固定字符串，不要每次变化
-  - 例如：`iphone-jack`
-
-推荐结构：
+在快捷指令的 JSON Body 里添加这 3 个字段：
 
 ```json
 {
@@ -144,34 +206,59 @@ X-API-Key: <你的 APP_CONTROL_API_KEY>
 }
 ```
 
-## Siri 调用后的预期行为
+推荐映射：
 
-当快捷指令调用成功后，后端会立即返回：
+- `text`
+  - 绑定到“听写文本”的输出
+- `source_device`
+  - 绑定到“获取设备详细信息 -> 名称”的输出
+  - 如果没有，就填一个固定文本
+- `user_id`
+  - 固定写死，例如 `iphone-jack`
+
+不要把 `user_id` 做成随机值，否则短期意图记忆就无法连续工作。
+
+## 8. 预期响应与后台行为
+
+调用成功后，接口会先立刻返回：
 
 ```json
 {"status":"processing","reply":"收到，正在为您安排..."}
 ```
 
-这样设计是为了避免 Siri 因等待过久而超时。真正的执行流程会在后台继续进行：
+这是异步设计，目的是避免 Siri / 快捷指令等待太久而超时。
 
-1. 根据 `source_device` 判断用户所在房间
-2. 结合短期记忆拼接上下文
-3. 调用 DeepSeek 分析意图
-4. 转发控制到 Home Assistant
-5. 通过 TTS 播报处理结果
+真正的执行流程会在后台继续完成：
 
-## Windows / Linux 终端模拟 Siri 测试
+1. 读取该 `user_id` 之前未完成的补充意图
+2. 根据 `source_device` 与雷达状态推断房间
+3. 调用 DeepSeek 生成动作 JSON
+4. 转发动作到 Home Assistant
+5. 通过 TTS 播报结果
 
-### Windows PowerShell
+## 9. 终端模拟测试
+
+### 9.1 通过前端代理测试
+
+Linux / macOS：
+
+```bash
+curl -X POST "http://localhost/api/chat/" \
+  -H "Content-Type: application/json" \
+  -d '{"text":"客厅有点热，把空调打开","source_device":"Jack 的 iPhone","user_id":"iphone-jack"}'
+```
+
+Windows PowerShell：
 
 ```powershell
-curl.exe -X POST "http://localhost:8000/api/chat/" `
+curl.exe -X POST "http://localhost/api/chat/" `
   -H "Content-Type: application/json" `
-  -H "X-API-Key: your_app_control_api_key" `
   -d "{\"text\":\"客厅有点热，把空调打开\",\"source_device\":\"Jack 的 iPhone\",\"user_id\":\"iphone-jack\"}"
 ```
 
-### Linux / macOS
+### 9.2 直连后端测试
+
+Linux / macOS：
 
 ```bash
 curl -X POST "http://localhost:8000/api/chat/" \
@@ -180,44 +267,59 @@ curl -X POST "http://localhost:8000/api/chat/" \
   -d '{"text":"客厅有点热，把空调打开","source_device":"Jack 的 iPhone","user_id":"iphone-jack"}'
 ```
 
-如果是从另一台设备测试，把 `localhost` 替换为后端服务所在主机的局域网 IP。
+Windows PowerShell：
 
-理想返回值：
-
-```json
-{"status":"processing","reply":"收到，正在为您安排..."}
+```powershell
+curl.exe -X POST "http://localhost:8000/api/chat/" `
+  -H "Content-Type: application/json" `
+  -H "X-API-Key: your_app_control_api_key" `
+  -d "{\"text\":\"客厅有点热，把空调打开\",\"source_device\":\"Jack 的 iPhone\",\"user_id\":\"iphone-jack\"}"
 ```
 
-## 常见问题
+## 10. 常见问题
 
-### 返回 401 或 403
+### 10.1 返回 401 / 403
 
-通常是 `X-API-Key` 没带或填写错误。请确认：
+如果你走方式 B 直连后端，请确认：
 
 - Header 名称是 `X-API-Key`
-- 值与后端 `.env` 里的 `APP_CONTROL_API_KEY` 完全一致
+- 值与 `APP_CONTROL_API_KEY` 完全一致
 
-### 返回 422
+如果你走方式 A 前端代理，请优先检查：
 
-通常是 JSON Body 字段不完整。请确认以下字段都存在：
+- 前端容器是否拿到了 `APP_CONTROL_API_KEY`
+- 前端代理是否正常转发到了后端
+
+### 10.2 返回 422
+
+通常是 JSON 字段不完整。当前接口至少需要：
 
 - `text`
-- `source_device`
 - `user_id`
 
-### Siri 说了但没有执行
+`source_device` 当前是可选字段，但强烈建议传，这样房间仲裁会更稳定。
 
-请按顺序排查：
+### 10.3 说了命令但没有执行
 
-- DeepSeek 配置是否正确
-- Home Assistant token 是否有效
-- `source_device` 是否能被空间仲裁正确识别
-- 目标设备是否已经同步进数据库
+优先检查：
 
-### 没有播报声音
+- `DEEPSEEK_API_KEY` 是否有效
+- `HOME_ASSISTANT_ACCESS_TOKEN` 是否有效
+- `source_device` 是否足够帮助定位房间
+- 目标实体是否已经同步进数据库
+
+### 10.4 没有播报声音
 
 请确认：
 
 - `HOME_ASSISTANT_TTS_ENTITY_ID` 已配置
-- `HOME_ASSISTANT_TTS_MEDIA_PLAYER` 已配置为有效的 `media_player.*`
-- Home Assistant 中对应的 TTS 服务和播放设备可用
+- `HOME_ASSISTANT_TTS_MEDIA_PLAYER` 已配置为有效 `media_player.*`
+- 对应播放器在线
+
+### 10.5 快捷指令能触发，但房间总是判断不准
+
+优先检查：
+
+- `source_device` 是否稳定
+- 是否与 [backend/app/services/spatial_service.py](../backend/app/services/spatial_service.py) 中的命名习惯接近
+- Home Assistant 中是否存在可用的雷达 / 占用类实体
