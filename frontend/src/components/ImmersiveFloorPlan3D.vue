@@ -305,8 +305,11 @@ function initializeScene() {
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
   controls.dampingFactor = 0.06
-  controls.minDistance = 90
-  controls.maxDistance = 780
+  controls.minDistance = 8
+  controls.maxDistance = 900
+  controls.zoomSpeed = 1.08
+  controls.enablePan = true
+  controls.screenSpacePanning = true
   controls.maxPolarAngle = Math.PI * 0.49
   controls.target.set(0, 0, 0)
 
@@ -1152,8 +1155,11 @@ function focusOverview() {
     return
   }
 
+  const spanWorld = Math.max(planWidth.value, planHeight.value, 120) * WORLD_SCALE
   controls.target.set(0, 0, 0)
-  camera.position.set(0, 320, 360)
+  controls.minDistance = 10
+  controls.maxDistance = Math.max(spanWorld * 4.8, 220)
+  camera.position.set(0, spanWorld * 1.3 + 26, spanWorld * 1.15 + 34)
   controls.update()
 }
 
@@ -1192,9 +1198,16 @@ function focusOrbitOnBox(planX, planY, width, height) {
 
   const targetX = projectX(Number(planX) + Number(width) / 2)
   const targetZ = projectZ(Number(planY) + Number(height) / 2)
+  const container = containerRef.value
   const span = Math.max(Number(width), Number(height), 120) * WORLD_SCALE
+  const aspectBias = container ? THREE.MathUtils.clamp(container.clientHeight / Math.max(container.clientWidth, 1), 0.55, 1.2) : 0.82
+  const distance = THREE.MathUtils.clamp(span * (1.18 + aspectBias * 0.38), 16, 74)
+  const elevation = THREE.MathUtils.clamp(span * (0.96 + aspectBias * 0.32) + 12, 16, 76)
+  const lateral = THREE.MathUtils.clamp(span * 0.5, 4, 22)
   controls.target.set(targetX, 0, targetZ)
-  camera.position.set(targetX + span * 3.2, 200 + span * 16, targetZ + span * 2.8)
+  controls.minDistance = Math.max(distance * 0.42, 8)
+  controls.maxDistance = Math.max(distance * 4.8, 180)
+  camera.position.set(targetX + lateral, elevation, targetZ + distance)
   controls.update()
 }
 
@@ -1678,8 +1691,8 @@ async function handleButtonPress(device) {
       ref="containerRef"
       class="relative mt-5 h-[36rem] overflow-hidden rounded-[1.8rem] border border-white/70 bg-[#eef2ef] shadow-inner sm:h-[41rem] xl:h-[44rem]"
     >
-      <div class="absolute inset-x-3 top-3 z-10 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_20rem] xl:items-start sm:inset-x-4 sm:top-4">
-        <div class="pointer-events-auto rounded-[1.3rem] border border-white/75 bg-white/86 p-3 shadow-[0_22px_50px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-4">
+      <div class="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-3 sm:inset-x-4 sm:top-4">
+        <div class="pointer-events-auto w-[17rem] max-w-[calc(100%-5rem)] rounded-[1.25rem] border border-white/70 bg-white/72 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.1)] backdrop-blur-xl sm:w-[18.5rem]">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">轨道工作台</p>
@@ -1710,23 +1723,7 @@ async function handleButtonPress(device) {
             </div>
           </div>
 
-          <div v-if="!isWalkMode && orbitRooms.length" class="mt-4">
-            <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">房间聚焦</p>
-            <div class="mt-2 flex gap-2 overflow-x-auto pb-1">
-              <button
-                v-for="room in orbitRooms"
-                :key="`orbit-room-${room.id}`"
-                type="button"
-                class="shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
-                :class="orbitRoomChipClass(room.id === selectedRoomId)"
-                @click="focusOrbitRoom(room)"
-              >
-                {{ room.name }}
-              </button>
-            </div>
-          </div>
-
-          <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <div class="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
               class="rounded-[1rem] border px-3 py-2 text-left text-xs font-medium transition sm:text-sm"
@@ -1766,7 +1763,7 @@ async function handleButtonPress(device) {
           </div>
         </div>
 
-        <div class="pointer-events-auto rounded-[1.3rem] border border-white/75 bg-white/86 p-3 shadow-[0_22px_50px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-4">
+        <div class="pointer-events-auto hidden w-[15rem] rounded-[1.25rem] border border-white/70 bg-white/70 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.1)] backdrop-blur-xl lg:block">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">场景态势</p>
@@ -1800,7 +1797,7 @@ async function handleButtonPress(device) {
             <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">语义热点</p>
             <div class="mt-2 flex flex-wrap gap-2">
               <button
-                v-for="zone in semanticFocusChips"
+                v-for="zone in semanticFocusChips.slice(0, 6)"
                 :key="`semantic-chip-${zone.label}`"
                 type="button"
                 class="rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
@@ -1824,12 +1821,30 @@ async function handleButtonPress(device) {
       </div>
 
       <div
-        v-if="!isWalkMode"
-        class="pointer-events-auto absolute inset-x-3 bottom-3 z-20 rounded-[1.2rem] border border-white/75 bg-white/82 px-4 py-3 text-xs leading-6 text-slate-600 shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:inset-x-4 sm:bottom-4 sm:text-sm"
+        v-if="!isWalkMode && orbitRooms.length"
+        class="pointer-events-none absolute inset-x-3 bottom-[4.9rem] z-20 flex justify-center sm:inset-x-4 sm:bottom-[5.2rem]"
       >
-        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+        <div class="pointer-events-auto flex max-w-[calc(100%-1rem)] gap-2 overflow-x-auto rounded-full border border-white/70 bg-white/74 px-3 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur-xl">
+          <button
+            v-for="room in orbitRooms"
+            :key="`orbit-room-${room.id}`"
+            type="button"
+            class="shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+            :class="orbitRoomChipClass(room.id === selectedRoomId)"
+            @click="focusOrbitRoom(room)"
+          >
+            {{ room.name }}
+          </button>
+        </div>
+      </div>
+
+      <div
+        v-if="!isWalkMode"
+        class="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex justify-center sm:inset-x-4 sm:bottom-4"
+      >
+        <div class="pointer-events-auto flex w-full max-w-[56rem] flex-col gap-1 rounded-[1.1rem] border border-white/70 bg-white/72 px-4 py-2.5 text-xs leading-6 text-slate-600 shadow-[0_18px_44px_rgba(15,23,42,0.1)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:text-sm">
           <p>拖拽旋转，滚轮或双指缩放；点灯默认开关，长按灯光打开高级面板。</p>
-          <p class="text-slate-500">{{ selectedOrbitRoom ? `当前聚焦 ${selectedOrbitRoom.name}` : '可在上方房间带中快速切换聚焦' }}</p>
+          <p class="text-slate-500">{{ selectedOrbitRoom ? `当前聚焦 ${selectedOrbitRoom.name}` : '可在上方房间条中快速切换聚焦' }}</p>
         </div>
       </div>
 
