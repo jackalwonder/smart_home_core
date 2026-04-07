@@ -25,6 +25,7 @@ DATABASE_URL = os.getenv("DATABASE_URL", _default_database_url())
 DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/app/data")).resolve()
 MEDIA_DIR = DATA_DIR / "media"
 FLOOR_PLAN_DIR = MEDIA_DIR / "floorplans"
+SCENE_MODEL_DIR = MEDIA_DIR / "scene-models"
 
 
 class Base(DeclarativeBase):
@@ -39,6 +40,7 @@ T = TypeVar("T")
 
 def ensure_runtime_schema() -> None:
     FLOOR_PLAN_DIR.mkdir(parents=True, exist_ok=True)
+    SCENE_MODEL_DIR.mkdir(parents=True, exist_ok=True)
 
     with engine.begin() as connection:
         connection.exec_driver_sql(
@@ -58,6 +60,15 @@ def ensure_runtime_schema() -> None:
         )
         connection.exec_driver_sql(
             "ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_plan_analysis TEXT"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS three_d_model_path VARCHAR(255)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS three_d_model_format VARCHAR(32)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS three_d_model_scale DOUBLE PRECISION"
         )
         connection.exec_driver_sql(
             "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS plan_x DOUBLE PRECISION"

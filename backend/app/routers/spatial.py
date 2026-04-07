@@ -11,6 +11,7 @@ from app.schemas import (
     FloorPlanUploadResponse,
     RoomRead,
     RoomLayoutUpdate,
+    SceneModelUploadResponse,
     SpatialAutoLayoutRequest,
     SpatialAutoLayoutResponse,
     SpatialManualDeviceCreate,
@@ -51,6 +52,32 @@ async def upload_floor_plan(
             image_height=image_height,
             payload=payload,
             preserve_existing=preserve_existing,
+        )
+    except NotFoundError as exc:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+
+
+@router.post("/model", response_model=SceneModelUploadResponse, dependencies=[Depends(require_scope(CONTROL_SCOPE))])
+async def upload_scene_model(
+    zone_id: int = Form(..., gt=0),
+    model_scale: float = Form(1.0, gt=0),
+    file: UploadFile = File(...),
+) -> SceneModelUploadResponse:
+    if not file.filename:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="请上传 3D 模型文件。")
+    if file.content_type and file.content_type not in {"model/gltf-binary", "model/gltf+json", "application/octet-stream"}:
+        if not file.filename.lower().endswith((".glb", ".gltf")):
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="仅支持 GLB / GLTF 格式的 3D 模型。")
+
+    try:
+        payload = await file.read()
+        if not payload:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="上传的 3D 模型为空。")
+        return await spatial_scene_service.save_scene_model(
+            zone_id,
+            original_filename=file.filename,
+            payload=payload,
+            model_scale=model_scale,
         )
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc

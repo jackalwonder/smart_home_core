@@ -1,12 +1,14 @@
 <script setup>
-import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref, watch } from 'vue'
 
 import { useSmartHomeStore } from '../stores/smartHome'
+
+const ImmersiveFloorPlan3D = defineAsyncComponent(() => import('./ImmersiveFloorPlan3D.vue'))
 
 const props = defineProps({
   scene: {
     type: Object,
-    default: () => ({ zone: null, rooms: [] }),
+    default: () => ({ zone: null, analysis: null, rooms: [] }),
   },
   selectedRoomId: {
     type: Number,
@@ -38,8 +40,11 @@ const selectedDeviceId = ref(null)
 const showHeatLayer = ref(true)
 const showDevices = ref(true)
 const preserveExistingLayout = ref(true)
+const activeStudioMode = ref('orbit')
 const pendingFloorPlanFile = ref(null)
 const pendingFloorPlanMeta = ref(null)
+const pendingSceneModelFile = ref(null)
+const pendingSceneModelScale = ref(1)
 const uploadMessage = ref('')
 const dragState = ref(null)
 const roomOverrides = ref({})
@@ -82,10 +87,13 @@ const DEVICE_TYPE_OPTIONS = [
 const ACTIVE_STATES = new Set(['on', 'online', 'playing', 'heat', 'cool', 'heat_cool', 'dry', 'fan_only', 'auto'])
 
 const sceneZone = computed(() => props.scene?.zone ?? null)
+const sceneAnalysis = computed(() => props.scene?.analysis ?? null)
 const sceneRooms = computed(() => props.scene?.rooms ?? [])
 const planWidth = computed(() => sceneZone.value?.floor_plan_image_width ?? 1600)
 const planHeight = computed(() => sceneZone.value?.floor_plan_image_height ?? 960)
 const planImageUrl = computed(() => smartHomeStore.resolveAssetUrl(sceneZone.value?.floor_plan_image_path || ''))
+const sceneModelUrl = computed(() => smartHomeStore.resolveAssetUrl(sceneZone.value?.three_d_model_path || ''))
+const cameraMode = computed(() => (activeStudioMode.value === 'walk' ? 'walk' : 'orbit'))
 
 const selectedRoom = computed(() => sceneRooms.value.find((room) => room.id === props.selectedRoomId) ?? sceneRooms.value[0] ?? null)
 const selectedRoomWithDraft = computed(() => (selectedRoom.value ? getRoomView(selectedRoom.value) : null))
@@ -111,9 +119,15 @@ const placedDeviceCount = computed(() =>
 )
 
 const controllableDeviceCount = computed(() => positionedDevices.value.filter((device) => device.can_control).length)
+const analysisInsights = computed(() => ({
+  rooms: sceneAnalysis.value?.room_candidates?.length ?? 0,
+  walls: sceneAnalysis.value?.wall_segments?.length ?? 0,
+  openings: sceneAnalysis.value?.openings?.length ?? 0,
+  furniture: sceneAnalysis.value?.furniture_candidates?.length ?? 0,
+}))
 
 const analysisText = computed(() =>
-  sceneZone.value?.floor_plan_analysis
+  extractAnalysisSummary(sceneAnalysis.value ?? sceneZone.value?.floor_plan_analysis)
     || '上传户型图后，系统会先按房间名称和画布比例生成初始布局，然后允许继续拖拽和精修。',
 )
 
@@ -173,6 +187,16 @@ watch(
     const nextSelectDrafts = {}
 
     devices.forEach((device) => {
+      if (device.supports_brightness) {
+        nextNumericDrafts[advancedNumberKey('brightness', device.id)] = device.brightness_value ?? 50
+      }
+
+      if (device.supports_color_temperature) {
+        const min = device.min_color_temperature ?? 2700
+        const max = device.max_color_temperature ?? 6500
+        nextNumericDrafts[advancedNumberKey('color', device.id)] = device.color_temperature ?? Math.round((min + max) / 2)
+      }
+
       if (device.entity_domain === 'climate' && device.target_temperature !== null && device.target_temperature !== undefined) {
         nextNumericDrafts[device.id] = device.target_temperature
       } else if (device.entity_domain === 'media_player' && device.media_volume_level !== null && device.media_volume_level !== undefined) {
@@ -214,8 +238,33 @@ function roundNumber(value) {
   return Math.round((Number(value) || 0) * 100) / 100
 }
 
+function extractAnalysisSummary(rawValue) {
+  if (!rawValue) {
+    return ''
+  }
+
+  if (typeof rawValue === 'object' && typeof rawValue.summary === 'string') {
+    return rawValue.summary
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue)
+    if (parsed && typeof parsed.summary === 'string') {
+      return parsed.summary
+    }
+  } catch {
+    return rawValue
+  }
+
+  return rawValue
+}
+
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max)
+}
+
+function advancedNumberKey(prefix, deviceId) {
+  return `${prefix}:${deviceId}`
 }
 
 function roomToStyle(room) {
@@ -584,6 +633,11 @@ async function handleFloorPlanSelection(event) {
   }
 }
 
+function handleSceneModelSelection(event) {
+  pendingSceneModelFile.value = event.target.files?.[0] ?? null
+  uploadMessage.value = ''
+}
+
 async function submitFloorPlan() {
   const zoneId = sceneZone.value?.id ?? selectedRoom.value?.zone_id ?? null
   if (!zoneId || !pendingFloorPlanFile.value || !pendingFloorPlanMeta.value) {
@@ -600,6 +654,22 @@ async function submitFloorPlan() {
 
   uploadMessage.value = `户型图已更新，自动布局了 ${response.updated_room_count} 个房间。`
   pendingFloorPlanFile.value = null
+}
+
+async function submitSceneModel() {
+  const zoneId = sceneZone.value?.id ?? selectedRoom.value?.zone_id ?? null
+  if (!zoneId || !pendingSceneModelFile.value) {
+    return
+  }
+
+  const response = await smartHomeStore.uploadSceneModel({
+    zoneId,
+    file: pendingSceneModelFile.value,
+    modelScale: pendingSceneModelScale.value,
+  })
+
+  uploadMessage.value = `3D 模型已接入，当前资源：${response.model_url}`
+  pendingSceneModelFile.value = null
 }
 
 async function runAutoLayout() {
@@ -674,6 +744,34 @@ async function handleNumberChange(device, event) {
     await smartHomeStore.setDeviceNumber(device.id, nextValue)
   } catch (error) {
     console.error('Failed to change numeric control from spatial studio.', error)
+  }
+}
+
+async function handleBrightnessChange(device, event) {
+  const nextValue = Number(event.target.value)
+  numericDrafts.value = {
+    ...numericDrafts.value,
+    [advancedNumberKey('brightness', device.id)]: nextValue,
+  }
+
+  try {
+    await smartHomeStore.setDeviceBrightness(device.id, nextValue)
+  } catch (error) {
+    console.error('Failed to change brightness from spatial studio.', error)
+  }
+}
+
+async function handleColorTemperatureChange(device, event) {
+  const nextValue = Number(event.target.value)
+  numericDrafts.value = {
+    ...numericDrafts.value,
+    [advancedNumberKey('color', device.id)]: nextValue,
+  }
+
+  try {
+    await smartHomeStore.setDeviceColorTemperature(device.id, nextValue)
+  } catch (error) {
+    console.error('Failed to change color temperature from spatial studio.', error)
   }
 }
 
@@ -790,7 +888,7 @@ onBeforeUnmount(() => {
           {{ spatialError || actionError }}
         </div>
 
-        <div class="mt-6 grid gap-4 xl:grid-cols-[minmax(0,1.55fr)_360px]">
+        <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,360px)] 2xl:grid-cols-[minmax(0,1.55fr)_360px]">
           <div class="space-y-4">
             <div class="glass-soft rounded-[1.8rem] p-4 sm:p-5">
               <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
@@ -829,6 +927,25 @@ onBeforeUnmount(() => {
                 </div>
               </div>
 
+              <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
+                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">候选房间</p>
+                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.rooms }}</p>
+                </div>
+                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
+                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">墙体线段</p>
+                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.walls }}</p>
+                </div>
+                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
+                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门洞开口</p>
+                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.openings }}</p>
+                </div>
+                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
+                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">家具候选</p>
+                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.furniture }}</p>
+                </div>
+              </div>
+
               <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
                 <label class="flex min-h-[4.1rem] cursor-pointer items-center gap-3 rounded-[1.4rem] border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-600 hover:border-lagoon/40">
                   <span class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-lagoon/10 text-lagoon">图</span>
@@ -862,12 +979,82 @@ onBeforeUnmount(() => {
                 </button>
               </div>
 
+              <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_112px_132px]">
+                <label class="flex min-h-[4.1rem] cursor-pointer items-center gap-3 rounded-[1.4rem] border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-600 hover:border-lagoon/40">
+                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-ink/8 text-ink">模</span>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate font-medium text-ink">
+                      {{ pendingSceneModelFile?.name || (sceneZone?.three_d_model_path ? '替换当前 3D 模型' : '导入 GLB / GLTF 模型') }}
+                    </span>
+                    <span class="mt-1 block text-xs text-slate-500">
+                      {{ sceneModelUrl ? `当前模型已接入，缩放 ${sceneZone?.three_d_model_scale ?? 1}` : '用于 3D 模式与第一人称漫游' }}
+                    </span>
+                  </span>
+                  <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" class="hidden" @change="handleSceneModelSelection">
+                </label>
+
+                <label class="rounded-[1.4rem] border border-slate-200 bg-white/84 px-4 py-3 text-sm text-slate-600">
+                  <span class="mb-2 block text-[11px] uppercase tracking-[0.16em] text-slate-400">缩放</span>
+                  <input v-model.number="pendingSceneModelScale" type="number" min="0.1" step="0.1" class="w-full bg-transparent text-sm font-semibold text-ink outline-none">
+                </label>
+
+                <button
+                  type="button"
+                  class="rounded-[1.4rem] bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink/92 disabled:cursor-not-allowed disabled:opacity-60"
+                  :disabled="!pendingSceneModelFile || spatialBusy"
+                  @click="submitSceneModel"
+                >
+                  接入 3D 模型
+                </button>
+              </div>
+
               <p v-if="uploadMessage" class="mt-3 text-sm text-lagoon">
                 {{ uploadMessage }}
               </p>
             </div>
 
-            <div class="studio-surface overflow-hidden rounded-[2rem] border border-white/70 bg-[#f7f6f1] p-3 shadow-sm sm:p-4">
+            <div class="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                class="rounded-full px-4 py-2 text-sm font-semibold transition"
+                :class="activeStudioMode === 'orbit' ? 'bg-ink text-white shadow-sm' : 'border border-slate-200 bg-white/84 text-slate-600'"
+                @click="activeStudioMode = 'orbit'"
+              >
+                3D 轨道模式
+              </button>
+              <button
+                type="button"
+                class="rounded-full px-4 py-2 text-sm font-semibold transition"
+                :class="activeStudioMode === 'walk' ? 'bg-ink text-white shadow-sm' : 'border border-slate-200 bg-white/84 text-slate-600'"
+                @click="activeStudioMode = 'walk'"
+              >
+                第一人称漫游
+              </button>
+              <button
+                type="button"
+                class="rounded-full px-4 py-2 text-sm font-semibold transition"
+                :class="activeStudioMode === 'layout' ? 'bg-ink text-white shadow-sm' : 'border border-slate-200 bg-white/84 text-slate-600'"
+                @click="activeStudioMode = 'layout'"
+              >
+                2D 精修模式
+              </button>
+            </div>
+
+            <ImmersiveFloorPlan3D
+              v-if="activeStudioMode !== 'layout'"
+              :scene="scene"
+              :selected-room-id="selectedRoomId"
+              :show-heat-layer="showHeatLayer"
+              :show-devices="showDevices"
+              :spatial-loading="spatialLoading"
+              :camera-mode="cameraMode"
+              @select-room="$emit('select-room', $event)"
+            />
+
+            <div
+              v-else
+              class="studio-surface overflow-hidden rounded-[2rem] border border-white/70 bg-[#f7f6f1] p-3 shadow-sm sm:p-4"
+            >
               <div
                 ref="viewportRef"
                 class="studio-viewport relative overflow-hidden rounded-[1.7rem] border border-white/70 bg-[#f1efe7]"
@@ -974,7 +1161,7 @@ onBeforeUnmount(() => {
             </div>
           </div>
 
-          <aside class="glass-soft flex max-h-[calc(100vh-10rem)] min-h-[32rem] flex-col overflow-hidden rounded-[2rem]">
+          <aside class="glass-soft flex min-h-[32rem] flex-col overflow-hidden rounded-[2rem] lg:max-h-[calc(100vh-10rem)]">
             <div class="border-b border-slate-200/80 px-5 py-5">
               <p class="text-[11px] uppercase tracking-[0.28em] text-lagoon">Inspector</p>
               <h3 class="font-display mt-3 text-[2rem] leading-none text-ink">空间编辑器</h3>
@@ -1083,6 +1270,44 @@ onBeforeUnmount(() => {
                     >
                       {{ isActive(selectedDevice) ? '关闭设备' : '打开设备' }}
                     </button>
+
+                    <div v-if="selectedDevice.supports_brightness" class="space-y-2">
+                      <div class="flex items-center justify-between text-sm text-slate-500">
+                        <span>亮度</span>
+                        <span class="font-medium text-ink">{{ numericDrafts[advancedNumberKey('brightness', selectedDevice.id)] ?? 50 }}%</span>
+                      </div>
+                      <input
+                        :value="numericDrafts[advancedNumberKey('brightness', selectedDevice.id)] ?? 50"
+                        type="range"
+                        min="1"
+                        max="100"
+                        step="1"
+                        class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
+                        :disabled="isDevicePending(selectedDevice.id)"
+                        @input="handleInspectorSliderInput(advancedNumberKey('brightness', selectedDevice.id), $event.target.value)"
+                        @change="handleBrightnessChange(selectedDevice, $event)"
+                      >
+                    </div>
+
+                    <div v-if="selectedDevice.supports_color_temperature" class="space-y-2">
+                      <div class="flex items-center justify-between text-sm text-slate-500">
+                        <span>色温</span>
+                        <span class="font-medium text-ink">
+                          {{ numericDrafts[advancedNumberKey('color', selectedDevice.id)] ?? selectedDevice.color_temperature ?? 3500 }}K
+                        </span>
+                      </div>
+                      <input
+                        :value="numericDrafts[advancedNumberKey('color', selectedDevice.id)] ?? selectedDevice.color_temperature ?? 3500"
+                        type="range"
+                        class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
+                        :min="selectedDevice.min_color_temperature ?? 2700"
+                        :max="selectedDevice.max_color_temperature ?? 6500"
+                        step="50"
+                        :disabled="isDevicePending(selectedDevice.id)"
+                        @input="handleInspectorSliderInput(advancedNumberKey('color', selectedDevice.id), $event.target.value)"
+                        @change="handleColorTemperatureChange(selectedDevice, $event)"
+                      >
+                    </div>
 
                     <div
                       v-if="(selectedDevice.entity_domain === 'climate' && selectedDevice.target_temperature !== null && selectedDevice.target_temperature !== undefined)

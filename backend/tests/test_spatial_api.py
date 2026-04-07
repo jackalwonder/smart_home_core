@@ -101,3 +101,50 @@ def test_floorplan_upload_route_forwards_metadata_and_bytes(
 
     assert response.status_code == 200
     assert response.json()["updated_room_count"] == 3
+
+
+def test_scene_model_upload_route_forwards_scale_and_bytes(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_upload(
+        zone_id: int,
+        *,
+        original_filename: str,
+        payload: bytes,
+        model_scale: float,
+    ):
+        assert zone_id == 1
+        assert original_filename == "house.glb"
+        assert payload == b"model-bytes"
+        assert model_scale == 1.25
+        return {
+            "zone": {
+                "id": 1,
+                "name": "全屋",
+                "description": None,
+                "floor_plan_image_path": "/media/floorplans/layout.png",
+                "floor_plan_image_width": 1920,
+                "floor_plan_image_height": 1080,
+                "floor_plan_analysis": "ok",
+                "three_d_model_path": "/media/scene-models/house.glb",
+                "three_d_model_format": "glb",
+                "three_d_model_scale": 1.25,
+            },
+            "model_url": "/media/scene-models/house.glb",
+        }
+
+    monkeypatch.setattr(spatial_scene_service, "save_scene_model", _fake_upload)
+
+    response = client.post(
+        "/api/spatial/model",
+        headers={"X-API-Key": "control-token"},
+        data={
+            "zone_id": "1",
+            "model_scale": "1.25",
+        },
+        files={"file": ("house.glb", io.BytesIO(b"model-bytes"), "model/gltf-binary")},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["model_url"] == "/media/scene-models/house.glb"

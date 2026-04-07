@@ -2,6 +2,7 @@ from __future__ import annotations
 
 """户型图、空间布局与设备点位服务。"""
 
+import json
 from math import ceil
 from pathlib import Path
 import re
@@ -10,10 +11,10 @@ from uuid import uuid4
 from sqlalchemy import select
 from sqlalchemy.orm import Session, joinedload
 
-from app.database import FLOOR_PLAN_DIR, run_in_threadpool_session
+from app.database import FLOOR_PLAN_DIR, SCENE_MODEL_DIR, run_in_threadpool_session
 from app.models import Device, DeviceType, Room, Zone
 from app.schemas import DeviceCreate, DevicePlacementUpdate, RoomLayoutUpdate, SpatialManualDeviceCreate
-from app.services import catalog_service
+from app.services import catalog_service, floor_plan_analysis_service
 from app.services.errors import NotFoundError
 
 DEFAULT_PLAN_WIDTH = 1600
@@ -76,17 +77,20 @@ async def get_spatial_scene(zone_id: int | None = None) -> dict[str, object]:
     )
 
     if zone_payload is None:
-        return {"zone": None, "rooms": []}
+        return {"zone": None, "rooms": [], "analysis": None}
 
+    zone_payload = await _upgrade_legacy_analysis_if_needed(zone_id, zone_payload)
     plan_width = zone_payload.get("floor_plan_image_width") or DEFAULT_PLAN_WIDTH
     plan_height = zone_payload.get("floor_plan_image_height") or DEFAULT_PLAN_HEIGHT
+    analysis = _parse_floor_plan_analysis(zone_payload.get("floor_plan_analysis"))
 
-    derived_layouts = _derive_room_layouts(normalized_rooms, plan_width, plan_height)
+    derived_layouts = _derive_room_layouts(normalized_rooms, plan_width, plan_height, analysis)
     scene_rooms = []
     for room in normalized_rooms:
         derived_layout = derived_layouts.get(int(room["id"]))
         room_payload = {
             **room,
+            "zone": zone_payload,
             "plan_x": room.get("plan_x") if room.get("plan_x") is not None else derived_layout["plan_x"],
             "plan_y": room.get("plan_y") if room.get("plan_y") is not None else derived_layout["plan_y"],
             "plan_width": room.get("plan_width") if room.get("plan_width") is not None else derived_layout["plan_width"],
@@ -96,7 +100,7 @@ async def get_spatial_scene(zone_id: int | None = None) -> dict[str, object]:
         room_payload["devices"] = _with_device_fallback_positions(room_payload)
         scene_rooms.append(room_payload)
 
-    return {"zone": zone_payload, "rooms": scene_rooms}
+    return {"zone": zone_payload, "rooms": scene_rooms, "analysis": analysis}
 
 
 async def save_floor_plan(
@@ -108,19 +112,42 @@ async def save_floor_plan(
     payload: bytes,
     preserve_existing: bool,
 ) -> dict[str, object]:
+    analysis = floor_plan_analysis_service.analyze_floor_plan_image(payload, await _room_names_for_zone(zone_id))
     image_path = _write_floor_plan_asset(original_filename, payload)
     result = await run_in_threadpool_session(
         _save_floor_plan_and_apply_layout,
         zone_id,
         image_path,
-        image_width,
-        image_height,
+        int(analysis.get("image_width") or image_width),
+        int(analysis.get("image_height") or image_height),
+        _stringify_floor_plan_analysis(analysis),
         preserve_existing,
     )
     return {
         "zone": _serialize_zone(result["zone"]),
         "updated_room_count": result["updated_room_count"],
         "image_url": image_path,
+    }
+
+
+async def save_scene_model(
+    zone_id: int,
+    *,
+    original_filename: str,
+    payload: bytes,
+    model_scale: float,
+) -> dict[str, object]:
+    model_path = _write_scene_model_asset(original_filename, payload)
+    zone = await run_in_threadpool_session(
+        catalog_service.update_zone_three_d_model,
+        zone_id,
+        model_path,
+        _safe_model_extension(original_filename).lstrip("."),
+        model_scale,
+    )
+    return {
+        "zone": _serialize_zone(zone),
+        "model_url": model_path,
     }
 
 
@@ -176,6 +203,20 @@ async def create_manual_device(payload: SpatialManualDeviceCreate) -> dict[str, 
     return _serialize_device_admin(refreshed_device)
 
 
+async def _room_names_for_zone(zone_id: int) -> list[str]:
+    rooms = await run_in_threadpool_session(_list_room_names_for_zone, zone_id)
+    return rooms
+
+
+async def _upgrade_legacy_analysis_if_needed(
+    zone_id: int | None,
+    zone_payload: dict[str, object],
+) -> dict[str, object]:
+    if zone_id is None or not _should_refresh_floor_plan_analysis(zone_payload):
+        return zone_payload
+    return await run_in_threadpool_session(_refresh_zone_analysis_payload, zone_id)
+
+
 def _serialize_first_zone(db: Session, zone_id: int | None) -> dict[str, object] | None:
     stmt = select(Zone).order_by(Zone.id)
     if zone_id is not None:
@@ -196,6 +237,9 @@ def _serialize_zone(zone: Zone | dict[str, object]) -> dict[str, object]:
             "floor_plan_image_width": zone.get("floor_plan_image_width"),
             "floor_plan_image_height": zone.get("floor_plan_image_height"),
             "floor_plan_analysis": zone.get("floor_plan_analysis"),
+            "three_d_model_path": zone.get("three_d_model_path"),
+            "three_d_model_format": zone.get("three_d_model_format"),
+            "three_d_model_scale": zone.get("three_d_model_scale"),
         }
 
     return {
@@ -206,6 +250,9 @@ def _serialize_zone(zone: Zone | dict[str, object]) -> dict[str, object]:
         "floor_plan_image_width": zone.floor_plan_image_width,
         "floor_plan_image_height": zone.floor_plan_image_height,
         "floor_plan_analysis": zone.floor_plan_analysis,
+        "three_d_model_path": zone.three_d_model_path,
+        "three_d_model_format": zone.three_d_model_format,
+        "three_d_model_scale": zone.three_d_model_scale,
     }
 
 
@@ -239,6 +286,36 @@ def _serialize_device_admin(device: Device) -> dict[str, object]:
     }
 
 
+def _list_room_names_for_zone(db: Session, zone_id: int) -> list[str]:
+    stmt = select(Room.name).where(Room.zone_id == zone_id).order_by(Room.name)
+    return [str(name) for name in db.scalars(stmt).all() if isinstance(name, str)]
+
+
+def _parse_floor_plan_analysis(value: object) -> dict[str, object] | None:
+    if not isinstance(value, str) or not value.strip():
+        return None
+    try:
+        payload = json.loads(value)
+    except (TypeError, ValueError):
+        return {"summary": value, "source": "legacy", "room_candidates": []}
+    return payload if isinstance(payload, dict) else None
+
+
+def _stringify_floor_plan_analysis(analysis: dict[str, object]) -> str:
+    return json.dumps(analysis, ensure_ascii=False)
+
+
+def _should_refresh_floor_plan_analysis(zone_payload: dict[str, object]) -> bool:
+    if not zone_payload.get("floor_plan_image_path"):
+        return False
+    analysis = _parse_floor_plan_analysis(zone_payload.get("floor_plan_analysis"))
+    if analysis is None:
+        return True
+    if analysis.get("source") == "legacy":
+        return True
+    return any(not isinstance(analysis.get(key), list) for key in ("wall_segments", "openings", "furniture_candidates"))
+
+
 def _write_floor_plan_asset(original_filename: str, payload: bytes) -> str:
     FLOOR_PLAN_DIR.mkdir(parents=True, exist_ok=True)
     extension = _safe_extension(original_filename)
@@ -248,9 +325,61 @@ def _write_floor_plan_asset(original_filename: str, payload: bytes) -> str:
     return f"/media/floorplans/{filename}"
 
 
+def _write_scene_model_asset(original_filename: str, payload: bytes) -> str:
+    SCENE_MODEL_DIR.mkdir(parents=True, exist_ok=True)
+    extension = _safe_model_extension(original_filename)
+    filename = f"{uuid4().hex}{extension}"
+    target_path = SCENE_MODEL_DIR / filename
+    target_path.write_bytes(payload)
+    return f"/media/scene-models/{filename}"
+
+
 def _safe_extension(filename: str) -> str:
     suffix = Path(filename).suffix.lower()
     return suffix if suffix in {".png", ".jpg", ".jpeg", ".webp"} else ".png"
+
+
+def _safe_model_extension(filename: str) -> str:
+    suffix = Path(filename).suffix.lower()
+    return suffix if suffix in {".glb", ".gltf"} else ".glb"
+
+
+def _resolve_floor_plan_asset_path(image_path: str | None) -> Path | None:
+    if not image_path:
+        return None
+    direct_path = Path(image_path)
+    if direct_path.exists():
+        return direct_path
+    if direct_path.name:
+        return FLOOR_PLAN_DIR / direct_path.name
+    return None
+
+
+def _refresh_zone_analysis_payload(db: Session, zone_id: int) -> dict[str, object]:
+    zone = db.scalar(select(Zone).options(joinedload(Zone.rooms)).where(Zone.id == zone_id).limit(1))
+    if zone is None:
+        raise NotFoundError("未找到对应空间分区。")
+
+    _refresh_zone_analysis_if_needed(db, zone)
+    db.refresh(zone)
+    return _serialize_zone(zone)
+
+
+def _refresh_zone_analysis_if_needed(db: Session, zone: Zone) -> None:
+    if not _should_refresh_floor_plan_analysis(_serialize_zone(zone)):
+        return
+
+    floor_plan_path = _resolve_floor_plan_asset_path(zone.floor_plan_image_path)
+    if floor_plan_path is None or not floor_plan_path.exists():
+        return
+
+    payload = floor_plan_path.read_bytes()
+    room_names = [room.name for room in sorted(zone.rooms, key=lambda item: item.name)]
+    analysis = floor_plan_analysis_service.analyze_floor_plan_image(payload, room_names)
+    zone.floor_plan_analysis = _stringify_floor_plan_analysis(analysis)
+    zone.floor_plan_image_width = int(analysis.get("image_width") or zone.floor_plan_image_width or DEFAULT_PLAN_WIDTH)
+    zone.floor_plan_image_height = int(analysis.get("image_height") or zone.floor_plan_image_height or DEFAULT_PLAN_HEIGHT)
+    db.commit()
 
 
 def _build_virtual_entity_id(device_type: DeviceType, name: str) -> str:
@@ -275,13 +404,10 @@ def _save_floor_plan_and_apply_layout(
     image_path: str,
     image_width: int,
     image_height: int,
+    analysis: str,
     preserve_existing: bool,
 ) -> dict[str, object]:
     zone = catalog_service.get_zone(db, zone_id)
-    analysis = (
-        f"已根据户型图尺寸 {image_width}x{image_height} 和当前房间名称生成初始布局。"
-        " 这个结果可直接编辑，后续新增设备会按房间自动补充到空间图中。"
-    )
     zone = catalog_service.update_zone_floor_plan(
         db,
         zone_id,
@@ -296,6 +422,7 @@ def _save_floor_plan_and_apply_layout(
 
 def _auto_layout_zone(db: Session, zone_id: int, preserve_existing: bool) -> dict[str, object]:
     zone = catalog_service.get_zone(db, zone_id)
+    _refresh_zone_analysis_if_needed(db, zone)
     if zone.floor_plan_image_width is None or zone.floor_plan_image_height is None:
         raise NotFoundError("请先上传户型图，再执行自动布局。")
     updated_room_count = _apply_auto_layout(db, zone, preserve_existing)
@@ -311,6 +438,7 @@ def _apply_auto_layout(db: Session, zone: Zone, preserve_existing: bool) -> int:
         .order_by(Room.name)
     )
     rooms = list(db.scalars(stmt).unique().all())
+    analysis = _parse_floor_plan_analysis(zone.floor_plan_analysis)
     layout_map = _derive_room_layouts(
         [
             {
@@ -328,6 +456,7 @@ def _apply_auto_layout(db: Session, zone: Zone, preserve_existing: bool) -> int:
         ],
         zone.floor_plan_image_width or DEFAULT_PLAN_WIDTH,
         zone.floor_plan_image_height or DEFAULT_PLAN_HEIGHT,
+        analysis,
     )
 
     updated_room_count = 0
@@ -372,7 +501,16 @@ def _ensure_room_device_positions(db: Session, room_id: int) -> None:
     db.commit()
 
 
-def _derive_room_layouts(rooms: list[dict[str, object]], plan_width: int, plan_height: int) -> dict[int, dict[str, float]]:
+def _derive_room_layouts(
+    rooms: list[dict[str, object]],
+    plan_width: int,
+    plan_height: int,
+    analysis: dict[str, object] | None = None,
+) -> dict[int, dict[str, float]]:
+    detected_layouts = _derive_layouts_from_analysis(rooms, analysis)
+    if detected_layouts:
+        return detected_layouts
+
     sorted_rooms = sorted(
         rooms,
         key=lambda room: (
@@ -405,6 +543,89 @@ def _derive_room_layouts(rooms: list[dict[str, object]], plan_width: int, plan_h
         }
 
     return layouts
+
+
+def _derive_layouts_from_analysis(
+    rooms: list[dict[str, object]],
+    analysis: dict[str, object] | None,
+) -> dict[int, dict[str, float]]:
+    if not isinstance(analysis, dict):
+        return {}
+
+    candidates = analysis.get("room_candidates")
+    if not isinstance(candidates, list):
+        return {}
+
+    available_candidates = [
+        candidate
+        for candidate in candidates
+        if isinstance(candidate, dict)
+        and all(key in candidate for key in ("x", "y", "width", "height"))
+    ]
+    if not available_candidates:
+        return {}
+
+    sorted_rooms = sorted(
+        rooms,
+        key=lambda room: (
+            ROOM_TYPE_PRIORITY[_classify_room_type(str(room.get("name", "")), str(room.get("description", "") or ""))],
+            str(room.get("name", "")),
+        ),
+    )
+
+    layouts: dict[int, dict[str, float]] = {}
+    remaining = available_candidates[:]
+    for room in sorted_rooms:
+        room_type = _classify_room_type(str(room.get("name", "")), str(room.get("description", "") or ""))
+        best_candidate = max(remaining, key=lambda candidate: _candidate_score(candidate, room_type))
+        remaining.remove(best_candidate)
+        layouts[int(room["id"])] = {
+            "plan_x": round(float(best_candidate["x"]), 2),
+            "plan_y": round(float(best_candidate["y"]), 2),
+            "plan_width": round(float(best_candidate["width"]), 2),
+            "plan_height": round(float(best_candidate["height"]), 2),
+            "plan_rotation": round(float(best_candidate.get("rotation") or 0.0), 2),
+        }
+        if not remaining:
+            break
+
+    return layouts
+
+
+def _candidate_score(candidate: dict[str, object], room_type: str) -> float:
+    width = float(candidate.get("width") or 0)
+    height = float(candidate.get("height") or 0)
+    x = float(candidate.get("x") or 0)
+    y = float(candidate.get("y") or 0)
+    area = width * height
+    aspect = width / max(height, 1.0)
+
+    score = area
+    if room_type == "living":
+        score += area * 1.4
+        score -= abs(aspect - 1.4) * 1200
+    elif room_type in {"master", "bedroom", "study"}:
+        score += area * 0.6
+        score -= abs(aspect - 1.2) * 900
+    elif room_type == "balcony":
+        score += width * 220
+        score -= abs(aspect - 3.0) * 1400
+        score += y * 0.6
+    elif room_type == "bath":
+        score -= area * 0.45
+        score -= abs(aspect - 1.0) * 900
+    elif room_type == "entry":
+        score -= area * 0.3
+        score += y * 0.5
+    elif room_type == "kitchen":
+        score += area * 0.15
+        score += x * 0.08
+    elif room_type == "storage":
+        score -= area * 0.4
+
+    fill_ratio = float(candidate.get("fill_ratio") or 0)
+    score += fill_ratio * 800
+    return score
 
 
 def _classify_room_type(name: str, description: str) -> str:

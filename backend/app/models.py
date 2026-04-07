@@ -41,6 +41,9 @@ class Zone(Base):
     floor_plan_image_width: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
     floor_plan_image_height: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
     floor_plan_analysis: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    three_d_model_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    three_d_model_format: Mapped[Optional[str]] = mapped_column(String(32), nullable=True)
+    three_d_model_scale: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
 
     rooms: Mapped[list["Room"]] = relationship(
         back_populates="zone",

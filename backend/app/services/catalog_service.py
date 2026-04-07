@@ -230,6 +230,9 @@ def _build_room_snapshots_for_frontend(
                     "floor_plan_image_width": room.zone.floor_plan_image_width,
                     "floor_plan_image_height": room.zone.floor_plan_image_height,
                     "floor_plan_analysis": room.zone.floor_plan_analysis,
+                    "three_d_model_path": room.zone.three_d_model_path,
+                    "three_d_model_format": room.zone.three_d_model_format,
+                    "three_d_model_scale": room.zone.three_d_model_scale,
                 },
                 "plan_x": room.plan_x,
                 "plan_y": room.plan_y,
@@ -288,6 +291,14 @@ def _serialize_device(
         "media_source_options": _media_source_options(entity_domain, attributes),
         "appliance_name": appliance_name,
         "appliance_type": appliance_type,
+        "brightness_value": _light_brightness_value(entity_domain, attributes),
+        "brightness_min": 1.0 if _light_supports_brightness(entity_domain, attributes) else None,
+        "brightness_max": 100.0 if _light_supports_brightness(entity_domain, attributes) else None,
+        "color_temperature": _light_color_temperature(entity_domain, attributes),
+        "min_color_temperature": _light_min_color_temperature(entity_domain, attributes),
+        "max_color_temperature": _light_max_color_temperature(entity_domain, attributes),
+        "supports_brightness": _light_supports_brightness(entity_domain, attributes),
+        "supports_color_temperature": _light_supports_color_temperature(entity_domain, attributes),
         "plan_x": device.plan_x,
         "plan_y": device.plan_y,
         "plan_z": device.plan_z,
@@ -402,6 +413,73 @@ def _media_source_options(entity_domain: str, attributes: dict[str, Any]) -> lis
     if not isinstance(values, list):
         return []
     return [str(value) for value in values if str(value).strip()]
+
+
+def _light_brightness_value(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "light":
+        return None
+    brightness = _float_attribute(attributes, "brightness")
+    if brightness is None:
+        return None
+    return round(max(0.0, min(brightness, 255.0)) / 255.0 * 100.0, 2)
+
+
+def _light_supports_brightness(entity_domain: str, attributes: dict[str, Any]) -> bool:
+    if entity_domain != "light":
+        return False
+    if _light_brightness_value(entity_domain, attributes) is not None:
+        return True
+    supported_color_modes = attributes.get("supported_color_modes")
+    if isinstance(supported_color_modes, list):
+        return any(mode in {"brightness", "color_temp", "hs", "rgb", "xy"} for mode in supported_color_modes)
+    return False
+
+
+def _light_color_temperature(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "light":
+        return None
+    kelvin = _float_attribute(attributes, "color_temp_kelvin")
+    if kelvin is not None:
+        return round(kelvin, 2)
+    mired = _float_attribute(attributes, "color_temp")
+    if mired is None or mired <= 0:
+        return None
+    return round(1_000_000 / mired, 2)
+
+
+def _light_min_color_temperature(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "light":
+        return None
+    kelvin = _float_attribute(attributes, "min_color_temp_kelvin")
+    if kelvin is not None:
+        return round(kelvin, 2)
+    max_mireds = _float_attribute(attributes, "max_mireds")
+    if max_mireds is None or max_mireds <= 0:
+        return None
+    return round(1_000_000 / max_mireds, 2)
+
+
+def _light_max_color_temperature(entity_domain: str, attributes: dict[str, Any]) -> float | None:
+    if entity_domain != "light":
+        return None
+    kelvin = _float_attribute(attributes, "max_color_temp_kelvin")
+    if kelvin is not None:
+        return round(kelvin, 2)
+    min_mireds = _float_attribute(attributes, "min_mireds")
+    if min_mireds is None or min_mireds <= 0:
+        return None
+    return round(1_000_000 / min_mireds, 2)
+
+
+def _light_supports_color_temperature(entity_domain: str, attributes: dict[str, Any]) -> bool:
+    if entity_domain != "light":
+        return False
+    if _light_color_temperature(entity_domain, attributes) is not None:
+        return True
+    supported_color_modes = attributes.get("supported_color_modes")
+    if isinstance(supported_color_modes, list):
+        return "color_temp" in supported_color_modes
+    return _light_min_color_temperature(entity_domain, attributes) is not None or _light_max_color_temperature(entity_domain, attributes) is not None
 
 
 def _is_noise_entity(entity_id: str) -> bool:
@@ -575,6 +653,22 @@ def update_zone_floor_plan(
     zone.floor_plan_image_width = image_width
     zone.floor_plan_image_height = image_height
     zone.floor_plan_analysis = analysis
+    db.commit()
+    db.refresh(zone)
+    return zone
+
+
+def update_zone_three_d_model(
+    db: Session,
+    zone_id: int,
+    model_path: str,
+    model_format: str,
+    model_scale: float,
+) -> Zone:
+    zone = get_zone(db, zone_id)
+    zone.three_d_model_path = model_path
+    zone.three_d_model_format = model_format
+    zone.three_d_model_scale = model_scale
     db.commit()
     db.refresh(zone)
     return zone

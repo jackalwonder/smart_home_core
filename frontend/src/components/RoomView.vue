@@ -3,6 +3,7 @@ import { computed } from 'vue'
 
 import ApplianceCard from './ApplianceCard.vue'
 import DeviceCard from './DeviceCard.vue'
+import { groupDevices } from '../utils/deviceGrouping'
 
 const props = defineProps({
   room: {
@@ -15,84 +16,24 @@ const props = defineProps({
   },
 })
 
-function applianceStem(name) {
-  const trimmed = name.trim()
-  const withoutUploadMarker = trimmed.split(' * ')[0]
-  const withoutDoubleSpaceSuffix = withoutUploadMarker.split(/\s{2,}/)[0]
-  return withoutDoubleSpaceSuffix.trim()
-}
-
-function groupKey(device) {
-  if (device.ha_device_id) {
-    // 优先按真实 HA 设备聚合，能把同一硬件下的多个实体折叠到一张卡里。
-    return `device:${device.ha_device_id}`
-  }
-  if (device.appliance_name) {
-    return `name:${device.appliance_name}`
-  }
-  return `fallback:${applianceStem(device.name) || device.name}`
-}
-
-function groupTitle(devices) {
-  return devices[0]?.appliance_name || applianceStem(devices[0]?.name ?? '') || devices[0]?.name || '未命名设备'
-}
-
-function groupType(devices) {
-  return devices.find((device) => device.appliance_type && device.appliance_type !== 'generic')?.appliance_type
-    || devices[0]?.appliance_type
-    || 'generic'
-}
-
-function shouldAggregate(devices) {
-  const applianceType = groupType(devices)
-  const hasControl = devices.some((device) => ['toggle', 'number', 'select', 'button'].includes(device.control_kind ?? ''))
-  const hasTelemetry = devices.some((device) => device.device_class === 'temperature' || device.device_class === 'humidity')
-  const hasHaDeviceId = devices.some((device) => Boolean(device.ha_device_id))
-
-  if (!hasControl) {
-    return false
-  }
-
-  if (hasHaDeviceId && devices.length > 1) {
-    return true
-  }
-
-  if (['fridge', 'air_conditioner', 'tv', 'media', 'purifier', 'washer', 'speaker', 'router', 'nas', 'computer', 'camera'].includes(applianceType)) {
-    return true
-  }
-
-  return hasTelemetry && devices.length > 1
-}
-
 const groupedItems = computed(() => {
   if (!props.room) {
     return []
   }
 
-  // 先按聚合键分桶，再决定是渲染家电聚合卡还是单实体卡片。
-  const groups = new Map()
-  props.room.devices.forEach((device) => {
-    const key = groupKey(device)
-    const collection = groups.get(key) ?? []
-    collection.push(device)
-    groups.set(key, collection)
-  })
-
-  return [...groups.entries()]
-    .map(([key, devices]) => {
-      const sortedDevices = [...devices].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
-
-      if (shouldAggregate(sortedDevices)) {
+  return groupDevices(props.room.devices)
+    .map((group) => {
+      if (group.isAggregate) {
         return {
           type: 'appliance',
-          key,
-          title: groupTitle(sortedDevices),
-          applianceType: groupType(sortedDevices),
-          devices: sortedDevices,
+          key: group.key,
+          title: group.title,
+          applianceType: group.applianceType,
+          devices: group.devices,
         }
       }
 
-      return sortedDevices.map((device) => ({
+      return group.devices.map((device) => ({
         type: 'device',
         key: `device-${device.id}`,
         device,

@@ -27,6 +27,9 @@ class ZoneRead(StrictSchema):
     floor_plan_image_width: int | None = None
     floor_plan_image_height: int | None = None
     floor_plan_analysis: str | None = None
+    three_d_model_path: str | None = None
+    three_d_model_format: str | None = None
+    three_d_model_scale: float | None = None
 
 
 class RoomCreate(StrictSchema):
@@ -113,6 +116,14 @@ class DeviceRead(StrictSchema):
     media_source_options: list[str] = Field(default_factory=list)
     appliance_name: str | None = None
     appliance_type: str | None = None
+    brightness_value: float | None = None
+    brightness_min: float | None = None
+    brightness_max: float | None = None
+    color_temperature: float | None = None
+    min_color_temperature: float | None = None
+    max_color_temperature: float | None = None
+    supports_brightness: bool = False
+    supports_color_temperature: bool = False
     plan_x: float | None = None
     plan_y: float | None = None
     plan_z: float | None = None
@@ -175,12 +186,18 @@ class SpatialManualDeviceCreate(StrictSchema):
 class SpatialSceneRead(StrictSchema):
     zone: ZoneRead | None = None
     rooms: list[RoomStateRead] = Field(default_factory=list)
+    analysis: dict[str, Any] | None = None
 
 
 class FloorPlanUploadResponse(StrictSchema):
     zone: ZoneRead
     updated_room_count: int = Field(ge=0)
     image_url: str
+
+
+class SceneModelUploadResponse(StrictSchema):
+    zone: ZoneRead
+    model_url: str
 
 
 class SpatialAutoLayoutResponse(StrictSchema):
@@ -199,6 +216,8 @@ class DeviceControlKind(str, Enum):
     NUMBER = "number"
     SELECT = "select"
     BUTTON = "button"
+    BRIGHTNESS = "brightness"
+    COLOR_TEMPERATURE = "color_temperature"
 
 
 class DeviceControlRequest(StrictSchema):
@@ -217,6 +236,10 @@ class DeviceControlRequest(StrictSchema):
         if self.control_kind == DeviceControlKind.NUMBER:
             if self.value is None:
                 raise ValueError("value is required for number controls.")
+            return self
+        if self.control_kind in {DeviceControlKind.BRIGHTNESS, DeviceControlKind.COLOR_TEMPERATURE}:
+            if self.value is None:
+                raise ValueError("value is required for advanced light controls.")
             return self
         if self.control_kind == DeviceControlKind.SELECT:
             if self.option is None:

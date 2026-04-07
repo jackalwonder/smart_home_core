@@ -34,3 +34,35 @@ def test_service_call_for_climate_select_uses_hvac_mode() -> None:
 
     assert service_name == "climate.set_hvac_mode"
     assert service_data == {"hvac_mode": "cool"}
+
+
+def test_service_call_for_light_brightness_uses_turn_on_brightness_pct() -> None:
+    payload = DeviceControlRequest(
+        device_id=1,
+        control_kind=DeviceControlKind.BRIGHTNESS,
+        value=68,
+    )
+
+    service_name, service_data = automation_service._service_call_for_payload(
+        "light.island_lamp",
+        payload,
+    )
+
+    assert service_name == "light.turn_on"
+    assert service_data == {"brightness_pct": 68.0}
+
+
+def test_service_call_for_light_color_temperature_uses_kelvin() -> None:
+    payload = DeviceControlRequest(
+        device_id=1,
+        control_kind=DeviceControlKind.COLOR_TEMPERATURE,
+        value=4200,
+    )
+
+    service_name, service_data = automation_service._service_call_for_payload(
+        "light.bedside_lamp",
+        payload,
+    )
+
+    assert service_name == "light.turn_on"
+    assert service_data == {"color_temp_kelvin": 4200}

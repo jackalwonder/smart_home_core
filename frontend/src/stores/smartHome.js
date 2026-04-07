@@ -1,6 +1,13 @@
 import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
+import {
+  countDisplayDevices,
+  filterDisplayDevices,
+  shouldDisplayDashboardRoom,
+  shouldDisplaySpatialRoom,
+} from '../utils/deviceGrouping'
+
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || ''
 
 function resolveApiUrl(path) {
@@ -59,24 +66,37 @@ function sortSceneRooms(rooms) {
   })
 }
 
+function sortDevices(devices) {
+  return [...devices].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN'))
+}
+
 function normalizeRoom(room) {
   return {
     ...room,
-    devices: [...(room.devices ?? [])].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
+    devices: sortDevices(filterDisplayDevices(room.devices ?? [])),
   }
 }
 
 function normalizeSpatialRoom(room) {
   return {
     ...room,
-    devices: [...(room.devices ?? [])].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
+    devices: sortDevices(filterDisplayDevices(room.devices ?? [])),
   }
+}
+
+function normalizeDashboardRooms(rooms) {
+  return sortRooms((rooms ?? []).map(normalizeRoom).filter(shouldDisplayDashboardRoom))
+}
+
+function normalizeSpatialRooms(rooms) {
+  return sortSceneRooms((rooms ?? []).map(normalizeSpatialRoom).filter(shouldDisplaySpatialRoom))
 }
 
 function normalizeSpatialScene(scene) {
   return {
     zone: scene?.zone ?? null,
-    rooms: sortSceneRooms((scene?.rooms ?? []).map(normalizeSpatialRoom)),
+    analysis: scene?.analysis ?? null,
+    rooms: normalizeSpatialRooms(scene?.rooms ?? []),
   }
 }
 
@@ -86,7 +106,7 @@ function wait(ms) {
 
 export const useSmartHomeStore = defineStore('smartHome', () => {
   const rooms = ref([])
-  const spatialScene = ref({ zone: null, rooms: [] })
+  const spatialScene = ref({ zone: null, analysis: null, rooms: [] })
   const isLoading = ref(false)
   const spatialLoading = ref(false)
   const spatialBusy = ref(false)
@@ -104,10 +124,18 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const spatialRefreshTimer = ref(null)
 
   const roomCount = computed(() => rooms.value.length)
-  const deviceCount = computed(() => rooms.value.reduce((total, room) => total + (room.devices?.length ?? 0), 0))
+  const deviceCount = computed(() => rooms.value.reduce((total, room) => total + countDisplayDevices(room.devices), 0))
   const selectedRoom = computed(() => rooms.value.find((room) => room.id === selectedRoomId.value) ?? rooms.value[0] ?? null)
   const selectedSceneRoom = computed(() => spatialScene.value.rooms.find((room) => room.id === selectedRoomId.value) ?? spatialScene.value.rooms[0] ?? null)
   const activeZoneId = computed(() => spatialScene.value.zone?.id ?? selectedRoom.value?.zone_id ?? selectedRoom.value?.zone?.id ?? null)
+
+  function ensureSelectedRoom() {
+    if (rooms.value.some((room) => room.id === selectedRoomId.value)) {
+      return
+    }
+
+    selectedRoomId.value = rooms.value[0]?.id ?? null
+  }
 
   async function fetchInitialState() {
     isLoading.value = true
@@ -122,11 +150,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       const payload = await authenticatedResponse.json()
-      rooms.value = sortRooms(payload.map(normalizeRoom))
-
-      if (!selectedRoomId.value && rooms.value.length > 0) {
-        selectedRoomId.value = rooms.value[0].id
-      }
+      rooms.value = normalizeDashboardRooms(payload)
+      ensureSelectedRoom()
     } catch (fetchError) {
       error.value = fetchError instanceof Error ? fetchError.message : '获取智能家居数据失败。'
       throw fetchError
@@ -175,16 +200,14 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       const devices = await response.json()
-      rooms.value = rooms.value.map((room) => {
+      rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
         if (room.id !== roomId) {
           return room
         }
 
-        return {
-          ...room,
-          devices: [...devices].sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
-        }
-      })
+        return { ...room, devices }
+      }))
+      ensureSelectedRoom()
     } catch (fetchError) {
       actionError.value = fetchError instanceof Error ? fetchError.message : '刷新房间设备失败。'
       throw fetchError
@@ -297,7 +320,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   function upsertDevice(updatedDevice) {
     let matchedRoom = false
 
-    rooms.value = rooms.value.map((room) => {
+    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
       const deviceIndex = room.devices.findIndex((device) => device.id === updatedDevice.id)
       const belongsToRoom = room.id === updatedDevice.room_id
 
@@ -316,11 +339,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         nextDevices.push(updatedDevice)
       }
 
-      return {
-        ...room,
-        devices: nextDevices.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
-      }
-    })
+      return { ...room, devices: nextDevices }
+    }))
+    ensureSelectedRoom()
 
     if (!matchedRoom) {
       fetchInitialState().catch(() => {})
@@ -330,7 +351,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   function upsertSpatialDevice(updatedDevice) {
     let matchedRoom = false
 
-    spatialScene.value = {
+    spatialScene.value = normalizeSpatialScene({
       ...spatialScene.value,
       rooms: spatialScene.value.rooms.map((room) => {
         const deviceIndex = room.devices.findIndex((device) => device.id === updatedDevice.id)
@@ -351,12 +372,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           nextDevices.push(updatedDevice)
         }
 
-        return {
-          ...room,
-          devices: nextDevices.sort((left, right) => left.name.localeCompare(right.name, 'zh-CN')),
-        }
+        return { ...room, devices: nextDevices }
       }),
-    }
+    })
 
     if (!matchedRoom) {
       scheduleSpatialRefresh(60)
@@ -391,10 +409,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return
     }
 
-    rooms.value = rooms.value.map((room) => ({
+    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => ({
       ...room,
       devices: room.devices.map((device) => (device.id === snapshot.id ? { ...device, ...snapshot } : device)),
-    }))
+    })))
+    ensureSelectedRoom()
   }
 
   function markPending(deviceId) {
@@ -478,6 +497,14 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     return runDeviceControl(deviceId, { control_kind: 'button' })
   }
 
+  async function setDeviceBrightness(deviceId, value) {
+    return runDeviceControl(deviceId, { control_kind: 'brightness', value })
+  }
+
+  async function setDeviceColorTemperature(deviceId, value) {
+    return runDeviceControl(deviceId, { control_kind: 'color_temperature', value })
+  }
+
   function applyDeviceActionLocally(deviceId, action) {
     const nextStatusByCurrentStatus = {
       on: 'off',
@@ -486,7 +513,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       offline: 'online',
     }
 
-    rooms.value = rooms.value.map((room) => ({
+    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => ({
       ...room,
       devices: room.devices.map((device) => {
         if (device.id !== deviceId) {
@@ -506,7 +533,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           raw_state: nextStatus,
         }
       }),
-    }))
+    })))
+    ensureSelectedRoom()
   }
 
   async function uploadFloorPlan({ zoneId, imageWidth, imageHeight, file, preserveExisting = true }) {
@@ -568,6 +596,37 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return payload
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '自动布局失败。'
+      throw requestError
+    } finally {
+      spatialBusy.value = false
+    }
+  }
+
+  async function uploadSceneModel({ zoneId, file, modelScale = 1 }) {
+    spatialBusy.value = true
+    spatialError.value = ''
+
+    try {
+      const formData = new FormData()
+      formData.set('zone_id', String(zoneId))
+      formData.set('model_scale', String(modelScale))
+      formData.set('file', file)
+
+      const response = await fetch(resolveApiUrl('/api/spatial/model'), {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const responseText = await response.text()
+        throw new Error(`上传 3D 模型失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+      }
+
+      const payload = await response.json()
+      await fetchSpatialScene(zoneId)
+      return payload
+    } catch (requestError) {
+      spatialError.value = requestError instanceof Error ? requestError.message : '上传 3D 模型失败。'
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -708,7 +767,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     setDeviceNumber,
     selectDeviceOption,
     pressDeviceButton,
+    setDeviceBrightness,
+    setDeviceColorTemperature,
     uploadFloorPlan,
+    uploadSceneModel,
     autoLayoutSpatialScene,
     updateRoomSpatialLayout,
     updateDevicePlacement,
