@@ -111,7 +111,7 @@ const telemetryCount = computed(() =>
 <template>
   <section class="h-full px-4 py-4 sm:px-5 sm:py-5 xl:px-8 xl:py-8">
     <template v-if="room">
-      <header class="hero-grid relative overflow-hidden rounded-[2.2rem] border border-white/70 bg-gradient-to-br from-white/90 via-white/82 to-amber-50/60 px-5 py-5 shadow-sm sm:px-6 sm:py-6">
+      <header class="hero-grid relative overflow-hidden rounded-[2rem] border border-white/70 bg-gradient-to-br from-white/92 via-white/84 to-amber-50/58 px-5 py-5 shadow-sm sm:px-6 sm:py-6">
         <div class="pointer-events-none absolute inset-0">
           <div class="absolute right-[-3rem] top-[-2rem] h-40 w-40 rounded-full bg-auric/20 blur-3xl" />
           <div class="absolute bottom-[-3rem] left-[20%] h-36 w-36 rounded-full bg-lagoon/10 blur-3xl" />
@@ -119,54 +119,44 @@ const telemetryCount = computed(() =>
 
         <div class="relative">
           <p class="text-xs font-semibold uppercase tracking-[0.34em] text-lagoon sm:text-sm">{{ room.zone.name }}</p>
-          <div class="mt-3 flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
+          <div class="mt-3 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h2 class="font-display text-[2.5rem] leading-[0.95] text-ink sm:text-[3rem] xl:text-[3.9rem]">{{ room.name }}</h2>
+              <h2 class="font-display text-[2.3rem] leading-[0.95] text-ink sm:text-[2.8rem] xl:text-[3.1rem]">{{ room.name }}</h2>
               <p v-if="room.description" class="mt-3 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base">
                 {{ room.description }}
               </p>
               <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
-                当前视图优先呈现真正会被日常查看和控制的实体，把复杂底层数据整理为一张更具空间感和节奏感的居家工作台。
+                这个房间页优先展示真正会被频繁查看和控制的实体，保证多设备情况下也能快速扫视与操作。
               </p>
             </div>
 
-            <div class="grid gap-3 sm:grid-cols-3 sm:max-w-2xl">
-              <div class="control-surface rounded-[1.6rem] px-4 py-4">
+            <div class="grid gap-3 sm:grid-cols-3 xl:min-w-[480px]">
+              <div class="control-surface rounded-[1.4rem] px-4 py-4">
                 <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">实体总数</p>
-                <p class="mt-3 text-3xl font-semibold text-ink">{{ room.devices.length }}</p>
+                <p class="mt-2 text-2xl font-semibold text-ink">{{ room.devices.length }}</p>
               </div>
-              <div class="control-surface rounded-[1.6rem] px-4 py-4">
+              <div class="control-surface rounded-[1.4rem] px-4 py-4">
                 <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">可控项目</p>
-                <p class="mt-3 text-3xl font-semibold text-ink">{{ controllableCount }}</p>
+                <p class="mt-2 text-2xl font-semibold text-ink">{{ controllableCount }}</p>
               </div>
-              <div class="control-surface rounded-[1.6rem] px-4 py-4">
+              <div class="control-surface rounded-[1.4rem] px-4 py-4">
                 <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">监测项目</p>
-                <p class="mt-3 text-3xl font-semibold text-ink">{{ telemetryCount }}</p>
+                <p class="mt-2 text-2xl font-semibold text-ink">{{ telemetryCount }}</p>
               </div>
             </div>
           </div>
         </div>
       </header>
 
-      <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div class="glass-soft rounded-[1.8rem] px-5 py-4">
-          <p class="text-[11px] uppercase tracking-[0.28em] text-slate-500">Room Narrative</p>
-          <p class="mt-3 text-sm leading-7 text-slate-600">
-            这里展示的是经过过滤与聚合后的家庭主面板视图。同一台家电的多种能力会尽量折叠进一张卡片，减少信息噪音，也让真实控制路径更短。
-          </p>
+      <div class="mt-4 flex flex-wrap items-center gap-3">
+        <div class="glass-soft rounded-full px-4 py-2 text-sm text-slate-600">
+          面板卡片 {{ cardCount }}
         </div>
-
-        <div class="glass-soft rounded-[1.8rem] px-5 py-4">
-          <p class="text-[11px] uppercase tracking-[0.28em] text-slate-500">Surface Summary</p>
-          <div class="mt-3 flex items-end justify-between">
-            <div>
-              <p class="text-sm text-slate-500">面板卡片</p>
-              <p class="font-display mt-1 text-[2.4rem] leading-none text-ink">{{ cardCount }}</p>
-            </div>
-            <div class="rounded-full bg-ink px-3 py-1 text-[11px] uppercase tracking-[0.18em] text-white/80">
-              Curated
-            </div>
-          </div>
+        <div class="glass-soft rounded-full px-4 py-2 text-sm text-slate-600">
+          已做设备聚合
+        </div>
+        <div class="glass-soft rounded-full px-4 py-2 text-sm text-slate-600">
+          适合多设备浏览
         </div>
       </div>
 
@@ -179,7 +169,7 @@ const telemetryCount = computed(() =>
 
       <div
         v-if="groupedItems.length > 0"
-        class="mt-6 grid gap-4 md:gap-5 2xl:grid-cols-2"
+        class="mt-6 grid gap-4 md:grid-cols-2 md:gap-5 2xl:grid-cols-3"
       >
         <template v-for="item in groupedItems" :key="item.key">
           <ApplianceCard
@@ -187,7 +177,6 @@ const telemetryCount = computed(() =>
             :title="item.title"
             :appliance-type="item.applianceType"
             :devices="item.devices"
-            class="2xl:col-span-2"
           />
 
           <DeviceCard

@@ -39,6 +39,7 @@ const genericControlDevices = computed(() =>
 const sensorDevices = computed(() =>
   props.devices.filter((device) => !device.can_control && ['temperature', 'humidity', 'moisture'].includes(device.device_class ?? '')),
 )
+const summaryLine = computed(() => `${controlDevices.value.length} 个控制项 · ${sensorDevices.value.length} 个监测项`)
 
 const sliderDrafts = ref({})
 const selectDrafts = ref({})
@@ -276,14 +277,14 @@ async function handleButtonPress(deviceId) {
 
 <template>
   <article
-    class="relative overflow-hidden rounded-[2.15rem] border p-5 sm:p-6"
+    class="relative flex h-full flex-col overflow-hidden rounded-[2rem] border p-4 sm:p-5"
     :class="applianceMeta.cardClass"
   >
     <div class="absolute right-[-3rem] top-[-3rem] h-36 w-36 rounded-full bg-white/35 blur-3xl" />
 
-    <div class="relative flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-start lg:justify-between" :class="applianceMeta.sectionClass">
-      <div class="flex items-start gap-4 rounded-[1.8rem] border px-4 py-4" :class="applianceMeta.sectionClass">
-        <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm" :class="applianceMeta.iconWrapperClass">
+    <div class="relative flex items-start justify-between gap-3">
+      <div class="flex min-w-0 items-start gap-3">
+        <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.2rem] shadow-sm" :class="applianceMeta.iconWrapperClass">
           <svg v-if="applianceType === 'fridge'" class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M7 3h10" />
             <path d="M8 3v18" />
@@ -334,40 +335,27 @@ async function handleButtonPress(deviceId) {
           </svg>
         </div>
 
-        <div>
+        <div class="min-w-0">
           <p class="text-xs font-semibold uppercase tracking-[0.28em]" :class="applianceMeta.chipClass">{{ applianceMeta.eyebrow }}</p>
-          <h3 class="font-display mt-3 text-[2rem] leading-none text-ink sm:text-[2.25rem]">{{ title }}</h3>
-          <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base">
-            这张卡片会优先按 Home Assistant 设备维度聚合显示，把同一台家电的控制与监测能力收拢到一个更稳定、更高级的操作表面。
-          </p>
+          <h3 class="font-display mt-2 truncate text-[1.6rem] leading-none text-ink sm:text-[1.85rem]">{{ title }}</h3>
+          <p class="mt-2 text-sm text-slate-500">{{ summaryLine }}</p>
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-3 sm:min-w-[300px]">
-        <div class="rounded-[1.4rem] border px-4 py-3" :class="applianceMeta.sectionClass">
-          <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">类型</p>
-          <p class="mt-2 text-sm font-semibold text-ink">{{ applianceMeta.badge }}</p>
-        </div>
-        <div class="rounded-[1.4rem] border px-4 py-3" :class="applianceMeta.sectionClass">
-          <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">控制项</p>
-          <p class="mt-2 text-2xl font-semibold text-ink">{{ controlDevices.length }}</p>
-        </div>
-        <div class="rounded-[1.4rem] border px-4 py-3" :class="applianceMeta.sectionClass">
-          <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">监测项</p>
-          <p class="mt-2 text-2xl font-semibold text-ink">{{ sensorDevices.length }}</p>
-        </div>
+      <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+        {{ applianceMeta.badge }}
       </div>
     </div>
 
-    <div v-if="sensorDevices.length > 0" class="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+    <div v-if="sensorDevices.length > 0" class="mt-4 grid gap-3 sm:grid-cols-2">
       <div
         v-for="device in sensorDevices"
         :key="device.id"
-        class="rounded-[1.5rem] border px-4 py-4"
+        class="rounded-[1.3rem] border px-4 py-3"
         :class="applianceMeta.sectionClass"
       >
         <p class="text-xs uppercase tracking-[0.16em] text-slate-400">{{ shortLabel(device) }}</p>
-        <p class="mt-3 text-3xl font-semibold text-ink">
+        <p class="mt-2 text-2xl font-semibold text-ink">
           {{ device.raw_state ?? '--' }}
           <span v-if="device.unit_of_measurement" class="ml-1 text-base font-medium text-slate-500">
             {{ device.unit_of_measurement }}
@@ -376,11 +364,12 @@ async function handleButtonPress(deviceId) {
       </div>
     </div>
 
-    <div v-if="climateDevices.length > 0" class="mt-5 grid gap-4 xl:grid-cols-2">
+    <div v-if="climateDevices.length > 0" class="mt-4 space-y-3">
+      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">环境控制</p>
       <div
         v-for="device in climateDevices"
         :key="`climate-${device.id}`"
-        class="rounded-[1.5rem] border px-4 py-4"
+        class="rounded-[1.35rem] border px-4 py-4"
         :class="applianceMeta.sectionClass"
       >
         <div class="flex items-start justify-between gap-3">
@@ -459,11 +448,12 @@ async function handleButtonPress(deviceId) {
       </div>
     </div>
 
-    <div v-if="mediaDevices.length > 0" class="mt-5 grid gap-4 xl:grid-cols-2">
+    <div v-if="mediaDevices.length > 0" class="mt-4 space-y-3">
+      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">影音控制</p>
       <div
         v-for="device in mediaDevices"
         :key="`media-${device.id}`"
-        class="rounded-[1.5rem] border px-4 py-4"
+        class="rounded-[1.35rem] border px-4 py-4"
         :class="applianceMeta.sectionClass"
       >
         <div class="flex items-start justify-between gap-3">
@@ -534,11 +524,12 @@ async function handleButtonPress(deviceId) {
       </div>
     </div>
 
-    <div v-if="genericControlDevices.length > 0" class="mt-5 grid gap-4 xl:grid-cols-2">
+    <div v-if="genericControlDevices.length > 0" class="mt-4 space-y-3">
+      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">设备控制</p>
       <div
         v-for="device in genericControlDevices"
         :key="device.id"
-        class="rounded-[1.5rem] border px-4 py-4"
+        class="rounded-[1.35rem] border px-4 py-4"
         :class="applianceMeta.sectionClass"
       >
         <div class="flex items-start justify-between gap-3">
