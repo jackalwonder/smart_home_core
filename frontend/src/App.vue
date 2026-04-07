@@ -3,14 +3,20 @@ import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import DashboardLayout from './components/DashboardLayout.vue'
+import FloorPlanStudio from './components/FloorPlanStudio.vue'
+import HomeSpatialOverview from './components/HomeSpatialOverview.vue'
 import RoomView from './components/RoomView.vue'
 import { useSmartHomeStore } from './stores/smartHome'
 
 const smartHomeStore = useSmartHomeStore()
 const {
   rooms,
+  spatialScene,
   isLoading,
+  spatialLoading,
+  spatialBusy,
   error,
+  spatialError,
   actionError,
   connectionStatus,
   roomCount,
@@ -123,10 +129,29 @@ onBeforeUnmount(() => {
       </div>
     </div>
 
-    <RoomView
-      v-else
-      :room="selectedRoom"
-      :action-error="actionError"
-    />
+    <div v-else class="pb-4 sm:pb-5 xl:pb-8">
+      <HomeSpatialOverview
+        :rooms="rooms"
+        :selected-room-id="selectedRoomId"
+        :connection-label="connectionLabel"
+        :formatted-last-message="formattedLastMessage"
+        @select-room="smartHomeStore.setSelectedRoom"
+      />
+
+      <FloorPlanStudio
+        :scene="spatialScene"
+        :selected-room-id="selectedRoomId"
+        :spatial-loading="spatialLoading"
+        :spatial-busy="spatialBusy"
+        :spatial-error="spatialError"
+        :action-error="actionError"
+        @select-room="smartHomeStore.setSelectedRoom"
+      />
+
+      <RoomView
+        :room="selectedRoom"
+        :action-error="actionError"
+      />
+    </div>
   </DashboardLayout>
 </template>

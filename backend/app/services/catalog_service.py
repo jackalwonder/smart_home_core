@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any
+from typing import Any, Callable
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -68,7 +68,16 @@ def create_room(db: Session, payload: RoomCreate) -> Room:
     if zone is None:
         raise NotFoundError("未找到对应区域。")
 
-    room = Room(name=payload.name, description=payload.description, zone_id=payload.zone_id)
+    room = Room(
+        name=payload.name,
+        description=payload.description,
+        zone_id=payload.zone_id,
+        plan_x=payload.plan_x,
+        plan_y=payload.plan_y,
+        plan_width=payload.plan_width,
+        plan_height=payload.plan_height,
+        plan_rotation=payload.plan_rotation,
+    )
     db.add(room)
     try:
         db.commit()
@@ -95,6 +104,10 @@ def create_device(db: Session, payload: DeviceCreate) -> Device:
         device_type=payload.device_type,
         current_status=payload.current_status,
         room_id=payload.room_id,
+        plan_x=payload.plan_x,
+        plan_y=payload.plan_y,
+        plan_z=payload.plan_z,
+        plan_rotation=payload.plan_rotation,
     )
     db.add(device)
     try:
@@ -138,35 +151,25 @@ def list_room_snapshots(db: Session) -> list[Room]:
 async def list_room_snapshots_for_ui(db: Session) -> list[dict[str, Any]]:
     rooms = await run_in_threadpool_session(lambda session: list_room_snapshots(session))
     state_map, registry_map = await _load_home_assistant_context()
+    return _build_room_snapshots_for_frontend(
+        rooms,
+        state_map,
+        registry_map,
+        include_empty_rooms=False,
+        device_filter=_should_include_in_dashboard,
+    )
 
-    snapshots: list[dict[str, Any]] = []
-    for room in rooms:
-        # 这里会把 Home Assistant 的原始实体过滤、归一化后再输出给主面板。
-        devices = [
-            device_view
-            for device in room.devices
-            if not _is_noise_entity(device.ha_entity_id)
-            for device_view in [_serialize_device(device, state_map.get(device.ha_entity_id), registry_map.get(device.ha_entity_id))]
-            if _should_include_in_dashboard(device_view)
-        ]
-        if not devices:
-            continue
-        snapshots.append(
-            {
-                "id": room.id,
-                "zone_id": room.zone_id,
-                "name": room.name,
-                "description": room.description,
-                "zone": {
-                    "id": room.zone.id,
-                    "name": room.zone.name,
-                    "description": room.zone.description,
-                },
-                "devices": sorted(devices, key=lambda item: item["name"]),
-            }
-        )
 
-    return snapshots
+async def list_room_snapshots_for_spatial_scene(db: Session) -> list[dict[str, Any]]:
+    rooms = await run_in_threadpool_session(lambda session: list_room_snapshots(session))
+    state_map, registry_map = await _load_home_assistant_context()
+    return _build_room_snapshots_for_frontend(
+        rooms,
+        state_map,
+        registry_map,
+        include_empty_rooms=True,
+        device_filter=_should_include_in_spatial_scene,
+    )
 
 
 async def list_devices_by_room_for_ui(db: Session, room_id: int) -> list[dict[str, Any]]:
@@ -189,6 +192,59 @@ async def _load_home_assistant_context() -> tuple[dict[str, dict[str, Any]], dic
     state_task = asyncio.create_task(_load_state_map())
     registry_task = asyncio.create_task(_load_registry_map())
     return await asyncio.gather(state_task, registry_task)
+
+
+def _build_room_snapshots_for_frontend(
+    rooms: list[Room],
+    state_map: dict[str, dict[str, Any]],
+    registry_map: dict[str, RegistryEntityInfo],
+    *,
+    include_empty_rooms: bool,
+    device_filter: Callable[[dict[str, Any]], bool],
+) -> list[dict[str, Any]]:
+    snapshots: list[dict[str, Any]] = []
+    for room in rooms:
+        devices = [
+            device_view
+            for device in room.devices
+            if not _is_noise_entity(device.ha_entity_id)
+            for device_view in [_serialize_device(device, state_map.get(device.ha_entity_id), registry_map.get(device.ha_entity_id))]
+            if device_filter(device_view)
+        ]
+
+        if not include_empty_rooms and not devices:
+            continue
+
+        environment = _room_environment_summary(room.devices, state_map)
+        snapshots.append(
+            {
+                "id": room.id,
+                "zone_id": room.zone_id,
+                "name": room.name,
+                "description": room.description,
+                "zone": {
+                    "id": room.zone.id,
+                    "name": room.zone.name,
+                    "description": room.zone.description,
+                    "floor_plan_image_path": room.zone.floor_plan_image_path,
+                    "floor_plan_image_width": room.zone.floor_plan_image_width,
+                    "floor_plan_image_height": room.zone.floor_plan_image_height,
+                    "floor_plan_analysis": room.zone.floor_plan_analysis,
+                },
+                "plan_x": room.plan_x,
+                "plan_y": room.plan_y,
+                "plan_width": room.plan_width,
+                "plan_height": room.plan_height,
+                "plan_rotation": room.plan_rotation,
+                "ambient_temperature": environment["ambient_temperature"],
+                "ambient_humidity": environment["ambient_humidity"],
+                "occupancy_status": environment["occupancy_status"],
+                "active_device_count": environment["active_device_count"],
+                "devices": sorted(devices, key=lambda item: item["name"]),
+            }
+        )
+
+    return snapshots
 
 
 def _serialize_device(
@@ -232,6 +288,10 @@ def _serialize_device(
         "media_source_options": _media_source_options(entity_domain, attributes),
         "appliance_name": appliance_name,
         "appliance_type": appliance_type,
+        "plan_x": device.plan_x,
+        "plan_y": device.plan_y,
+        "plan_z": device.plan_z,
+        "plan_rotation": device.plan_rotation,
     }
 
 
@@ -375,6 +435,20 @@ def _should_include_in_dashboard(device_view: dict[str, Any]) -> bool:
     return False
 
 
+def _should_include_in_spatial_scene(device_view: dict[str, Any]) -> bool:
+    domain = device_view["entity_domain"]
+    if domain in HIDDEN_DASHBOARD_DOMAINS:
+        return False
+
+    if _should_include_in_dashboard(device_view):
+        return True
+
+    if domain == "binary_sensor":
+        return device_view.get("device_class") in {"motion", "presence", "occupancy"}
+
+    return domain in {"camera", "climate", "cover", "fan", "light", "lock", "media_player", "sensor", "switch"}
+
+
 def _appliance_name(device_name: str, registry_info: RegistryEntityInfo | None) -> str:
     if registry_info and registry_info.device_name:
         return registry_info.device_name
@@ -427,3 +501,120 @@ def _appliance_type(
 
 def is_aggregated_appliance_type(appliance_type: str | None) -> bool:
     return appliance_type in AGGREGATED_APPLIANCE_TYPES
+
+
+def _room_environment_summary(
+    devices: list[Device],
+    state_map: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    temperature: float | None = None
+    humidity: float | None = None
+    occupancy_status: str | None = None
+    active_device_count = 0
+
+    for device in devices:
+        state = state_map.get(device.ha_entity_id)
+        attributes = state.get("attributes", {}) if isinstance(state, dict) else {}
+        raw_state = str(state.get("state")) if isinstance(state, dict) and state.get("state") is not None else None
+        entity_domain = device.ha_entity_id.split(".", 1)[0]
+        device_class = _string_attribute(attributes, "device_class")
+
+        if raw_state and raw_state.lower() in {"on", "online", "playing", "heat", "cool", "heat_cool", "dry", "fan_only", "auto"}:
+            active_device_count += 1
+
+        if temperature is None and device_class == "temperature":
+            temperature = _coerce_optional_float(raw_state)
+
+        if humidity is None and device_class == "humidity":
+            humidity = _coerce_optional_float(raw_state)
+
+        if occupancy_status is None and entity_domain == "binary_sensor" and device_class in {"motion", "presence", "occupancy"}:
+            occupancy_status = "occupied" if (raw_state or "").lower() == "on" else "vacant"
+
+    return {
+        "ambient_temperature": temperature,
+        "ambient_humidity": humidity,
+        "occupancy_status": occupancy_status,
+        "active_device_count": active_device_count,
+    }
+
+
+def _coerce_optional_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def get_zone(db: Session, zone_id: int) -> Zone:
+    zone = db.get(Zone, zone_id)
+    if zone is None:
+        raise NotFoundError("未找到对应区域。")
+    return zone
+
+
+def get_room(db: Session, room_id: int) -> Room:
+    room = db.get(Room, room_id)
+    if room is None:
+        raise NotFoundError("未找到对应房间。")
+    return room
+
+
+def update_zone_floor_plan(
+    db: Session,
+    zone_id: int,
+    image_path: str,
+    image_width: int,
+    image_height: int,
+    analysis: str,
+) -> Zone:
+    zone = get_zone(db, zone_id)
+    zone.floor_plan_image_path = image_path
+    zone.floor_plan_image_width = image_width
+    zone.floor_plan_image_height = image_height
+    zone.floor_plan_analysis = analysis
+    db.commit()
+    db.refresh(zone)
+    return zone
+
+
+def update_room_layout(
+    db: Session,
+    room_id: int,
+    *,
+    plan_x: float | None,
+    plan_y: float | None,
+    plan_width: float | None,
+    plan_height: float | None,
+    plan_rotation: float | None,
+) -> Room:
+    room = get_room(db, room_id)
+    room.plan_x = plan_x
+    room.plan_y = plan_y
+    room.plan_width = plan_width
+    room.plan_height = plan_height
+    room.plan_rotation = plan_rotation
+    db.commit()
+    db.refresh(room)
+    return room
+
+
+def update_device_placement(
+    db: Session,
+    device_id: int,
+    *,
+    plan_x: float | None,
+    plan_y: float | None,
+    plan_z: float | None,
+    plan_rotation: float | None,
+) -> Device:
+    device = get_device(db, device_id)
+    device.plan_x = plan_x
+    device.plan_y = plan_y
+    device.plan_z = plan_z
+    device.plan_rotation = plan_rotation
+    db.commit()
+    db.refresh(device)
+    return device

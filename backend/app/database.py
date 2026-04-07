@@ -3,6 +3,7 @@ from __future__ import annotations
 """数据库连接、会话工厂与线程池会话辅助函数。"""
 
 import os
+from pathlib import Path
 from collections.abc import Generator
 from typing import Any, Callable, TypeVar
 
@@ -21,6 +22,9 @@ def _default_database_url() -> str:
 
 
 DATABASE_URL = os.getenv("DATABASE_URL", _default_database_url())
+DATA_DIR = Path(os.getenv("APP_DATA_DIR", "/app/data")).resolve()
+MEDIA_DIR = DATA_DIR / "media"
+FLOOR_PLAN_DIR = MEDIA_DIR / "floorplans"
 
 
 class Base(DeclarativeBase):
@@ -34,12 +38,53 @@ T = TypeVar("T")
 
 
 def ensure_runtime_schema() -> None:
+    FLOOR_PLAN_DIR.mkdir(parents=True, exist_ok=True)
+
     with engine.begin() as connection:
         connection.exec_driver_sql(
             "ALTER TABLE devices ADD COLUMN IF NOT EXISTS ha_device_id VARCHAR(255)"
         )
         connection.exec_driver_sql(
             "CREATE INDEX IF NOT EXISTS ix_devices_ha_device_id ON devices (ha_device_id)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_plan_image_path VARCHAR(255)"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_plan_image_width INTEGER"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_plan_image_height INTEGER"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE zones ADD COLUMN IF NOT EXISTS floor_plan_analysis TEXT"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS plan_x DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS plan_y DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS plan_width DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS plan_height DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE rooms ADD COLUMN IF NOT EXISTS plan_rotation DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS plan_x DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS plan_y DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS plan_z DOUBLE PRECISION"
+        )
+        connection.exec_driver_sql(
+            "ALTER TABLE devices ADD COLUMN IF NOT EXISTS plan_rotation DOUBLE PRECISION"
         )
 
 

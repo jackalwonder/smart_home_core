@@ -23,12 +23,21 @@ class ZoneRead(StrictSchema):
     id: int
     name: str
     description: str | None
+    floor_plan_image_path: str | None = None
+    floor_plan_image_width: int | None = None
+    floor_plan_image_height: int | None = None
+    floor_plan_analysis: str | None = None
 
 
 class RoomCreate(StrictSchema):
     zone_id: int = Field(gt=0)
     name: str = Field(min_length=1, max_length=100)
     description: str | None = Field(default=None, max_length=1000)
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_width: float | None = None
+    plan_height: float | None = None
+    plan_rotation: float | None = None
 
 
 class RoomRead(StrictSchema):
@@ -38,6 +47,11 @@ class RoomRead(StrictSchema):
     zone_id: int
     name: str
     description: str | None
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_width: float | None = None
+    plan_height: float | None = None
+    plan_rotation: float | None = None
 
 
 class DeviceCreate(StrictSchema):
@@ -47,6 +61,10 @@ class DeviceCreate(StrictSchema):
     ha_device_id: str | None = Field(default=None, max_length=255)
     device_type: DeviceType
     current_status: DeviceStatus = DeviceStatus.UNKNOWN
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_z: float | None = None
+    plan_rotation: float | None = None
 
 
 class DeviceAdminRead(StrictSchema):
@@ -59,6 +77,10 @@ class DeviceAdminRead(StrictSchema):
     ha_device_id: str | None = None
     device_type: DeviceType
     current_status: DeviceStatus
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_z: float | None = None
+    plan_rotation: float | None = None
 
 
 class DeviceRead(StrictSchema):
@@ -91,6 +113,10 @@ class DeviceRead(StrictSchema):
     media_source_options: list[str] = Field(default_factory=list)
     appliance_name: str | None = None
     appliance_type: str | None = None
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_z: float | None = None
+    plan_rotation: float | None = None
 
 
 class RoomStateRead(StrictSchema):
@@ -100,8 +126,66 @@ class RoomStateRead(StrictSchema):
     zone_id: int
     name: str
     description: str | None
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_width: float | None = None
+    plan_height: float | None = None
+    plan_rotation: float | None = None
     zone: ZoneRead
+    ambient_temperature: float | None = None
+    ambient_humidity: float | None = None
+    occupancy_status: str | None = None
+    active_device_count: int = Field(default=0, ge=0)
     devices: list[DeviceRead] = Field(default_factory=list)
+
+
+class RoomLayoutUpdate(StrictSchema):
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_width: float | None = None
+    plan_height: float | None = None
+    plan_rotation: float | None = None
+
+
+class DevicePlacementUpdate(StrictSchema):
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_z: float | None = None
+    plan_rotation: float | None = None
+
+
+class SpatialAutoLayoutRequest(StrictSchema):
+    zone_id: int = Field(gt=0)
+    preserve_existing: bool = True
+
+
+class SpatialManualDeviceCreate(StrictSchema):
+    room_id: int = Field(gt=0)
+    name: str = Field(min_length=1, max_length=100)
+    ha_entity_id: str | None = Field(default=None, max_length=255)
+    ha_device_id: str | None = Field(default=None, max_length=255)
+    device_type: DeviceType
+    current_status: DeviceStatus = DeviceStatus.UNKNOWN
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_z: float | None = None
+    plan_rotation: float | None = None
+
+
+class SpatialSceneRead(StrictSchema):
+    zone: ZoneRead | None = None
+    rooms: list[RoomStateRead] = Field(default_factory=list)
+
+
+class FloorPlanUploadResponse(StrictSchema):
+    zone: ZoneRead
+    updated_room_count: int = Field(ge=0)
+    image_url: str
+
+
+class SpatialAutoLayoutResponse(StrictSchema):
+    zone: ZoneRead
+    updated_room_count: int = Field(ge=0)
 
 
 class DeviceControlAction(str, Enum):

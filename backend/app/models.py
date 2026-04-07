@@ -4,7 +4,7 @@ from enum import Enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, Float, Integer
 from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -37,6 +37,10 @@ class Zone(Base):
     id: Mapped[int] = mapped_column(primary_key=True)
     name: Mapped[str] = mapped_column(String(100), unique=True, index=True)
     description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
+    floor_plan_image_path: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    floor_plan_image_width: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    floor_plan_image_height: Mapped[Optional[int]] = mapped_column(Integer(), nullable=True)
+    floor_plan_analysis: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
 
     rooms: Mapped[list["Room"]] = relationship(
         back_populates="zone",
@@ -53,6 +57,11 @@ class Room(Base):
     name: Mapped[str] = mapped_column(String(100), index=True)
     description: Mapped[Optional[str]] = mapped_column(Text(), nullable=True)
     zone_id: Mapped[int] = mapped_column(ForeignKey("zones.id", ondelete="CASCADE"), index=True)
+    plan_x: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_y: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_width: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_height: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_rotation: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
 
     zone: Mapped["Zone"] = relationship(back_populates="rooms")
     devices: Mapped[list["Device"]] = relationship(
@@ -78,6 +87,10 @@ class Device(Base):
         default=DeviceStatus.UNKNOWN,
     )
     room_id: Mapped[int] = mapped_column(ForeignKey("rooms.id", ondelete="CASCADE"), index=True)
+    plan_x: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_y: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_z: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
+    plan_rotation: Mapped[Optional[float]] = mapped_column(Float(), nullable=True)
 
     room: Mapped["Room"] = relationship(back_populates="devices")
 

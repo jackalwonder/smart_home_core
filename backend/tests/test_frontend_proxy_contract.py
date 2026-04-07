@@ -20,3 +20,4 @@ def test_nginx_template_injects_control_key_for_api_and_websocket() -> None:
     assert 'proxy_set_header X-API-Key "${APP_CONTROL_API_KEY}";' in template_source
     assert "location /api/" in template_source
     assert "location /ws/" in template_source
+    assert "location /media/" in template_source

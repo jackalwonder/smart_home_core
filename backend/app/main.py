@@ -9,13 +9,15 @@ from contextlib import suppress
 
 from fastapi import FastAPI
 from fastapi.concurrency import run_in_threadpool
+from fastapi.staticfiles import StaticFiles
 
 from app import models as _models  # noqa: F401
-from app.database import Base, engine, ensure_runtime_schema
+from app.database import Base, MEDIA_DIR, engine, ensure_runtime_schema
 from app.routers import chat
 from app.routers.api import router as api_router
 from app.routers.management import router as management_router
 from app.routers.realtime import router as realtime_router
+from app.routers.spatial import router as spatial_router
 from app.services import home_assistant_import_service, intent_service
 from app.services.errors import ConfigurationError, ExternalServiceError
 from app.services.home_assistant_ws import HomeAssistantWebSocketListener
@@ -81,7 +83,9 @@ app = FastAPI(
 app.include_router(management_router)
 app.include_router(api_router)
 app.include_router(realtime_router)
+app.include_router(spatial_router)
 app.include_router(chat.router, prefix="/api/chat", tags=["Voice Chat"])
+app.mount("/media", StaticFiles(directory=str(MEDIA_DIR), check_dir=False), name="media")
 
 
 @app.get("/health", tags=["系统"])
