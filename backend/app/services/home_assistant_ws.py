@@ -1,8 +1,9 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
-"""Home Assistant WebSocket 监听器，负责状态回流与自动导入。"""
+"""Home Assistant WebSocket listener for realtime state sync and auto-import."""
 
 import asyncio
+import contextlib
 import json
 import logging
 import os
@@ -17,6 +18,7 @@ from websockets.exceptions import ConnectionClosed, WebSocketException
 from app.database import SessionLocal
 from app.models import Device, DeviceStatus
 from app.services import home_assistant_import_service
+from app.services.home_assistant_state_mapper import map_home_assistant_state
 from app.services.realtime import build_catalog_refresh_event, build_device_update_event, device_realtime_hub
 
 logger = logging.getLogger(__name__)
@@ -40,6 +42,8 @@ class HomeAssistantWebSocketListener:
         self._task: asyncio.Task[None] | None = None
         self._auto_import_lock = asyncio.Lock()
         self._last_auto_import_at = 0.0
+        self._pending_auto_imports: dict[str, DeviceStatus] = {}
+        self._auto_import_task: asyncio.Task[None] | None = None
 
     @classmethod
     def from_env(cls) -> "HomeAssistantWebSocketListener | None":
@@ -61,6 +65,10 @@ class HomeAssistantWebSocketListener:
 
     async def stop(self) -> None:
         self._stop_event.set()
+        if self._auto_import_task is not None:
+            self._auto_import_task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await self._auto_import_task
         if self._task is None:
             return
         self._task.cancel()
@@ -83,7 +91,6 @@ class HomeAssistantWebSocketListener:
                 logger.exception("Home Assistant listener crashed; reconnect will be attempted.")
                 if self._stop_event.is_set():
                     break
-                # 采用指数退避，避免 Home Assistant 故障时持续高频重连。
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self.reconnect_max_delay)
 
@@ -186,23 +193,46 @@ class HomeAssistantWebSocketListener:
         await self._attempt_auto_import(entity_id, mapped_status)
 
     async def _attempt_auto_import(self, entity_id: str, status: DeviceStatus) -> None:
-        if self._auto_import_lock.locked():
-            logger.debug("Skipping automatic import for %s because another import is already running.", entity_id)
-            return
+        self._pending_auto_imports[entity_id] = status
+        self._ensure_auto_import_worker()
 
-        now = time.monotonic()
-        # 未知实体连续大量出现时，靠冷却时间限制导入风暴。
-        if now - self._last_auto_import_at < self.auto_import_cooldown:
-            logger.debug("Skipping automatic import for %s because cooldown is active.", entity_id)
+    def _ensure_auto_import_worker(self) -> None:
+        if self._auto_import_task is not None and not self._auto_import_task.done():
             return
+        self._auto_import_task = asyncio.create_task(
+            self._drain_auto_import_queue(),
+            name="home-assistant-auto-import",
+        )
 
-        async with self._auto_import_lock:
-            self._last_auto_import_at = time.monotonic()
-            imported = await asyncio.to_thread(self._import_and_publish_entity, entity_id, status)
-            if imported:
-                logger.info("Automatically imported newly discovered Home Assistant entity %s.", entity_id)
-            else:
-                logger.debug("Automatic import completed but entity %s is still not tracked.", entity_id)
+    async def _drain_auto_import_queue(self) -> None:
+        try:
+            while self._pending_auto_imports and not self._stop_event.is_set():
+                wait_for_cooldown = self.auto_import_cooldown - (time.monotonic() - self._last_auto_import_at)
+                if wait_for_cooldown > 0:
+                    await asyncio.sleep(wait_for_cooldown)
+
+                async with self._auto_import_lock:
+                    pending = dict(self._pending_auto_imports)
+                    self._pending_auto_imports.clear()
+                    imported = await asyncio.to_thread(self._import_and_publish_entities, pending)
+                    if not imported["success"]:
+                        self._pending_auto_imports.update(pending)
+                        await asyncio.sleep(min(self.auto_import_cooldown, 5.0))
+                        continue
+
+                    self._last_auto_import_at = time.monotonic()
+                    missing_entities = sorted(set(pending) - imported["tracked_entities"])
+                    if missing_entities:
+                        logger.debug(
+                            "Automatic import finished but some entities are still unsupported or unavailable: %s",
+                            ", ".join(missing_entities),
+                        )
+        except asyncio.CancelledError:
+            raise
+        finally:
+            self._auto_import_task = None
+            if self._pending_auto_imports and not self._stop_event.is_set():
+                self._ensure_auto_import_worker()
 
     def _update_device_state(self, entity_id: str, status: DeviceStatus) -> bool:
         session = SessionLocal()
@@ -222,55 +252,38 @@ class HomeAssistantWebSocketListener:
         finally:
             session.close()
 
-    def _import_and_publish_entity(self, entity_id: str, status: DeviceStatus) -> bool:
+    def _import_and_publish_entities(self, pending: dict[str, DeviceStatus]) -> dict[str, object]:
         session = SessionLocal()
         try:
             asyncio.run(home_assistant_import_service.import_home_assistant_entities())
-            device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
-            if device is None:
-                return False
+            tracked_entities: set[str] = set()
+            for entity_id, status in pending.items():
+                device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
+                if device is None:
+                    continue
+                tracked_entities.add(entity_id)
+                if device.current_status != status:
+                    device.current_status = status
+                    session.flush()
 
-            if device.current_status != status:
-                device.current_status = status
-                session.commit()
-                session.refresh(device)
-
+            session.commit()
             device_realtime_hub.publish_threadsafe(
                 build_catalog_refresh_event("home_assistant_auto_import")
             )
-            return True
+            return {"success": True, "tracked_entities": tracked_entities}
         except Exception:
             session.rollback()
-            logger.exception("Failed to auto-import newly discovered entity %s.", entity_id)
-            return False
+            logger.exception(
+                "Failed to auto-import newly discovered entities: %s.",
+                ", ".join(sorted(pending)),
+            )
+            return {"success": False, "tracked_entities": set()}
         finally:
             session.close()
 
     @staticmethod
     def _map_home_assistant_state(raw_state: str) -> DeviceStatus:
-        normalized = raw_state.strip().lower()
-        state_map = {
-            "on": DeviceStatus.ON,
-            "off": DeviceStatus.OFF,
-            "home": DeviceStatus.ONLINE,
-            "open": DeviceStatus.ON,
-            "opening": DeviceStatus.ON,
-            "closed": DeviceStatus.OFF,
-            "closing": DeviceStatus.OFF,
-            "locked": DeviceStatus.ON,
-            "unlocked": DeviceStatus.OFF,
-            "playing": DeviceStatus.ON,
-            "paused": DeviceStatus.SLEEPING,
-            "idle": DeviceStatus.SLEEPING,
-            "standby": DeviceStatus.SLEEPING,
-            "sleep": DeviceStatus.SLEEPING,
-            "sleeping": DeviceStatus.SLEEPING,
-            "online": DeviceStatus.ONLINE,
-            "offline": DeviceStatus.OFFLINE,
-            "unavailable": DeviceStatus.UNAVAILABLE,
-            "unknown": DeviceStatus.UNKNOWN,
-        }
-        return state_map.get(normalized, DeviceStatus.UNKNOWN)
+        return map_home_assistant_state(raw_state)
 
     @staticmethod
     async def _receive_json(websocket: ClientConnection) -> dict[str, Any]:

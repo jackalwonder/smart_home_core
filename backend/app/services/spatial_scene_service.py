@@ -112,17 +112,26 @@ async def save_floor_plan(
     payload: bytes,
     preserve_existing: bool,
 ) -> dict[str, object]:
+    zone_media = await run_in_threadpool_session(_get_zone_media_paths, zone_id)
     analysis = floor_plan_analysis_service.analyze_floor_plan_image(payload, await _room_names_for_zone(zone_id))
     image_path = _write_floor_plan_asset(original_filename, payload)
-    result = await run_in_threadpool_session(
-        _save_floor_plan_and_apply_layout,
-        zone_id,
-        image_path,
-        int(analysis.get("image_width") or image_width),
-        int(analysis.get("image_height") or image_height),
-        _stringify_floor_plan_analysis(analysis),
-        preserve_existing,
-    )
+    try:
+        result = await run_in_threadpool_session(
+            _save_floor_plan_and_apply_layout,
+            zone_id,
+            image_path,
+            int(analysis.get("image_width") or image_width),
+            int(analysis.get("image_height") or image_height),
+            _stringify_floor_plan_analysis(analysis),
+            preserve_existing,
+        )
+    except Exception:
+        _delete_asset_if_managed(image_path, FLOOR_PLAN_DIR)
+        raise
+
+    previous_image_path = zone_media["floor_plan_image_path"]
+    if previous_image_path and previous_image_path != image_path:
+        _delete_asset_if_managed(previous_image_path, FLOOR_PLAN_DIR)
     return {
         "zone": _serialize_zone(result["zone"]),
         "updated_room_count": result["updated_room_count"],
@@ -137,14 +146,23 @@ async def save_scene_model(
     payload: bytes,
     model_scale: float,
 ) -> dict[str, object]:
+    zone_media = await run_in_threadpool_session(_get_zone_media_paths, zone_id)
     model_path = _write_scene_model_asset(original_filename, payload)
-    zone = await run_in_threadpool_session(
-        catalog_service.update_zone_three_d_model,
-        zone_id,
-        model_path,
-        _safe_model_extension(original_filename).lstrip("."),
-        model_scale,
-    )
+    try:
+        zone = await run_in_threadpool_session(
+            catalog_service.update_zone_three_d_model,
+            zone_id,
+            model_path,
+            _safe_model_extension(original_filename).lstrip("."),
+            model_scale,
+        )
+    except Exception:
+        _delete_asset_if_managed(model_path, SCENE_MODEL_DIR)
+        raise
+
+    previous_model_path = zone_media["three_d_model_path"]
+    if previous_model_path and previous_model_path != model_path:
+        _delete_asset_if_managed(previous_model_path, SCENE_MODEL_DIR)
     return {
         "zone": _serialize_zone(zone),
         "model_url": model_path,
@@ -286,6 +304,14 @@ def _serialize_device_admin(device: Device) -> dict[str, object]:
     }
 
 
+def _get_zone_media_paths(db: Session, zone_id: int) -> dict[str, str | None]:
+    zone = catalog_service.get_zone(db, zone_id)
+    return {
+        "floor_plan_image_path": zone.floor_plan_image_path,
+        "three_d_model_path": zone.three_d_model_path,
+    }
+
+
 def _list_room_names_for_zone(db: Session, zone_id: int) -> list[str]:
     stmt = select(Room.name).where(Room.zone_id == zone_id).order_by(Room.name)
     return [str(name) for name in db.scalars(stmt).all() if isinstance(name, str)]
@@ -374,6 +400,30 @@ def _resolve_floor_plan_asset_path(image_path: str | None) -> Path | None:
     if direct_path.name:
         return FLOOR_PLAN_DIR / direct_path.name
     return None
+
+
+def _resolve_managed_asset_path(asset_path: str | None, asset_dir: Path) -> Path | None:
+    if not asset_path:
+        return None
+
+    direct_path = Path(asset_path)
+    candidate = direct_path if direct_path.is_absolute() else asset_dir / direct_path.name
+    try:
+        resolved_candidate = candidate.resolve(strict=False)
+        resolved_dir = asset_dir.resolve(strict=False)
+    except OSError:
+        return None
+
+    if not resolved_candidate.is_relative_to(resolved_dir):
+        return None
+    return resolved_candidate
+
+
+def _delete_asset_if_managed(asset_path: str | None, asset_dir: Path) -> None:
+    resolved_path = _resolve_managed_asset_path(asset_path, asset_dir)
+    if resolved_path is None or not resolved_path.exists():
+        return
+    resolved_path.unlink(missing_ok=True)
 
 
 def _refresh_zone_analysis_payload(db: Session, zone_id: int) -> dict[str, object]:

@@ -14,7 +14,8 @@ from websockets.asyncio.client import connect
 from app.database import run_in_threadpool_session
 from app.models import Device, DeviceStatus, DeviceType, Room, Zone
 from app.schemas import HomeAssistantImportResponse
-from app.services.errors import ConfigurationError
+from app.services.errors import ConfigurationError, ExternalServiceError
+from app.services.home_assistant_state_mapper import map_home_assistant_state
 from app.services.home_assistant_api import HomeAssistantRestClient
 
 logger = logging.getLogger(__name__)
@@ -142,14 +143,18 @@ async def fetch_entity_registry_snapshot(
         async with connect(websocket_url, open_timeout=15, close_timeout=10, max_size=2_000_000) as websocket:
             greeting = await _receive_json(websocket)
             if greeting.get("type") != "auth_required":
-                logger.error("Unexpected Home Assistant registry handshake payload: %s", greeting)
-                return {}
+                raise ExternalServiceError(
+                    "Home Assistant",
+                    f"Unexpected registry handshake payload: {greeting}",
+                )
 
             await websocket.send(json.dumps({"type": "auth", "access_token": access_token}))
             auth_result = await _receive_json(websocket)
             if auth_result.get("type") != "auth_ok":
-                logger.error("Home Assistant registry authentication failed: %s", auth_result)
-                return {}
+                raise ExternalServiceError(
+                    "Home Assistant",
+                    f"Registry authentication failed: {auth_result}",
+                )
 
             await websocket.send(json.dumps({"id": 1, "type": "config/area_registry/list"}))
             await websocket.send(json.dumps({"id": 2, "type": "config/entity_registry/list"}))
@@ -164,7 +169,7 @@ async def fetch_entity_registry_snapshot(
             return _build_registry_snapshot(results)
     except Exception:
         logger.exception("Failed to fetch Home Assistant registry metadata.")
-        return {}
+        raise
 
 
 def _sync_entities_to_database(db: Session, entities: list[ImportEntity]) -> HomeAssistantImportResponse:
@@ -332,7 +337,10 @@ def _build_registry_snapshot(results: dict[int, dict[str, Any]]) -> dict[str, Re
     device_payload = results.get(3, {})
 
     if not area_payload.get("success") or not entity_payload.get("success") or not device_payload.get("success"):
-        return {}
+        raise ExternalServiceError(
+            "Home Assistant",
+            "Registry list commands did not complete successfully.",
+        )
 
     areas = {
         item["area_id"]: item["name"]
@@ -415,36 +423,7 @@ def _map_device_type(domain: str, entity_id: str, friendly_name: str) -> DeviceT
 
 
 def _map_device_status(raw_state: str) -> DeviceStatus:
-    normalized = raw_state.strip().lower()
-    state_map = {
-        "on": DeviceStatus.ON,
-        "off": DeviceStatus.OFF,
-        "home": DeviceStatus.ONLINE,
-        "open": DeviceStatus.ON,
-        "opening": DeviceStatus.ON,
-        "closed": DeviceStatus.OFF,
-        "closing": DeviceStatus.OFF,
-        "locked": DeviceStatus.ON,
-        "unlocked": DeviceStatus.OFF,
-        "playing": DeviceStatus.ON,
-        "paused": DeviceStatus.SLEEPING,
-        "idle": DeviceStatus.SLEEPING,
-        "standby": DeviceStatus.SLEEPING,
-        "sleep": DeviceStatus.SLEEPING,
-        "sleeping": DeviceStatus.SLEEPING,
-        "online": DeviceStatus.ONLINE,
-        "offline": DeviceStatus.OFFLINE,
-        "unavailable": DeviceStatus.UNAVAILABLE,
-        "below_horizon": DeviceStatus.OFF,
-        "above_horizon": DeviceStatus.ON,
-        "clear-night": DeviceStatus.ONLINE,
-        "cloudy": DeviceStatus.ONLINE,
-        "partlycloudy": DeviceStatus.ONLINE,
-        "rainy": DeviceStatus.ONLINE,
-        "sunny": DeviceStatus.ONLINE,
-        "unknown": DeviceStatus.UNKNOWN,
-    }
-    return state_map.get(normalized, DeviceStatus.UNKNOWN)
+    return map_home_assistant_state(raw_state)
 
 
 def _fallback_room_name(domain: str) -> str:

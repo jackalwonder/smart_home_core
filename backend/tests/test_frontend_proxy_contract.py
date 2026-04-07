@@ -14,10 +14,11 @@ def test_browser_bundle_no_longer_references_vite_api_key() -> None:
     assert "searchParams.set('token'" not in store_source
 
 
-def test_nginx_template_injects_control_key_for_api_and_websocket() -> None:
+def test_nginx_template_injects_read_key_for_api_and_websocket() -> None:
     template_source = (REPO_ROOT / "frontend/nginx.conf.template").read_text(encoding="utf-8")
 
-    assert 'proxy_set_header X-API-Key "${APP_CONTROL_API_KEY}";' in template_source
+    assert 'proxy_set_header X-API-Key "${APP_READ_API_KEY}";' in template_source
+    assert 'proxy_set_header X-API-Key "${APP_CONTROL_API_KEY}";' not in template_source
     assert "location /api/" in template_source
     assert "location /ws/" in template_source
     assert "location /media/" in template_source

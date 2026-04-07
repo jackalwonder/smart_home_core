@@ -59,7 +59,8 @@ const sceneRefs = {
   interactiveMeshes: [],
   markerByKey: new Map(),
   loader: new GLTFLoader(),
-  loadToken: 0,
+  modelRoot: null,
+  modelLoadToken: 0,
 }
 
 const pressState = reactive({
@@ -249,7 +250,6 @@ watch(
   () => [
     groupedMarkers.value,
     sceneAnalysis.value,
-    sceneModelUrl.value,
     props.showHeatLayer,
     props.showDevices,
     showDoorLayer.value,
@@ -261,6 +261,19 @@ watch(
     rebuildScene()
   },
   { deep: true },
+)
+
+watch(
+  () => [
+    sceneModelUrl.value,
+    sceneZone.value?.three_d_model_scale ?? 1,
+    planWidth.value,
+    planHeight.value,
+  ],
+  () => {
+    refreshImportedModel()
+  },
+  { immediate: true },
 )
 
 watch(
@@ -377,10 +390,14 @@ function initializeScene() {
 
   scene.add(ambientLight, hemiLight, sunLight, fillLight, rimLight)
 
+  const modelRoot = new THREE.Group()
+  scene.add(modelRoot)
+
   sceneRefs.renderer = renderer
   sceneRefs.scene = scene
   sceneRefs.camera = camera
   sceneRefs.controls = controls
+  sceneRefs.modelRoot = modelRoot
 
   renderer.domElement.addEventListener('pointerdown', handlePointerDown)
   renderer.domElement.addEventListener('pointermove', handlePointerMove)
@@ -416,6 +433,7 @@ function teardownScene() {
     sceneRefs.controls.dispose()
   }
 
+  clearImportedModel()
   disposeDynamicScene()
 
   if (renderer?.domElement?.parentNode) {
@@ -429,6 +447,7 @@ function teardownScene() {
   sceneRefs.controls = null
   sceneRefs.interactiveMeshes = []
   sceneRefs.markerByKey.clear()
+  sceneRefs.modelRoot = null
 }
 
 function disposeDynamicScene() {
@@ -469,7 +488,6 @@ function rebuildScene() {
     return
   }
 
-  sceneRefs.loadToken += 1
   disposeDynamicScene()
   sceneRefs.interactiveMeshes = []
   sceneRefs.markerByKey.clear()
@@ -534,7 +552,6 @@ function rebuildScene() {
   }
 
   scene.add(root)
-  loadImportedModel(root, sceneRefs.loadToken)
   syncCameraMode()
 }
 
@@ -1078,22 +1095,28 @@ function buildFocusBeacon(room) {
   return group
 }
 
-function loadImportedModel(root, loadToken) {
+function refreshImportedModel() {
+  const root = sceneRefs.modelRoot
+  if (!root) {
+    return
+  }
+
+  clearImportedModel()
   if (!sceneModelUrl.value) {
     return
   }
 
+  sceneRefs.modelLoadToken += 1
+  const modelLoadToken = sceneRefs.modelLoadToken
   sceneRefs.loader.load(
     sceneModelUrl.value,
     (gltf) => {
-      if (loadToken !== sceneRefs.loadToken) {
+      if (modelLoadToken !== sceneRefs.modelLoadToken) {
         disposeObject(gltf.scene)
         return
       }
 
       const model = gltf.scene
-      model.userData.dynamic = true
-
       const box = new THREE.Box3().setFromObject(model)
       const size = box.getSize(new THREE.Vector3())
       const fitScale = Math.min(
@@ -1101,13 +1124,11 @@ function loadImportedModel(root, loadToken) {
         (planHeight.value * WORLD_SCALE) / Math.max(size.z || size.y, 1),
       )
       const extraScale = Number(sceneZone.value?.three_d_model_scale ?? 1)
-      const appliedScale = fitScale * extraScale
-      model.scale.setScalar(appliedScale)
+      model.scale.setScalar(fitScale * extraScale)
 
       const fittedBox = new THREE.Box3().setFromObject(model)
       const center = fittedBox.getCenter(new THREE.Vector3())
       model.position.set(-center.x, -fittedBox.min.y, -center.z)
-
       root.add(model)
     },
     undefined,
@@ -1115,6 +1136,18 @@ function loadImportedModel(root, loadToken) {
       console.error('Failed to load imported 3D model.', error)
     },
   )
+}
+
+function clearImportedModel() {
+  const root = sceneRefs.modelRoot
+  if (!root) {
+    return
+  }
+
+  for (const child of [...root.children]) {
+    root.remove(child)
+    disposeObject(child)
+  }
 }
 
 function syncCameraMode() {

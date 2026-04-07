@@ -15,6 +15,7 @@ from app import models as _models  # noqa: F401
 from app.database import Base, MEDIA_DIR, engine, ensure_runtime_schema
 from app.middleware import RequestIDMiddleware, general_exception_handler, smart_home_exception_handler
 from app.routers import chat
+from app.routers.auth_session import router as auth_session_router
 from app.routers.api import router as api_router
 from app.routers.management import router as management_router
 from app.routers.realtime import router as realtime_router
@@ -90,6 +91,7 @@ app.add_exception_handler(SmartHomeException, smart_home_exception_handler)
 app.add_exception_handler(Exception, general_exception_handler)
 
 app.include_router(management_router)
+app.include_router(auth_session_router)
 app.include_router(api_router)
 app.include_router(realtime_router)
 app.include_router(spatial_router)

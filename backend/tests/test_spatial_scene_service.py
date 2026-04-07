@@ -1,8 +1,20 @@
 from __future__ import annotations
 
 import json
+import sys
+import types
+from pathlib import Path
 
 import pytest
+
+pil_module = types.ModuleType("PIL")
+pil_image = types.SimpleNamespace()
+pil_image_ops = types.SimpleNamespace()
+pil_module.Image = pil_image
+pil_module.ImageOps = pil_image_ops
+sys.modules.setdefault("PIL", pil_module)
+sys.modules.setdefault("PIL.Image", pil_image)
+sys.modules.setdefault("PIL.ImageOps", pil_image_ops)
 
 from app.models import DeviceType
 from app.services import catalog_service, spatial_scene_service
@@ -230,3 +242,18 @@ async def test_get_spatial_scene_upgrades_legacy_floor_plan_analysis(
     assert scene["analysis"]["source"] == "local-structure"
     assert scene["rooms"][0]["plan_x"] == 64.0
     assert scene["rooms"][0]["plan_width"] == 520.0
+
+
+def test_delete_asset_if_managed_ignores_outside_paths(tmp_path: Path) -> None:
+    managed_dir = tmp_path / "media"
+    managed_dir.mkdir()
+    managed_asset = managed_dir / "layout.png"
+    managed_asset.write_bytes(b"ok")
+    outside_asset = tmp_path / "outside.png"
+    outside_asset.write_bytes(b"ok")
+
+    spatial_scene_service._delete_asset_if_managed(str(managed_asset), managed_dir)
+    spatial_scene_service._delete_asset_if_managed(str(outside_asset), managed_dir)
+
+    assert not managed_asset.exists()
+    assert outside_asset.exists()

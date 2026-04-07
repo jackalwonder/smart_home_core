@@ -205,6 +205,15 @@ class SpatialAutoLayoutResponse(StrictSchema):
     updated_room_count: int = Field(ge=0)
 
 
+class ControlSessionRequest(StrictSchema):
+    api_key: str = Field(min_length=1, max_length=255)
+
+
+class ControlSessionRead(StrictSchema):
+    scopes: list[str] = Field(default_factory=list)
+    source: str
+
+
 class DeviceControlAction(str, Enum):
     ON = "on"
     OFF = "off"

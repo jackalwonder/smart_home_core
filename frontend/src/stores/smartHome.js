@@ -104,6 +104,38 @@ function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
+async function requestControlSession() {
+  const apiKey = window.prompt('请输入控制口令后继续操作')
+  if (!apiKey) {
+    throw new Error('已取消控制解锁。')
+  }
+
+  const response = await fetch(resolveApiUrl('/api/auth/control-session'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ api_key: apiKey.trim() }),
+  })
+
+  if (!response.ok) {
+    throw new Error('控制口令无效或已过期。')
+  }
+
+  return response.json()
+}
+
+async function fetchWithControlSession(path, options = {}) {
+  let response = await fetch(resolveApiUrl(path), options)
+  if (response.status !== 401 && response.status !== 403) {
+    return response
+  }
+
+  await requestControlSession()
+  response = await fetch(resolveApiUrl(path), options)
+  return response
+}
+
 export const useSmartHomeStore = defineStore('smartHome', () => {
   const rooms = ref([])
   const spatialScene = ref({ zone: null, analysis: null, rooms: [] })
@@ -444,7 +476,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         optimisticUpdate(device)
       }
 
-      const response = await fetch(resolveApiUrl('/api/device/control'), {
+      const response = await fetchWithControlSession('/api/device/control', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -549,7 +581,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       formData.set('preserve_existing', String(preserveExisting))
       formData.set('file', file)
 
-      const response = await fetch(resolveApiUrl('/api/spatial/floorplan'), {
+      const response = await fetchWithControlSession('/api/spatial/floorplan', {
         method: 'POST',
         body: formData,
       })
@@ -575,7 +607,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     spatialError.value = ''
 
     try {
-      const response = await fetch(resolveApiUrl('/api/spatial/auto-layout'), {
+      const response = await fetchWithControlSession('/api/spatial/auto-layout', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -612,7 +644,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       formData.set('model_scale', String(modelScale))
       formData.set('file', file)
 
-      const response = await fetch(resolveApiUrl('/api/spatial/model'), {
+      const response = await fetchWithControlSession('/api/spatial/model', {
         method: 'POST',
         body: formData,
       })
@@ -638,7 +670,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     spatialError.value = ''
 
     try {
-      const response = await fetch(resolveApiUrl(`/api/spatial/rooms/${roomId}/layout`), {
+      const response = await fetchWithControlSession(`/api/spatial/rooms/${roomId}/layout`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -670,7 +702,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     spatialError.value = ''
 
     try {
-      const response = await fetch(resolveApiUrl(`/api/spatial/devices/${deviceId}/placement`), {
+      const response = await fetchWithControlSession(`/api/spatial/devices/${deviceId}/placement`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -705,7 +737,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     spatialError.value = ''
 
     try {
-      const response = await fetch(resolveApiUrl('/api/spatial/devices/manual'), {
+      const response = await fetchWithControlSession('/api/spatial/devices/manual', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

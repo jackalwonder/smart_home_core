@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from loguru import logger
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from app.schemas.error import ErrorDetailSchema, ErrorResponseSchema
+from app.error_schemas import ErrorDetailSchema, ErrorResponseSchema
 from app.services.exceptions import SmartHomeException
 
 
