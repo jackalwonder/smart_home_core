@@ -90,6 +90,7 @@ const walkState = reactive({
 const WORLD_SCALE = 0.022
 const WALK_HEIGHT = 16
 const LOOK_SENSITIVITY = 0.006
+const ACTIVE_RUNTIME_STATES = new Set(['on', 'online', 'playing', 'heat', 'cool', 'heat_cool', 'dry', 'fan_only', 'auto'])
 const sceneZone = computed(() => props.scene?.zone ?? null)
 const sceneAnalysis = computed(() => props.scene?.analysis ?? null)
 const sceneRooms = computed(() => props.scene?.rooms ?? [])
@@ -159,6 +160,43 @@ const structureHint = computed(() => {
   }
 
   return '当前识别结果噪声较多，已自动退回到基于房间布局的稳定结构视图。'
+})
+
+const viewModeLabel = computed(() => (isWalkMode.value ? 'Walk' : 'Orbit'))
+const activeMarkerCount = computed(() => groupedMarkers.value.filter((marker) => marker.active).length)
+const controllableMarkerCount = computed(() => groupedMarkers.value.filter((marker) => marker.controlDevices.length > 0).length)
+const orbitRoomCards = computed(() =>
+  orbitRooms.value.map((room) => {
+    const devices = room.devices ?? []
+    const controlCount = devices.filter((device) => device.can_control).length
+    const activeCount = devices.filter((device) => ACTIVE_RUNTIME_STATES.has(`${device.raw_state ?? device.current_status ?? ''}`.toLowerCase())).length
+
+    return {
+      ...room,
+      deviceCount: devices.length,
+      controlCount,
+      sensorCount: Math.max(devices.length - controlCount, 0),
+      activeCount,
+    }
+  }),
+)
+const focusedOrbitRoomCard = computed(() =>
+  orbitRoomCards.value.find((room) => room.id === selectedOrbitRoom.value?.id) ?? null,
+)
+const sceneReadinessLabel = computed(() => {
+  if (hasImportedModel.value) {
+    return 'Model synced'
+  }
+
+  if (structuralRenderMode.value === 'semantic') {
+    return 'Semantic shell'
+  }
+
+  if (structuralRenderMode.value === 'walls') {
+    return 'Wall shell'
+  }
+
+  return 'Room shell'
 })
 
 watch(
@@ -249,7 +287,7 @@ function buildMarkerGroup(room, group) {
   const hasAdvancedLightControls = group.devices.some((device) => device.supports_brightness || device.supports_color_temperature)
   const shouldPopupOnClick = !clickToggles || group.isAggregate || hasAdvancedLightControls || controlDevices.length > 1
   const position = resolveGroupPosition(room, group.devices)
-  const active = group.devices.some((device) => ['on', 'online', 'playing', 'heat', 'cool', 'heat_cool', 'dry', 'fan_only', 'auto'].includes(`${device.raw_state ?? device.current_status ?? ''}`.toLowerCase()))
+  const active = group.devices.some((device) => ACTIVE_RUNTIME_STATES.has(`${device.raw_state ?? device.current_status ?? ''}`.toLowerCase()))
 
   return {
     ...group,
@@ -293,14 +331,19 @@ function initializeScene() {
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2))
   renderer.setSize(container.clientWidth, container.clientHeight)
   renderer.outputColorSpace = THREE.SRGBColorSpace
+  renderer.toneMapping = THREE.ACESFilmicToneMapping
+  renderer.toneMappingExposure = 1.08
+  renderer.shadowMap.enabled = true
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap
   renderer.domElement.className = 'absolute inset-0 h-full w-full'
   container.appendChild(renderer.domElement)
 
   const scene = new THREE.Scene()
-  scene.background = new THREE.Color('#edf1ec')
+  scene.background = new THREE.Color('#08111c')
+  scene.fog = new THREE.FogExp2('#08111c', 0.012)
 
-  const camera = new THREE.PerspectiveCamera(54, container.clientWidth / container.clientHeight, 0.1, 5000)
-  camera.position.set(0, 240, 280)
+  const camera = new THREE.PerspectiveCamera(50, container.clientWidth / container.clientHeight, 0.1, 5000)
+  camera.position.set(0, 226, 264)
 
   const controls = new OrbitControls(camera, renderer.domElement)
   controls.enableDamping = true
@@ -313,12 +356,26 @@ function initializeScene() {
   controls.maxPolarAngle = Math.PI * 0.49
   controls.target.set(0, 0, 0)
 
-  const ambientLight = new THREE.AmbientLight('#ffffff', 1.2)
-  const sunLight = new THREE.DirectionalLight('#fff8dc', 1.05)
-  sunLight.position.set(280, 360, 180)
-  const fillLight = new THREE.DirectionalLight('#dbeafe', 0.45)
+  const ambientLight = new THREE.AmbientLight('#dbeafe', 0.54)
+  const hemiLight = new THREE.HemisphereLight('#c7f9ff', '#07111b', 0.92)
+  const sunLight = new THREE.DirectionalLight('#ffe8bd', 1.45)
+  sunLight.position.set(220, 320, 140)
+  sunLight.castShadow = true
+  sunLight.shadow.mapSize.set(2048, 2048)
+  sunLight.shadow.camera.near = 1
+  sunLight.shadow.camera.far = 1100
+  sunLight.shadow.camera.left = -220
+  sunLight.shadow.camera.right = 220
+  sunLight.shadow.camera.top = 220
+  sunLight.shadow.camera.bottom = -220
+
+  const fillLight = new THREE.DirectionalLight('#7dd3fc', 0.56)
   fillLight.position.set(-180, 180, -140)
-  scene.add(ambientLight, sunLight, fillLight)
+
+  const rimLight = new THREE.PointLight('#34d399', 0.8, 520, 2.1)
+  rimLight.position.set(-46, 82, 56)
+
+  scene.add(ambientLight, hemiLight, sunLight, fillLight, rimLight)
 
   sceneRefs.renderer = renderer
   sceneRefs.scene = scene
@@ -421,6 +478,7 @@ function rebuildScene() {
   root.userData.dynamic = true
 
   root.add(buildFloorMesh())
+  root.add(buildOrbitDatumRings())
 
   const analysis = sceneAnalysis.value ?? {}
   const wallSegments = Array.isArray(analysis.wall_segments) ? analysis.wall_segments : []
@@ -471,6 +529,10 @@ function rebuildScene() {
     groupedMarkers.value.forEach((marker) => root.add(buildMarkerMesh(marker)))
   }
 
+  if (!isWalkMode.value && selectedOrbitRoom.value) {
+    root.add(buildFocusBeacon(selectedOrbitRoom.value))
+  }
+
   scene.add(root)
   loadImportedModel(root, sceneRefs.loadToken)
   syncCameraMode()
@@ -481,10 +543,12 @@ function buildFloorMesh() {
   floorGroup.userData.dynamic = true
 
   const floorGeometry = new THREE.PlaneGeometry(planWidth.value * WORLD_SCALE, planHeight.value * WORLD_SCALE)
-  const floorMaterial = new THREE.MeshStandardMaterial({
-    color: '#f9f5ee',
-    roughness: 0.96,
-    metalness: 0.02,
+  const floorMaterial = new THREE.MeshPhysicalMaterial({
+    color: '#cbd5e1',
+    roughness: 0.92,
+    metalness: 0.12,
+    clearcoat: 0.18,
+    clearcoatRoughness: 0.74,
   })
   const floor = new THREE.Mesh(floorGeometry, floorMaterial)
   floor.rotation.x = -Math.PI / 2
@@ -500,12 +564,37 @@ function buildFloorMesh() {
     })
   }
 
-  const grid = new THREE.GridHelper(planWidth.value * WORLD_SCALE, 18, '#94a3b8', '#d6ddd7')
+  const grid = new THREE.GridHelper(planWidth.value * WORLD_SCALE, 22, '#7dd3fc', '#23364a')
   grid.position.y = 0.06
-  grid.material.opacity = 0.28
+  grid.material.opacity = 0.22
   grid.material.transparent = true
   floorGroup.add(grid)
   return floorGroup
+}
+
+function buildOrbitDatumRings() {
+  const ringGroup = new THREE.Group()
+  ringGroup.userData.dynamic = true
+
+  const maxSpan = Math.max(planWidth.value, planHeight.value) * WORLD_SCALE
+  const ringSizes = [0.18, 0.34, 0.52].map((scale) => maxSpan * scale)
+
+  ringSizes.forEach((radius, index) => {
+    const ring = new THREE.Mesh(
+      new THREE.RingGeometry(Math.max(radius - 0.08, 0.2), radius, 128),
+      new THREE.MeshBasicMaterial({
+        color: index === 0 ? '#67e8f9' : '#38bdf8',
+        transparent: true,
+        opacity: index === 0 ? 0.14 : 0.08,
+        side: THREE.DoubleSide,
+      }),
+    )
+    ring.rotation.x = -Math.PI / 2
+    ring.position.y = 0.08 + index * 0.015
+    ringGroup.add(ring)
+  })
+
+  return ringGroup
 }
 
 function buildRoomPlate(room) {
@@ -521,6 +610,7 @@ function buildRoomPlate(room) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.receiveShadow = true
   mesh.position.set(
     projectX((room.plan_x ?? 0) + ((room.plan_width ?? 120) / 2)),
     0.14,
@@ -543,6 +633,8 @@ function buildRoomShell(room) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   mesh.position.set(
     projectX((room.plan_x ?? 0) + ((room.plan_width ?? 120) / 2)),
     2.7,
@@ -565,6 +657,7 @@ function buildSemanticZonePlate(zone) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.receiveShadow = true
   mesh.position.set(
     projectX((Number(zone.x ?? 0) + Number(zone.width ?? 120) / 2)),
     0.1,
@@ -586,6 +679,8 @@ function buildSemanticZoneShell(zone) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   mesh.position.set(
     projectX((Number(zone.x ?? 0) + Number(zone.width ?? 120) / 2)),
     2.4,
@@ -616,6 +711,8 @@ function buildSemanticOpeningMesh(opening) {
     }),
   )
   frame.position.y = 1.95
+  frame.castShadow = true
+  frame.receiveShadow = true
   group.add(frame)
 
   if (opening.door_leaf) {
@@ -661,6 +758,8 @@ function buildDoorLeafMesh(opening, span, thickness, isVertical) {
 
   pivot.rotation.y = angle
   pivot.add(leaf)
+  leaf.castShadow = true
+  leaf.receiveShadow = true
 
   const handle = new THREE.Mesh(
     new THREE.SphereGeometry(0.07, 10, 10),
@@ -714,6 +813,8 @@ function buildWindowEdgeMesh(edge) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   mesh.position.set(
     projectX(Number(edge.x ?? 0) + Number(edge.width ?? 60) / 2),
     3.3,
@@ -739,6 +840,7 @@ function buildCorridorPathMesh(path) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.receiveShadow = true
   return mesh
 }
 
@@ -765,6 +867,8 @@ function buildWallMesh(segment) {
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   mesh.position.set(
     projectX((Number(segment.x1) + Number(segment.x2)) / 2),
     height / 2,
@@ -854,6 +958,8 @@ function buildSemanticBlock(planX, planY, planWidthValue, planHeightValue, color
   })
   const mesh = new THREE.Mesh(geometry, material)
   mesh.userData.dynamic = true
+  mesh.castShadow = true
+  mesh.receiveShadow = true
   mesh.position.set(projectX(planX), boxHeight / 2, projectZ(planY))
   return mesh
 }
@@ -873,6 +979,8 @@ function buildMarkerMesh(marker) {
       metalness: 0.15,
     }),
   )
+  base.castShadow = true
+  base.receiveShadow = true
 
   const orb = new THREE.Mesh(
     new THREE.SphereGeometry(marker.lightDevice ? 1.95 : 1.65, 20, 20),
@@ -885,6 +993,7 @@ function buildMarkerMesh(marker) {
     }),
   )
   orb.position.y = 2.1
+  orb.castShadow = true
 
   const halo = new THREE.Mesh(
     new THREE.RingGeometry(2.5, 3.5, 40),
@@ -898,7 +1007,29 @@ function buildMarkerMesh(marker) {
   halo.rotation.x = -Math.PI / 2
   halo.position.y = 0.15
 
-  markerGroup.add(base, orb, halo)
+  const beam = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.12, 0.42, marker.active ? 8.5 : 6.2, 18),
+    new THREE.MeshBasicMaterial({
+      color: marker.active ? '#5eead4' : '#60a5fa',
+      transparent: true,
+      opacity: marker.active ? 0.18 : 0.09,
+    }),
+  )
+  beam.position.y = 4.1
+
+  const cap = new THREE.Mesh(
+    new THREE.RingGeometry(0.48, 0.88, 32),
+    new THREE.MeshBasicMaterial({
+      color: marker.active ? '#fef08a' : '#7dd3fc',
+      transparent: true,
+      opacity: marker.active ? 0.6 : 0.24,
+      side: THREE.DoubleSide,
+    }),
+  )
+  cap.rotation.x = -Math.PI / 2
+  cap.position.y = marker.active ? 8.2 : 6.2
+
+  markerGroup.add(base, orb, halo, beam, cap)
   markerGroup.position.set(
     projectX(marker.position.x),
     6.6 + marker.position.z * 9,
@@ -908,6 +1039,43 @@ function buildMarkerMesh(marker) {
   sceneRefs.interactiveMeshes.push(base, orb)
   sceneRefs.markerByKey.set(marker.key, markerGroup)
   return markerGroup
+}
+
+function buildFocusBeacon(room) {
+  const width = Math.max((room.plan_width ?? 120) * WORLD_SCALE, 2.4)
+  const depth = Math.max((room.plan_height ?? 90) * WORLD_SCALE, 2.1)
+  const maxRadius = Math.max(width, depth) * 0.8
+  const centerX = projectX((room.plan_x ?? 0) + ((room.plan_width ?? 120) / 2))
+  const centerZ = projectZ((room.plan_y ?? 0) + ((room.plan_height ?? 90) / 2))
+  const group = new THREE.Group()
+  group.userData.dynamic = true
+  group.position.set(centerX, 0.18, centerZ)
+
+  const floorRing = new THREE.Mesh(
+    new THREE.RingGeometry(Math.max(maxRadius - 0.16, 0.4), maxRadius, 96),
+    new THREE.MeshBasicMaterial({
+      color: '#67e8f9',
+      transparent: true,
+      opacity: 0.22,
+      side: THREE.DoubleSide,
+    }),
+  )
+  floorRing.rotation.x = -Math.PI / 2
+
+  const pulseRing = new THREE.Mesh(
+    new THREE.RingGeometry(Math.max(maxRadius + 0.12, 0.46), maxRadius + 0.28, 96),
+    new THREE.MeshBasicMaterial({
+      color: '#fef08a',
+      transparent: true,
+      opacity: 0.12,
+      side: THREE.DoubleSide,
+    }),
+  )
+  pulseRing.rotation.x = -Math.PI / 2
+  pulseRing.position.y = 0.02
+
+  group.add(floorRing, pulseRing)
+  return group
 }
 
 function loadImportedModel(root, loadToken) {
@@ -1512,18 +1680,18 @@ function sceneStructureLabel() {
 
 function layerToggleClass(active) {
   return active
-    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_12px_30px_rgba(16,185,129,0.12)]'
-    : 'border-white/70 bg-white/78 text-slate-500'
+    ? 'border-teal-300/35 bg-teal-400/15 text-teal-50 shadow-[0_16px_34px_rgba(20,184,166,0.18)]'
+    : 'border-white/12 bg-white/[0.05] text-slate-300 hover:border-white/18 hover:bg-white/[0.09]'
 }
 
 function orbitRoomChipClass(active) {
   return active
-    ? 'border-ink bg-ink text-white shadow-[0_12px_30px_rgba(15,23,42,0.2)]'
-    : 'border-white/70 bg-white/82 text-slate-600 hover:border-slate-300'
+    ? 'border-teal-300/40 bg-teal-400/18 text-teal-50 shadow-[0_16px_34px_rgba(20,184,166,0.18)]'
+    : 'border-white/12 bg-white/[0.06] text-slate-200 hover:border-white/20 hover:bg-white/[0.12]'
 }
 
 function focusChipClass() {
-  return 'border-white/70 bg-white/82 text-slate-600 hover:border-slate-300'
+  return 'border-white/12 bg-white/[0.06] text-slate-100 hover:border-teal-200/30 hover:bg-white/[0.12]'
 }
 
 function controlTitle(device) {
@@ -1644,8 +1812,8 @@ async function handleButtonPress(device) {
 </script>
 
 <template>
-  <section class="glass-soft overflow-hidden rounded-[1.9rem] p-4 sm:p-5 lg:p-6">
-    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(22rem,0.82fr)] xl:items-end">
+  <section class="orbit-shell glass-soft overflow-hidden rounded-[2rem] p-4 sm:p-5 lg:p-6">
+    <div class="grid gap-4 2xl:grid-cols-[minmax(0,1.18fr)_minmax(20rem,0.82fr)] 2xl:items-end">
       <div class="min-w-0">
         <p class="text-[11px] uppercase tracking-[0.28em] text-lagoon">Immersive Spatial UI</p>
         <h3 class="font-display mt-3 text-[1.8rem] leading-none text-ink sm:text-[2.15rem]">
@@ -1654,6 +1822,20 @@ async function handleButtonPress(device) {
         <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
           {{ hasImportedModel ? '当前已叠加导入的 3D 模型，可在模型与结构层上继续控制设备。' : '当前先使用户型结构层生成墙体、门洞和家具代理体，后续导入 GLB/GLTF 模型会自动叠加。' }}
         </p>
+        <div class="mt-4 flex flex-wrap gap-2.5">
+          <span class="orbit-legend-chip">
+            <span class="orbit-legend-chip__label">Mode</span>
+            <span class="orbit-legend-chip__value">{{ viewModeLabel }}</span>
+          </span>
+          <span class="orbit-legend-chip">
+            <span class="orbit-legend-chip__label">Markers</span>
+            <span class="orbit-legend-chip__value">{{ roamStats.markers }} total / {{ activeMarkerCount }} active</span>
+          </span>
+          <span class="orbit-legend-chip">
+            <span class="orbit-legend-chip__label">Control</span>
+            <span class="orbit-legend-chip__value">{{ controllableMarkerCount }} controllable nodes</span>
+          </span>
+        </div>
         <div class="mt-4 flex flex-wrap gap-2">
           <span class="rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-xs font-medium text-slate-600">
             结构层：{{ sceneStructureLabel() }}
@@ -1667,20 +1849,20 @@ async function handleButtonPress(device) {
         </div>
       </div>
 
-      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
+      <div class="grid gap-3 sm:grid-cols-2 2xl:grid-cols-4">
+        <div class="orbit-summary-card">
           <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">房间</p>
           <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.rooms }}</p>
         </div>
-        <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
+        <div class="orbit-summary-card">
           <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">{{ structuralRenderMode === 'semantic' ? '语义区' : '墙体' }}</p>
           <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.walls }}</p>
         </div>
-        <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
+        <div class="orbit-summary-card">
           <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门 / 窗</p>
           <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.openings }} / {{ roamStats.windows }}</p>
         </div>
-        <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
+        <div class="orbit-summary-card">
           <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">设备节点</p>
           <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.markers }}</p>
         </div>
@@ -1689,17 +1871,29 @@ async function handleButtonPress(device) {
 
     <div
       ref="containerRef"
-      class="relative mt-5 h-[36rem] overflow-hidden rounded-[1.8rem] border border-white/70 bg-[#eef2ef] shadow-inner sm:h-[41rem] xl:h-[44rem]"
+      class="orbit-canvas-shell relative mt-5 h-[38rem] overflow-hidden rounded-[2rem] border border-white/70 shadow-inner sm:h-[43rem] xl:h-[46rem]"
     >
+      <div class="orbit-atmosphere orbit-atmosphere--aurora" />
+      <div class="orbit-atmosphere orbit-atmosphere--grid" />
+      <div class="orbit-atmosphere orbit-atmosphere--vignette" />
+      <div class="orbit-frame-corner orbit-frame-corner--tl" />
+      <div class="orbit-frame-corner orbit-frame-corner--tr" />
+      <div class="orbit-frame-corner orbit-frame-corner--bl" />
+      <div class="orbit-frame-corner orbit-frame-corner--br" />
+
+      <div v-if="!isWalkMode" class="orbit-reticle" aria-hidden="true">
+        <span />
+      </div>
+
       <div class="pointer-events-none absolute inset-x-3 top-3 z-10 flex items-start justify-between gap-3 sm:inset-x-4 sm:top-4">
-        <div class="pointer-events-auto w-[17rem] max-w-[calc(100%-5rem)] rounded-[1.25rem] border border-white/70 bg-white/72 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.1)] backdrop-blur-xl sm:w-[18.5rem]">
+        <div class="pointer-events-auto orbit-hud-panel w-[17rem] max-w-[calc(100%-5rem)] p-3 sm:w-[18.5rem]">
           <div class="flex flex-wrap items-start justify-between gap-3">
             <div>
               <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">轨道工作台</p>
-              <p class="mt-2 text-sm font-semibold text-ink sm:text-base">
+              <p class="mt-2 text-sm font-semibold text-slate-50 sm:text-base">
                 {{ selectedOrbitRoom ? `${selectedOrbitRoom.name} · ${selectedOrbitRoom.devices?.length ?? 0} 个设备` : '当前暂无房间聚焦' }}
               </p>
-              <p class="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">{{ structureHint }}</p>
+              <p class="mt-1 text-xs leading-5 text-slate-300/80 sm:text-sm">{{ structureHint }}</p>
             </div>
             <div class="flex flex-wrap gap-2">
               <button
@@ -1763,33 +1957,33 @@ async function handleButtonPress(device) {
           </div>
         </div>
 
-        <div class="pointer-events-auto hidden w-[15rem] rounded-[1.25rem] border border-white/70 bg-white/70 p-3 shadow-[0_18px_44px_rgba(15,23,42,0.1)] backdrop-blur-xl lg:block">
+        <div class="pointer-events-auto orbit-side-panel hidden w-[15rem] p-3 lg:block">
           <div class="flex items-center justify-between gap-3">
             <div>
               <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">场景态势</p>
-              <p class="mt-2 text-sm font-semibold text-ink sm:text-base">{{ sceneStructureLabel() }}</p>
+              <p class="mt-2 text-sm font-semibold text-slate-50 sm:text-base">{{ sceneStructureLabel() }}</p>
             </div>
-            <div class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
+            <div class="orbit-mode-badge rounded-full px-3 py-1 text-xs">
               {{ isWalkMode ? 'Walk' : 'Orbit' }}
             </div>
           </div>
 
-          <div class="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-500 sm:text-sm">
-            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-300 sm:text-sm">
+            <div class="orbit-mini-stat px-3 py-2">
               <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">语义区</p>
-              <p class="mt-1 font-semibold text-ink">{{ roamStats.semanticZones }}</p>
+              <p class="mt-1 font-semibold text-slate-50">{{ roamStats.semanticZones }}</p>
             </div>
-            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+            <div class="orbit-mini-stat px-3 py-2">
               <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门洞</p>
-              <p class="mt-1 font-semibold text-ink">{{ roamStats.openings }}</p>
+              <p class="mt-1 font-semibold text-slate-50">{{ roamStats.openings }}</p>
             </div>
-            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+            <div class="orbit-mini-stat px-3 py-2">
               <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">窗边</p>
-              <p class="mt-1 font-semibold text-ink">{{ roamStats.windows }}</p>
+              <p class="mt-1 font-semibold text-slate-50">{{ roamStats.windows }}</p>
             </div>
-            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+            <div class="orbit-mini-stat px-3 py-2">
               <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">设备</p>
-              <p class="mt-1 font-semibold text-ink">{{ roamStats.markers }}</p>
+              <p class="mt-1 font-semibold text-slate-50">{{ roamStats.markers }}</p>
             </div>
           </div>
 
@@ -1815,25 +2009,55 @@ async function handleButtonPress(device) {
         v-if="spatialLoading"
         class="absolute inset-0 z-30 flex items-center justify-center bg-white/42 backdrop-blur-sm"
       >
-        <div class="rounded-full border border-white/80 bg-white/88 px-4 py-2 text-sm text-slate-600 shadow-sm">
+        <div class="orbit-loading-pill">
           正在同步沉浸式空间…
         </div>
       </div>
 
       <div
-        v-if="!isWalkMode && orbitRooms.length"
+        v-if="!isWalkMode && focusedOrbitRoomCard"
+        class="pointer-events-none absolute left-3 bottom-[9.8rem] z-20 sm:left-4 sm:bottom-[10.2rem]"
+      >
+        <div class="pointer-events-auto orbit-focus-panel w-[13.5rem] p-3">
+          <p class="text-[10px] uppercase tracking-[0.22em] text-slate-400">Focus lock</p>
+          <p class="mt-2 text-sm font-semibold text-slate-50">{{ focusedOrbitRoomCard.name }}</p>
+          <div class="mt-3 grid grid-cols-3 gap-2">
+            <div class="orbit-focus-metric">
+              <span class="orbit-focus-metric__label">Devices</span>
+              <span class="orbit-focus-metric__value">{{ focusedOrbitRoomCard.deviceCount }}</span>
+            </div>
+            <div class="orbit-focus-metric">
+              <span class="orbit-focus-metric__label">Ctrl</span>
+              <span class="orbit-focus-metric__value">{{ focusedOrbitRoomCard.controlCount }}</span>
+            </div>
+            <div class="orbit-focus-metric">
+              <span class="orbit-focus-metric__label">State</span>
+              <span class="orbit-focus-metric__value">{{ focusedOrbitRoomCard.activeCount }}</span>
+            </div>
+          </div>
+          <div class="mt-3 flex items-center justify-between gap-3 text-[11px] text-slate-300/80">
+            <span>{{ sceneReadinessLabel }}</span>
+            <span>{{ roamStats.markers }} nodes</span>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="!isWalkMode && orbitRoomCards.length"
         class="pointer-events-none absolute inset-x-3 bottom-[4.9rem] z-20 flex justify-center sm:inset-x-4 sm:bottom-[5.2rem]"
       >
-        <div class="pointer-events-auto flex max-w-[calc(100%-1rem)] gap-2 overflow-x-auto rounded-full border border-white/70 bg-white/74 px-3 py-2 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur-xl">
+        <div class="pointer-events-auto orbit-room-rail max-w-[calc(100%-1rem)] px-1 py-1">
           <button
-            v-for="room in orbitRooms"
+            v-for="room in orbitRoomCards"
             :key="`orbit-room-${room.id}`"
             type="button"
-            class="shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+            class="orbit-room-pill shrink-0 text-xs font-medium transition sm:text-sm"
             :class="orbitRoomChipClass(room.id === selectedRoomId)"
             @click="focusOrbitRoom(room)"
           >
-            {{ room.name }}
+            <span class="truncate">{{ room.name }}</span>
+            <span class="ml-2 text-[11px] text-slate-300/90">{{ room.controlCount }} ctrl</span>
+            <span class="ml-2 text-[11px] text-slate-400">{{ room.activeCount }} active</span>
           </button>
         </div>
       </div>
@@ -1842,16 +2066,16 @@ async function handleButtonPress(device) {
         v-if="!isWalkMode"
         class="pointer-events-none absolute inset-x-3 bottom-3 z-20 flex justify-center sm:inset-x-4 sm:bottom-4"
       >
-        <div class="pointer-events-auto flex w-full max-w-[56rem] flex-col gap-1 rounded-[1.1rem] border border-white/70 bg-white/72 px-4 py-2.5 text-xs leading-6 text-slate-600 shadow-[0_18px_44px_rgba(15,23,42,0.1)] backdrop-blur-xl sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:text-sm">
+        <div class="pointer-events-auto orbit-floating-note w-full max-w-[56rem] text-xs leading-6 sm:text-sm">
           <p>拖拽旋转，滚轮或双指缩放；点灯默认开关，长按灯光打开高级面板。</p>
-          <p class="text-slate-500">{{ selectedOrbitRoom ? `当前聚焦 ${selectedOrbitRoom.name}` : '可在上方房间条中快速切换聚焦' }}</p>
+          <p class="text-slate-300/80">{{ selectedOrbitRoom ? `当前聚焦 ${selectedOrbitRoom.name}` : '可在上方房间条中快速切换聚焦' }}</p>
         </div>
       </div>
 
       <div
         v-if="activePopupGroup"
         ref="popupPanelRef"
-        class="absolute z-40 w-[19rem] max-w-[calc(100%-1rem)] rounded-[1.45rem] border border-white/80 bg-white/92 p-4 shadow-[0_30px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl sm:w-[21rem]"
+        class="orbit-popup-panel absolute z-40 w-[19rem] max-w-[calc(100%-1rem)] p-4 sm:w-[21rem]"
         :style="popupStyle"
       >
         <div class="flex items-start justify-between gap-3">
@@ -1871,7 +2095,7 @@ async function handleButtonPress(device) {
               <div
                 v-for="device in activePopupGroup.sensorDevices.slice(0, 4)"
                 :key="`sensor-${device.id}`"
-                class="rounded-[1rem] border border-slate-200 bg-slate-50/90 px-3 py-3"
+                class="orbit-popup-card px-3 py-3"
               >
                 <p class="text-xs text-slate-500">{{ telemetryLabel(device) }}</p>
                 <p class="mt-2 text-sm font-semibold text-ink">{{ telemetryValue(device) }}</p>
@@ -2019,16 +2243,295 @@ async function handleButtonPress(device) {
 </template>
 
 <style scoped>
+.orbit-shell {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.8), rgba(250, 245, 238, 0.7)),
+    radial-gradient(circle at 14% 18%, rgba(255, 244, 214, 0.46), transparent 26%),
+    radial-gradient(circle at 86% 12%, rgba(12, 110, 115, 0.16), transparent 22%);
+}
+
+.orbit-summary-card {
+  border-radius: 1.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.84);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(252, 248, 241, 0.74));
+  padding: 1rem 1rem 1.05rem;
+  box-shadow: 0 16px 38px rgba(15, 23, 42, 0.08);
+}
+
+.orbit-canvas-shell {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(28, 42, 63, 0.78), transparent 28%),
+    radial-gradient(circle at 82% 16%, rgba(9, 91, 97, 0.42), transparent 22%),
+    linear-gradient(180deg, #0f1723 0%, #111d2b 36%, #1f2d38 100%);
+}
+
+.orbit-atmosphere {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+}
+
+.orbit-atmosphere--aurora {
+  background:
+    radial-gradient(circle at 24% 24%, rgba(103, 232, 249, 0.14), transparent 16%),
+    radial-gradient(circle at 78% 18%, rgba(253, 224, 71, 0.1), transparent 18%),
+    radial-gradient(circle at 50% 82%, rgba(244, 114, 182, 0.08), transparent 22%);
+  animation: orbit-drift 12s ease-in-out infinite alternate;
+}
+
+.orbit-atmosphere--grid {
+  opacity: 0.18;
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.15) 1px, transparent 1px);
+  background-size: 34px 34px;
+  mask-image: linear-gradient(180deg, rgba(0, 0, 0, 0.9), transparent 82%);
+}
+
+.orbit-atmosphere--vignette {
+  background:
+    linear-gradient(180deg, rgba(2, 6, 23, 0.18), rgba(2, 6, 23, 0.04) 30%, rgba(2, 6, 23, 0.42)),
+    radial-gradient(circle at 50% 50%, transparent 54%, rgba(2, 6, 23, 0.48) 100%);
+}
+
+.orbit-hud-panel,
+.orbit-side-panel,
+.orbit-popup-panel,
+.orbit-focus-panel {
+  border-radius: 1.45rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(7, 14, 24, 0.82), rgba(11, 22, 35, 0.74));
+  box-shadow: 0 26px 60px rgba(2, 6, 23, 0.28);
+  backdrop-filter: blur(20px);
+}
+
+.orbit-frame-corner {
+  position: absolute;
+  z-index: 5;
+  height: 2.8rem;
+  width: 2.8rem;
+  border-color: rgba(125, 211, 252, 0.35);
+  opacity: 0.9;
+}
+
+.orbit-frame-corner--tl {
+  left: 1rem;
+  top: 1rem;
+  border-left: 1px solid rgba(125, 211, 252, 0.35);
+  border-top: 1px solid rgba(125, 211, 252, 0.35);
+  border-top-left-radius: 1rem;
+}
+
+.orbit-frame-corner--tr {
+  right: 1rem;
+  top: 1rem;
+  border-right: 1px solid rgba(125, 211, 252, 0.35);
+  border-top: 1px solid rgba(125, 211, 252, 0.35);
+  border-top-right-radius: 1rem;
+}
+
+.orbit-frame-corner--bl {
+  bottom: 1rem;
+  left: 1rem;
+  border-left: 1px solid rgba(125, 211, 252, 0.35);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.35);
+  border-bottom-left-radius: 1rem;
+}
+
+.orbit-frame-corner--br {
+  bottom: 1rem;
+  right: 1rem;
+  border-right: 1px solid rgba(125, 211, 252, 0.35);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.35);
+  border-bottom-right-radius: 1rem;
+}
+
+.orbit-reticle {
+  pointer-events: none;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 6;
+  height: 7rem;
+  width: 7rem;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.12);
+  box-shadow:
+    0 0 0 1px rgba(255, 255, 255, 0.04) inset,
+    0 0 40px rgba(34, 211, 238, 0.08);
+}
+
+.orbit-reticle::before,
+.orbit-reticle::after,
+.orbit-reticle span::before,
+.orbit-reticle span::after {
+  content: '';
+  position: absolute;
+  background: rgba(125, 211, 252, 0.44);
+}
+
+.orbit-reticle::before,
+.orbit-reticle::after {
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.orbit-reticle::before {
+  height: 1px;
+  width: 7.8rem;
+}
+
+.orbit-reticle::after {
+  height: 7.8rem;
+  width: 1px;
+}
+
+.orbit-reticle span::before {
+  inset: 0.55rem;
+  border-radius: 999px;
+  border: 1px dashed rgba(250, 204, 21, 0.26);
+  background: transparent;
+}
+
+.orbit-reticle span::after {
+  left: 50%;
+  top: 50%;
+  height: 0.7rem;
+  width: 0.7rem;
+  transform: translate(-50%, -50%);
+  border-radius: 999px;
+  background: rgba(250, 204, 21, 0.85);
+  box-shadow: 0 0 22px rgba(250, 204, 21, 0.42);
+}
+
+.orbit-legend-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.88);
+  background: rgba(255, 255, 255, 0.72);
+  padding: 0.58rem 0.9rem;
+  color: rgb(71 85 105);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+  backdrop-filter: blur(16px);
+}
+
+.orbit-legend-chip__label {
+  font-size: 0.65rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgb(100 116 139);
+}
+
+.orbit-legend-chip__value {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: rgb(15 23 42);
+}
+
+.orbit-room-rail {
+  display: flex;
+  gap: 0.85rem;
+  overflow-x: auto;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(180deg, rgba(7, 14, 24, 0.82), rgba(10, 18, 31, 0.72));
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.24);
+  backdrop-filter: blur(18px);
+}
+
+.orbit-room-pill {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border-width: 1px;
+  padding: 0.65rem 1rem;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.22);
+  backdrop-filter: blur(16px);
+}
+
+.orbit-mode-badge {
+  border: 1px solid rgba(94, 234, 212, 0.22);
+  background: rgba(15, 118, 110, 0.14);
+  color: rgba(204, 251, 241, 0.92);
+}
+
+.orbit-mini-stat,
+.orbit-focus-metric {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.05);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+
+.orbit-focus-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding: 0.65rem 0.55rem;
+}
+
+.orbit-focus-metric__label {
+  font-size: 0.6rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.9);
+}
+
+.orbit-focus-metric__value {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0.96);
+}
+
+.orbit-floating-note {
+  border-radius: 1.2rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(8, 15, 26, 0.84), rgba(10, 18, 31, 0.76));
+  color: rgba(226, 232, 240, 0.92);
+  padding: 0.9rem 1rem;
+  box-shadow: 0 20px 44px rgba(2, 6, 23, 0.24);
+  backdrop-filter: blur(18px);
+}
+
+.orbit-loading-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(7, 14, 24, 0.88);
+  color: white;
+  font-size: 0.86rem;
+  font-weight: 600;
+  padding: 0.75rem 1.15rem;
+  box-shadow: 0 18px 40px rgba(2, 6, 23, 0.22);
+}
+
+.orbit-popup-panel {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(248, 249, 251, 0.92));
+}
+
+.orbit-popup-card {
+  border-radius: 1rem;
+  border: 1px solid rgba(226, 232, 240, 0.9);
+  background: rgba(248, 250, 252, 0.84);
+}
+
 .touch-pad {
   position: relative;
   height: 5.5rem;
   width: 5.5rem;
   border-radius: 9999px;
-  border: 1px solid rgba(255, 255, 255, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.16);
   background:
-    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.62));
+    radial-gradient(circle at 30% 30%, rgba(15, 23, 42, 0.92), rgba(15, 23, 42, 0.66));
   backdrop-filter: blur(18px);
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.18);
+  box-shadow: 0 18px 44px rgba(2, 6, 23, 0.34);
 }
 
 .touch-pad::before {
@@ -2036,7 +2539,7 @@ async function handleButtonPress(device) {
   position: absolute;
   inset: 1rem;
   border-radius: 9999px;
-  border: 1px dashed rgba(51, 65, 85, 0.22);
+  border: 1px dashed rgba(125, 211, 252, 0.22);
 }
 
 .touch-pad__core {
@@ -2049,6 +2552,16 @@ async function handleButtonPress(device) {
   background: linear-gradient(180deg, rgba(12, 110, 115, 0.94), rgba(15, 23, 42, 0.9));
   transform: translate(-50%, -50%);
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.28);
+}
+
+@keyframes orbit-drift {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1);
+  }
+
+  to {
+    transform: translate3d(1.8%, 1.2%, 0) scale(1.04);
+  }
 }
 
 @media (min-width: 640px) {
