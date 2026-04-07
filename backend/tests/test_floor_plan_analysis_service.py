@@ -30,3 +30,7 @@ def test_analyze_floor_plan_image_extracts_room_candidates() -> None:
     assert len(analysis["wall_segments"]) >= 4
     assert analysis["openings"]
     assert analysis["furniture_candidates"]
+    assert analysis["semantic_zones"]
+    assert analysis["semantic_openings"]
+    assert analysis["window_edges"]
+    assert analysis["corridor_path"]

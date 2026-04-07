@@ -38,8 +38,9 @@ const emit = defineEmits(['select-room'])
 
 const smartHomeStore = useSmartHomeStore()
 const containerRef = ref(null)
+const popupPanelRef = ref(null)
 const popupGroupKey = ref('')
-const popupCoordinates = ref({ left: 0, top: 0, visible: false })
+const popupCoordinates = ref({ left: 0, top: 0, visible: false, alignX: 'center', alignY: 'top' })
 const numericDrafts = ref({})
 const selectDrafts = ref({})
 
@@ -88,6 +89,10 @@ const LOOK_SENSITIVITY = 0.006
 const sceneZone = computed(() => props.scene?.zone ?? null)
 const sceneAnalysis = computed(() => props.scene?.analysis ?? null)
 const sceneRooms = computed(() => props.scene?.rooms ?? [])
+const semanticZones = computed(() => Array.isArray(sceneAnalysis.value?.semantic_zones) ? sceneAnalysis.value.semantic_zones : [])
+const semanticOpenings = computed(() => Array.isArray(sceneAnalysis.value?.semantic_openings) ? sceneAnalysis.value.semantic_openings : [])
+const windowEdges = computed(() => Array.isArray(sceneAnalysis.value?.window_edges) ? sceneAnalysis.value.window_edges : [])
+const corridorPath = computed(() => Array.isArray(sceneAnalysis.value?.corridor_path) ? sceneAnalysis.value.corridor_path : [])
 const planWidth = computed(() => sceneZone.value?.floor_plan_image_width ?? 1600)
 const planHeight = computed(() => sceneZone.value?.floor_plan_image_height ?? 960)
 const planImageUrl = computed(() => smartHomeStore.resolveAssetUrl(sceneZone.value?.floor_plan_image_path || ''))
@@ -103,25 +108,48 @@ const groupedMarkers = computed(() =>
 )
 
 const activePopupGroup = computed(() => groupedMarkers.value.find((group) => group.key === popupGroupKey.value) ?? null)
+const structuralRenderMode = computed(() => resolveStructuralRenderMode(sceneAnalysis.value, sceneRooms.value))
 const popupStyle = computed(() => {
   if (!popupCoordinates.value.visible) {
     return { display: 'none' }
   }
 
+  const translateX = popupCoordinates.value.alignX === 'left'
+    ? '0%'
+    : popupCoordinates.value.alignX === 'right'
+      ? '-100%'
+      : '-50%'
+  const translateY = popupCoordinates.value.alignY === 'bottom'
+    ? '18px'
+    : 'calc(-100% - 18px)'
+
   return {
     left: `${popupCoordinates.value.left}px`,
     top: `${popupCoordinates.value.top}px`,
-    transform: 'translate(-50%, calc(-100% - 18px))',
+    transform: `translate(${translateX}, ${translateY})`,
   }
 })
 
 const roamStats = computed(() => ({
   rooms: sceneRooms.value.length,
+  semanticZones: semanticZones.value.length,
   markers: groupedMarkers.value.length,
   walls: sceneAnalysis.value?.wall_segments?.length ?? 0,
   openings: sceneAnalysis.value?.openings?.length ?? 0,
   furniture: sceneAnalysis.value?.furniture_candidates?.length ?? 0,
 }))
+
+const structureHint = computed(() => {
+  if (structuralRenderMode.value === 'walls') {
+    return '当前使用识别出的墙体、门洞和家具代理体。'
+  }
+
+  if (structuralRenderMode.value === 'semantic') {
+    return '当前使用针对这类住宅户型提炼出的语义空间骨架，轨道视图会更接近真实房屋分区。'
+  }
+
+  return '当前识别结果噪声较多，已自动退回到基于房间布局的稳定结构视图。'
+})
 
 watch(
   groupedMarkers,
@@ -376,16 +404,34 @@ function rebuildScene() {
   const openings = Array.isArray(analysis.openings) ? analysis.openings : []
   const furnitureCandidates = Array.isArray(analysis.furniture_candidates) ? analysis.furniture_candidates : []
 
-  if (wallSegments.length > 0) {
+  if (structuralRenderMode.value === 'walls' && wallSegments.length > 0) {
     wallSegments.forEach((segment) => {
       root.add(buildWallMesh(segment))
     })
+  } else if (structuralRenderMode.value === 'semantic' && semanticZones.value.length > 0) {
+    semanticZones.value.forEach((zone) => {
+      root.add(buildSemanticZoneShell(zone))
+      root.add(buildSemanticZonePlate(zone))
+    })
+    semanticOpenings.value.forEach((opening) => root.add(buildSemanticOpeningMesh(opening)))
+    windowEdges.value.forEach((edge) => root.add(buildWindowEdgeMesh(edge)))
+    const corridorMesh = buildCorridorPathMesh(corridorPath.value)
+    if (corridorMesh) {
+      root.add(corridorMesh)
+    }
   } else {
     sceneRooms.value.forEach((room) => root.add(buildRoomShell(room)))
   }
 
-  openings.forEach((opening) => root.add(buildOpeningMesh(opening)))
-  furnitureCandidates.forEach((item) => root.add(buildFurnitureMesh(item)))
+  if (structuralRenderMode.value === 'walls') {
+    openings.forEach((opening) => root.add(buildOpeningMesh(opening)))
+    furnitureCandidates.forEach((item) => root.add(buildFurnitureMesh(item)))
+  } else if (structuralRenderMode.value === 'semantic') {
+    semanticZones.value.forEach((zone) => {
+      const semanticFurniture = buildSemanticFurniture(zone)
+      semanticFurniture.forEach((item) => root.add(item))
+    })
+  }
   sceneRooms.value.forEach((room) => root.add(buildRoomPlate(room)))
 
   if (props.showDevices) {
@@ -473,6 +519,109 @@ function buildRoomShell(room) {
   return mesh
 }
 
+function buildSemanticZonePlate(zone) {
+  const width = Math.max(Number(zone.width ?? 120) * WORLD_SCALE, 1.8)
+  const depth = Math.max(Number(zone.height ?? 90) * WORLD_SCALE, 1.6)
+  const geometry = new THREE.BoxGeometry(width, 0.2, depth)
+  const material = new THREE.MeshStandardMaterial({
+    color: semanticZoneColor(zone.type),
+    transparent: true,
+    opacity: 0.12,
+    roughness: 0.86,
+    metalness: 0.02,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  mesh.position.set(
+    projectX((Number(zone.x ?? 0) + Number(zone.width ?? 120) / 2)),
+    0.1,
+    projectZ((Number(zone.y ?? 0) + Number(zone.height ?? 90) / 2)),
+  )
+  return mesh
+}
+
+function buildSemanticZoneShell(zone) {
+  const width = Math.max(Number(zone.width ?? 120) * WORLD_SCALE, 1.8)
+  const depth = Math.max(Number(zone.height ?? 90) * WORLD_SCALE, 1.6)
+  const geometry = new THREE.BoxGeometry(width, 4.8, depth)
+  const material = new THREE.MeshStandardMaterial({
+    color: semanticZoneColor(zone.type),
+    transparent: true,
+    opacity: 0.18,
+    roughness: 0.74,
+    metalness: 0.03,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  mesh.position.set(
+    projectX((Number(zone.x ?? 0) + Number(zone.width ?? 120) / 2)),
+    2.4,
+    projectZ((Number(zone.y ?? 0) + Number(zone.height ?? 90) / 2)),
+  )
+  return mesh
+}
+
+function buildSemanticOpeningMesh(opening) {
+  const isVertical = opening.orientation === 'vertical'
+  const width = Math.max(Number(opening.width ?? 28) * WORLD_SCALE, 0.32)
+  const depth = Math.max(Number(opening.height ?? 22) * WORLD_SCALE, 0.22)
+  const geometry = isVertical
+    ? new THREE.BoxGeometry(depth, 3.8, width)
+    : new THREE.BoxGeometry(width, 3.8, depth)
+  const material = new THREE.MeshStandardMaterial({
+    color: '#c08457',
+    transparent: true,
+    opacity: 0.42,
+    roughness: 0.46,
+    metalness: 0.02,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  mesh.position.set(projectX(opening.x), 1.9, projectZ(opening.y))
+  return mesh
+}
+
+function buildWindowEdgeMesh(edge) {
+  const width = Math.max(Number(edge.width ?? 60) * WORLD_SCALE, 0.4)
+  const depth = Math.max(Number(edge.depth ?? 14) * WORLD_SCALE, 0.12)
+  const geometry = new THREE.BoxGeometry(width, 2.4, depth)
+  const material = new THREE.MeshStandardMaterial({
+    color: '#93c5fd',
+    transparent: true,
+    opacity: 0.35,
+    roughness: 0.22,
+    metalness: 0.08,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  mesh.position.set(
+    projectX(Number(edge.x ?? 0) + Number(edge.width ?? 60) / 2),
+    3.3,
+    projectZ(edge.y),
+  )
+  return mesh
+}
+
+function buildCorridorPathMesh(path) {
+  if (!Array.isArray(path) || path.length < 2) {
+    return null
+  }
+
+  const points = path.map((point) => new THREE.Vector3(projectX(point.x), 0.11, projectZ(point.y)))
+  const curve = new THREE.CatmullRomCurve3(points, false, 'centripetal')
+  const geometry = new THREE.TubeGeometry(curve, 32, 0.14, 10, false)
+  const material = new THREE.MeshStandardMaterial({
+    color: '#f6d365',
+    transparent: true,
+    opacity: 0.5,
+    roughness: 0.4,
+    metalness: 0.03,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  return mesh
+}
+
 function buildWallMesh(segment) {
   const isHorizontal = segment.orientation === 'horizontal'
   const length = Math.max(
@@ -540,6 +689,52 @@ function buildFurnitureMesh(item) {
     height / 2,
     projectZ((Number(item.y) + Number(item.height) / 2)),
   )
+  return mesh
+}
+
+function buildSemanticFurniture(zone) {
+  const fixtures = []
+  const centerX = Number(zone.x ?? 0) + Number(zone.width ?? 120) / 2
+  const centerY = Number(zone.y ?? 0) + Number(zone.height ?? 90) / 2
+  const width = Number(zone.width ?? 120)
+  const height = Number(zone.height ?? 90)
+
+  if (zone.type === 'living') {
+    fixtures.push(buildSemanticBlock(centerX - width * 0.12, centerY + height * 0.08, width * 0.22, height * 0.12, '#8b7355', 1.25))
+    fixtures.push(buildSemanticBlock(centerX + width * 0.06, centerY - height * 0.02, width * 0.18, height * 0.14, '#d6c5a4', 0.85))
+  } else if (zone.type === 'dining') {
+    fixtures.push(buildSemanticBlock(centerX, centerY, width * 0.18, height * 0.18, '#d1b58b', 0.88))
+  } else if (zone.type === 'kitchen') {
+    fixtures.push(buildSemanticBlock(centerX - width * 0.18, centerY, width * 0.22, height * 0.56, '#aab5bf', 1.4))
+  } else if (zone.type === 'master' || zone.type === 'bedroom') {
+    fixtures.push(buildSemanticBlock(centerX, centerY, width * 0.42, height * 0.34, '#b08968', 0.92))
+  } else if (zone.type === 'storage') {
+    fixtures.push(buildSemanticBlock(centerX, centerY, width * 0.72, height * 0.22, '#8b7e74', 1.55))
+  } else if (zone.type === 'entry') {
+    fixtures.push(buildSemanticBlock(centerX, centerY, width * 0.48, height * 0.18, '#9ca3af', 1.15))
+  } else if (zone.type === 'bath' || zone.type === 'master_bath') {
+    fixtures.push(buildSemanticBlock(centerX, centerY, width * 0.22, height * 0.32, '#dbeafe', 0.78))
+  }
+
+  return fixtures
+}
+
+function buildSemanticBlock(planX, planY, planWidthValue, planHeightValue, color, boxHeight) {
+  const geometry = new THREE.BoxGeometry(
+    Math.max(planWidthValue * WORLD_SCALE, 0.28),
+    boxHeight,
+    Math.max(planHeightValue * WORLD_SCALE, 0.28),
+  )
+  const material = new THREE.MeshStandardMaterial({
+    color,
+    transparent: true,
+    opacity: 0.82,
+    roughness: 0.58,
+    metalness: 0.04,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  mesh.position.set(projectX(planX), boxHeight / 2, projectZ(planY))
   return mesh
 }
 
@@ -761,12 +956,75 @@ function updatePopupScreenPosition() {
   const left = ((vector.x + 1) / 2) * container.clientWidth
   const top = ((-vector.y + 1) / 2) * container.clientHeight
   const visible = vector.z < 1
+  const popupWidth = Math.min(336, Math.max(container.clientWidth - 16, 240))
+  const popupHeight = Math.min(popupPanelRef.value?.offsetHeight ?? 320, container.clientHeight - 20)
+  const margin = 10
+  let alignX = 'center'
+  let alignY = 'top'
+  let clampedLeft = left
+  let clampedTop = top
+
+  if (left + popupWidth / 2 > container.clientWidth - margin) {
+    alignX = 'right'
+    clampedLeft = Math.min(left + popupWidth / 2, container.clientWidth - margin)
+  } else if (left - popupWidth / 2 < margin) {
+    alignX = 'left'
+    clampedLeft = Math.max(left - popupWidth / 2, margin)
+  }
+
+  if (top - popupHeight - 18 < margin) {
+    alignY = 'bottom'
+    clampedTop = Math.min(top, container.clientHeight - popupHeight - 18 - margin)
+  } else {
+    clampedTop = Math.max(top, popupHeight + 18 + margin)
+  }
 
   popupCoordinates.value = {
-    left: Math.min(Math.max(left, 154), container.clientWidth - 154),
-    top: Math.min(Math.max(top, 128), container.clientHeight - 24),
+    left: Math.round(clampedLeft),
+    top: Math.round(clampedTop),
     visible,
+    alignX,
+    alignY,
   }
+}
+
+function resolveStructuralRenderMode(analysis, rooms) {
+  const wallSegments = Array.isArray(analysis?.wall_segments) ? analysis.wall_segments : []
+  const openings = Array.isArray(analysis?.openings) ? analysis.openings : []
+  const roomCandidates = Array.isArray(analysis?.room_candidates) ? analysis.room_candidates : []
+  const semanticZones = Array.isArray(analysis?.semantic_zones) ? analysis.semantic_zones : []
+  const roomCount = rooms?.length ?? 0
+
+  if (semanticZones.length >= 6) {
+    return 'semantic'
+  }
+
+  if (wallSegments.length === 0) {
+    return 'rooms'
+  }
+
+  if (roomCount === 0) {
+    return 'walls'
+  }
+
+  const longWalls = wallSegments.filter((segment) => {
+    const x1 = Number(segment.x1 ?? 0)
+    const x2 = Number(segment.x2 ?? 0)
+    const y1 = Number(segment.y1 ?? 0)
+    const y2 = Number(segment.y2 ?? 0)
+    return Math.abs(x2 - x1) + Math.abs(y2 - y1) >= Math.min(planWidth.value, planHeight.value) * 0.08
+  }).length
+
+  const excessiveCandidateDrift = roomCandidates.length > roomCount * 2 + 2
+  const excessiveWallCount = wallSegments.length > Math.max(36, roomCount * 18)
+  const insufficientLongWalls = longWalls < Math.max(6, roomCount * 3)
+  const excessiveOpeningCount = openings.length > Math.max(12, roomCount * 4)
+
+  if (excessiveCandidateDrift || excessiveWallCount || insufficientLongWalls || excessiveOpeningCount) {
+    return 'rooms'
+  }
+
+  return 'walls'
 }
 
 function handleResize() {
@@ -1030,6 +1288,34 @@ function markerColor(marker) {
   return '#334155'
 }
 
+function semanticZoneColor(type) {
+  if (type === 'living') {
+    return '#d2b48c'
+  }
+  if (type === 'dining') {
+    return '#c99742'
+  }
+  if (type === 'kitchen') {
+    return '#94a3b8'
+  }
+  if (type === 'master') {
+    return '#b07d62'
+  }
+  if (type === 'bedroom') {
+    return '#9b7f68'
+  }
+  if (type === 'bath' || type === 'master_bath') {
+    return '#7dd3fc'
+  }
+  if (type === 'storage') {
+    return '#8b7355'
+  }
+  if (type === 'entry' || type === 'hall') {
+    return '#cbd5e1'
+  }
+  return '#94a3b8'
+}
+
 function controlTitle(device) {
   return device.appliance_name || device.name
 }
@@ -1189,9 +1475,10 @@ async function handleButtonPress(device) {
       </div>
 
       <div class="pointer-events-none absolute right-3 top-3 z-10 rounded-[1.1rem] border border-white/70 bg-white/84 px-4 py-3 text-xs leading-6 text-slate-600 shadow-sm sm:right-4 sm:top-4 sm:text-sm">
-        <p>结构层：墙体 / 门洞 / 家具候选</p>
+        <p>结构层：{{ structuralRenderMode === 'walls' ? '识别墙体 / 门洞 / 家具候选' : structuralRenderMode === 'semantic' ? '语义空间骨架' : '按房间布局稳定渲染' }}</p>
         <p>模型层：{{ hasImportedModel ? '已导入 3D 资产' : '等待导入 GLB / GLTF' }}</p>
         <p>设备层：点按直控，长按展开高级控制</p>
+        <p class="max-w-[18rem] text-[11px] leading-5 text-slate-500 sm:text-xs">{{ structureHint }}</p>
       </div>
 
       <div
@@ -1205,6 +1492,7 @@ async function handleButtonPress(device) {
 
       <div
         v-if="activePopupGroup"
+        ref="popupPanelRef"
         class="absolute z-40 w-[19rem] max-w-[calc(100%-1rem)] rounded-[1.45rem] border border-white/80 bg-white/92 p-4 shadow-[0_30px_60px_rgba(15,23,42,0.22)] backdrop-blur-xl sm:w-[21rem]"
         :style="popupStyle"
       >

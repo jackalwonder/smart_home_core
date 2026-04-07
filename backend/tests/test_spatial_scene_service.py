@@ -67,6 +67,36 @@ def test_should_refresh_floor_plan_analysis_when_new_structural_layers_are_missi
     ) is True
 
 
+def test_derive_device_positions_prefers_semantic_kitchen_anchor_for_fridge() -> None:
+    points = spatial_scene_service._derive_device_positions(
+        [
+            {
+                "id": 27,
+                "entity_domain": "number",
+                "device_class": "",
+                "appliance_type": "fridge",
+            }
+        ],
+        {
+            "plan_x": 320.0,
+            "plan_y": 480.0,
+            "plan_width": 720.0,
+            "plan_height": 380.0,
+            "plan_rotation": 0.0,
+        },
+        semantic_zones=[
+            {"type": "kitchen", "label": "厨房", "x": 120.0, "y": 90.0, "width": 160.0, "height": 140.0},
+            {"type": "living", "label": "客厅", "x": 280.0, "y": 300.0, "width": 420.0, "height": 280.0},
+        ],
+        room_name="客厅",
+    )
+
+    assert points[27]["plan_x"] == 148.8
+    assert points[27]["plan_y"] == 168.4
+    assert points[27]["plan_z"] == 0.55
+    assert points[27]["semantic_locked"] is True
+
+
 @pytest.mark.asyncio
 async def test_get_spatial_scene_upgrades_legacy_floor_plan_analysis(
     monkeypatch: pytest.MonkeyPatch,

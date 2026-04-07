@@ -97,7 +97,7 @@ async def get_spatial_scene(zone_id: int | None = None) -> dict[str, object]:
             "plan_height": room.get("plan_height") if room.get("plan_height") is not None else derived_layout["plan_height"],
             "plan_rotation": room.get("plan_rotation") if room.get("plan_rotation") is not None else derived_layout["plan_rotation"],
         }
-        room_payload["devices"] = _with_device_fallback_positions(room_payload)
+        room_payload["devices"] = _with_device_fallback_positions(room_payload, analysis)
         scene_rooms.append(room_payload)
 
     return {"zone": zone_payload, "rooms": scene_rooms, "analysis": analysis}
@@ -313,7 +313,18 @@ def _should_refresh_floor_plan_analysis(zone_payload: dict[str, object]) -> bool
         return True
     if analysis.get("source") == "legacy":
         return True
-    return any(not isinstance(analysis.get(key), list) for key in ("wall_segments", "openings", "furniture_candidates"))
+    return any(
+        not isinstance(analysis.get(key), list)
+        for key in (
+            "wall_segments",
+            "openings",
+            "furniture_candidates",
+            "semantic_zones",
+            "semantic_openings",
+            "window_edges",
+            "corridor_path",
+        )
+    )
 
 
 def _write_floor_plan_asset(original_filename: str, payload: bytes) -> str:
@@ -552,6 +563,10 @@ def _derive_layouts_from_analysis(
     if not isinstance(analysis, dict):
         return {}
 
+    semantic_layouts = _derive_layouts_from_semantic_zones(rooms, analysis)
+    if semantic_layouts:
+        return semantic_layouts
+
     candidates = analysis.get("room_candidates")
     if not isinstance(candidates, list):
         return {}
@@ -590,6 +605,86 @@ def _derive_layouts_from_analysis(
             break
 
     return layouts
+
+
+def _derive_layouts_from_semantic_zones(
+    rooms: list[dict[str, object]],
+    analysis: dict[str, object],
+) -> dict[int, dict[str, float]]:
+    semantic_zones = analysis.get("semantic_zones")
+    if not isinstance(semantic_zones, list):
+        return {}
+
+    available_zones = [
+        zone
+        for zone in semantic_zones
+        if isinstance(zone, dict)
+        and all(key in zone for key in ("type", "x", "y", "width", "height"))
+    ]
+    if not available_zones:
+        return {}
+
+    sorted_rooms = sorted(
+        rooms,
+        key=lambda room: (
+            ROOM_TYPE_PRIORITY[_classify_room_type(str(room.get("name", "")), str(room.get("description", "") or ""))],
+            str(room.get("name", "")),
+        ),
+    )
+    layouts: dict[int, dict[str, float]] = {}
+    remaining = available_zones[:]
+    for room in sorted_rooms:
+        room_type = _classify_room_type(str(room.get("name", "")), str(room.get("description", "") or ""))
+        best_zone = max(remaining, key=lambda zone: _semantic_zone_score(zone, room_type, str(room.get("name", ""))))
+        remaining.remove(best_zone)
+        layouts[int(room["id"])] = {
+            "plan_x": round(float(best_zone["x"]), 2),
+            "plan_y": round(float(best_zone["y"]), 2),
+            "plan_width": round(float(best_zone["width"]), 2),
+            "plan_height": round(float(best_zone["height"]), 2),
+            "plan_rotation": round(float(best_zone.get("rotation") or 0.0), 2),
+        }
+        if not remaining:
+            break
+
+    return layouts
+
+
+def _semantic_zone_score(zone: dict[str, object], room_type: str, room_name: str) -> float:
+    zone_type = str(zone.get("type") or "")
+    label = str(zone.get("label") or "")
+    width = float(zone.get("width") or 0)
+    height = float(zone.get("height") or 0)
+    area = width * height
+    score = area
+
+    if room_type == "living":
+        score += 240000 if zone_type == "living" else 0
+    elif room_type == "master":
+        score += 220000 if zone_type == "master" else 0
+        if "主" in room_name:
+            score += 15000 if "主" in label else 0
+    elif room_type == "bedroom":
+        score += 160000 if zone_type == "bedroom" else 0
+    elif room_type == "dining":
+        score += 170000 if zone_type == "dining" else 0
+    elif room_type == "kitchen":
+        score += 170000 if zone_type == "kitchen" else 0
+    elif room_type == "bath":
+        score += 150000 if zone_type in {"bath", "master_bath"} else 0
+    elif room_type == "entry":
+        score += 120000 if zone_type == "entry" else 0
+    elif room_type == "storage":
+        score += 120000 if zone_type == "storage" else 0
+    elif room_type == "generic":
+        score += 90000 if zone_type in {"hall", "dining", "bedroom"} else 0
+
+    if room_type == "bedroom" and "北" in label:
+        score += 5000
+    if room_type == "generic" and zone_type == "hall":
+        score += 12000
+
+    return score
 
 
 def _candidate_score(candidate: dict[str, object], room_type: str) -> float:
@@ -653,7 +748,10 @@ def _classify_room_type(name: str, description: str) -> str:
     return "generic"
 
 
-def _with_device_fallback_positions(room: dict[str, object]) -> list[dict[str, object]]:
+def _with_device_fallback_positions(
+    room: dict[str, object],
+    analysis: dict[str, object] | None,
+) -> list[dict[str, object]]:
     devices = [dict(device) for device in room.get("devices", [])]
     layout = {
         "plan_x": float(room.get("plan_x") or 0),
@@ -662,17 +760,23 @@ def _with_device_fallback_positions(room: dict[str, object]) -> list[dict[str, o
         "plan_height": float(room.get("plan_height") or 0),
         "plan_rotation": float(room.get("plan_rotation") or 0),
     }
-    points = _derive_device_positions(devices, layout)
+    points = _derive_device_positions(
+        devices,
+        layout,
+        semantic_zones=analysis.get("semantic_zones") if isinstance(analysis, dict) else None,
+        room_name=str(room.get("name") or ""),
+    )
     next_devices = []
     for device in devices:
         point = points.get(int(device["id"]), {})
+        prefer_semantic_anchor = bool(point.get("semantic_locked"))
         next_devices.append(
             {
                 **device,
-                "plan_x": device.get("plan_x") if device.get("plan_x") is not None else point.get("plan_x"),
-                "plan_y": device.get("plan_y") if device.get("plan_y") is not None else point.get("plan_y"),
-                "plan_z": device.get("plan_z") if device.get("plan_z") is not None else point.get("plan_z"),
-                "plan_rotation": device.get("plan_rotation") if device.get("plan_rotation") is not None else point.get("plan_rotation"),
+                "plan_x": point.get("plan_x") if prefer_semantic_anchor else (device.get("plan_x") if device.get("plan_x") is not None else point.get("plan_x")),
+                "plan_y": point.get("plan_y") if prefer_semantic_anchor else (device.get("plan_y") if device.get("plan_y") is not None else point.get("plan_y")),
+                "plan_z": point.get("plan_z") if prefer_semantic_anchor else (device.get("plan_z") if device.get("plan_z") is not None else point.get("plan_z")),
+                "plan_rotation": point.get("plan_rotation") if prefer_semantic_anchor else (device.get("plan_rotation") if device.get("plan_rotation") is not None else point.get("plan_rotation")),
             }
         )
     return next_devices
@@ -707,25 +811,39 @@ def _assign_device_positions(devices: list[Device], layout: dict[str, float], *,
         device.plan_rotation = point["plan_rotation"]
 
 
-def _derive_device_positions(devices: list[dict[str, object]], layout: dict[str, float]) -> dict[int, dict[str, float]]:
+def _derive_device_positions(
+    devices: list[dict[str, object]],
+    layout: dict[str, float],
+    *,
+    semantic_zones: list[dict[str, object]] | None = None,
+    room_name: str = "",
+) -> dict[int, dict[str, float]]:
     if not devices:
         return {}
 
-    room_x = layout["plan_x"]
-    room_y = layout["plan_y"]
-    room_width = max(layout["plan_width"], 120)
-    room_height = max(layout["plan_height"], 80)
+    semantic_layout = _semantic_layout_for_room(layout, semantic_zones, room_name)
+    room_x = semantic_layout["plan_x"]
+    room_y = semantic_layout["plan_y"]
+    room_width = max(semantic_layout["plan_width"], 120)
+    room_height = max(semantic_layout["plan_height"], 80)
     points: dict[int, dict[str, float]] = {}
+    zone_index = _semantic_zone_index(semantic_zones)
 
     top_wall = []
     bottom_wall = []
     sensor_cluster = []
     grid_cluster = []
+    anchored: list[tuple[dict[str, object], dict[str, float]]] = []
 
     for device in devices:
         entity_domain = str(device.get("entity_domain", ""))
         appliance_type = str(device.get("appliance_type", ""))
         device_class = str(device.get("device_class", ""))
+        anchor = _semantic_anchor_for_device(device, room_name, zone_index)
+
+        if anchor is not None:
+            anchored.append((device, anchor))
+            continue
 
         if entity_domain == "climate":
             top_wall.append(device)
@@ -736,11 +854,124 @@ def _derive_device_positions(devices: list[dict[str, object]], layout: dict[str,
         else:
             grid_cluster.append(device)
 
+    for index, (device, anchor) in enumerate(anchored):
+        points[int(device["id"])] = {
+            "plan_x": round(anchor["plan_x"], 2),
+            "plan_y": round(anchor["plan_y"] + index * 0.0, 2),
+            "plan_z": round(anchor["plan_z"], 2),
+            "plan_rotation": round(anchor["plan_rotation"], 2),
+            "semantic_locked": True,
+        }
+
     _place_linear(top_wall, points, room_x + room_width * 0.18, room_x + room_width * 0.82, room_y + room_height * 0.14, 0.7)
     _place_linear(bottom_wall, points, room_x + room_width * 0.18, room_x + room_width * 0.82, room_y + room_height * 0.82, 0.2)
     _place_vertical(sensor_cluster, points, room_x + room_width * 0.84, room_y + room_height * 0.22, room_y + room_height * 0.72, 0.9)
     _place_grid(grid_cluster, points, room_x + room_width * 0.22, room_y + room_height * 0.32, room_width * 0.48, room_height * 0.34)
     return points
+
+
+def _semantic_layout_for_room(
+    layout: dict[str, float],
+    semantic_zones: list[dict[str, object]] | None,
+    room_name: str,
+) -> dict[str, float]:
+    zone_index = _semantic_zone_index(semantic_zones)
+    room_type = _classify_room_type(room_name, "")
+    zone = _pick_semantic_zone_for_room(room_type, room_name, zone_index)
+    if zone is None:
+        return layout
+
+    return {
+        "plan_x": float(zone["x"]),
+        "plan_y": float(zone["y"]),
+        "plan_width": float(zone["width"]),
+        "plan_height": float(zone["height"]),
+        "plan_rotation": float(zone.get("rotation") or 0.0),
+    }
+
+
+def _semantic_zone_index(semantic_zones: list[dict[str, object]] | None) -> dict[str, list[dict[str, object]]]:
+    index: dict[str, list[dict[str, object]]] = {}
+    for zone in semantic_zones or []:
+        zone_type = str(zone.get("type") or "")
+        if not zone_type:
+            continue
+        index.setdefault(zone_type, []).append(zone)
+    return index
+
+
+def _pick_semantic_zone_for_room(
+    room_type: str,
+    room_name: str,
+    zone_index: dict[str, list[dict[str, object]]],
+) -> dict[str, object] | None:
+    if room_type == "living":
+        return _first_zone(zone_index, "living")
+    if room_type == "master":
+        return _first_zone(zone_index, "master")
+    if room_type == "kitchen":
+        return _first_zone(zone_index, "kitchen")
+    if room_type == "dining":
+        return _first_zone(zone_index, "dining")
+    if room_type == "bath":
+        return _first_zone(zone_index, "master_bath") if "主" in room_name else _first_zone(zone_index, "bath")
+    if room_type == "entry":
+        return _first_zone(zone_index, "entry")
+    if room_type == "storage":
+        return _first_zone(zone_index, "storage")
+    if room_type == "bedroom":
+        bedrooms = zone_index.get("bedroom", [])
+        if "西" in room_name or "左" in room_name:
+            return bedrooms[1] if len(bedrooms) > 1 else (bedrooms[0] if bedrooms else None)
+        if "北" in room_name:
+            return bedrooms[0] if bedrooms else None
+        return bedrooms[-1] if bedrooms else None
+    return None
+
+
+def _semantic_anchor_for_device(
+    device: dict[str, object],
+    room_name: str,
+    zone_index: dict[str, list[dict[str, object]]],
+) -> dict[str, float] | None:
+    appliance_type = str(device.get("appliance_type") or "")
+    entity_domain = str(device.get("entity_domain") or "")
+
+    if appliance_type == "fridge":
+        return _anchor_in_zone(_first_zone(zone_index, "kitchen"), 0.18, 0.56, 0.55)
+
+    if appliance_type in {"tv", "media", "speaker"} or entity_domain == "media_player":
+        return _anchor_in_zone(_first_zone(zone_index, "living"), 0.76, 0.74, 0.32)
+
+    if entity_domain == "climate":
+        room_zone = _pick_semantic_zone_for_room(_classify_room_type(room_name, ""), room_name, zone_index)
+        return _anchor_in_zone(room_zone, 0.52, 0.12, 0.72)
+
+    if "主卧" in room_name:
+        return _anchor_in_zone(_first_zone(zone_index, "master"), 0.72, 0.62, 0.42)
+
+    return None
+
+
+def _anchor_in_zone(
+    zone: dict[str, object] | None,
+    x_ratio: float,
+    y_ratio: float,
+    z: float,
+) -> dict[str, float] | None:
+    if zone is None:
+        return None
+    return {
+        "plan_x": float(zone["x"]) + float(zone["width"]) * x_ratio,
+        "plan_y": float(zone["y"]) + float(zone["height"]) * y_ratio,
+        "plan_z": z,
+        "plan_rotation": 0.0,
+    }
+
+
+def _first_zone(zone_index: dict[str, list[dict[str, object]]], zone_type: str) -> dict[str, object] | None:
+    zones = zone_index.get(zone_type, [])
+    return zones[0] if zones else None
 
 
 def _place_linear(

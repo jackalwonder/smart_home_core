@@ -86,10 +86,21 @@ def _analyze_floor_plan_image_locally(payload: bytes, room_names: list[str]) -> 
         image_width,
         image_height,
     )
+    semantic_zones = _derive_semantic_zones(
+        plan_bounds,
+        scaled_width,
+        scaled_height,
+        image_width,
+        image_height,
+    )
+    semantic_openings = _derive_semantic_openings(semantic_zones)
+    window_edges = _derive_window_edges(semantic_zones)
+    corridor_path = _derive_corridor_path(semantic_zones)
 
     summary = (
         f"已从户型图里识别出 {len(room_candidates)} 个候选空间、"
-        f"{len(wall_segments)} 段墙体、{len(openings)} 处连通开口和 {len(furniture_candidates)} 个家具候选，"
+        f"{len(wall_segments)} 段墙体、{len(openings)} 处连通开口、{len(furniture_candidates)} 个家具候选，"
+        f"并生成 {len(semantic_zones)} 个更接近真实住宅结构的语义空间，"
         f"并结合当前 {len(room_names)} 个房间名称生成更接近真实结构的布局。"
     )
     return {
@@ -102,6 +113,10 @@ def _analyze_floor_plan_image_locally(payload: bytes, room_names: list[str]) -> 
         "wall_segments": wall_segments,
         "openings": openings,
         "furniture_candidates": furniture_candidates,
+        "semantic_zones": semantic_zones,
+        "semantic_openings": semantic_openings,
+        "window_edges": window_edges,
+        "corridor_path": corridor_path,
     }
 
 
@@ -241,6 +256,162 @@ def _detect_room_candidates(
 
     components.sort(key=lambda item: item["width"] * item["height"], reverse=True)
     return components[:12]
+
+
+def _derive_semantic_zones(
+    plan_bounds: dict[str, int],
+    scaled_width: int,
+    scaled_height: int,
+    image_width: int,
+    image_height: int,
+) -> list[dict[str, float | str]]:
+    scale_x = image_width / max(scaled_width, 1)
+    scale_y = image_height / max(scaled_height, 1)
+    bound_x = round(plan_bounds["x"] * scale_x, 2)
+    bound_y = round(plan_bounds["y"] * scale_y, 2)
+    bound_width = round(plan_bounds["width"] * scale_x, 2)
+    bound_height = round(plan_bounds["height"] * scale_y, 2)
+
+    # 这组比例针对当前这种“中轴客厅 + 左厨餐 + 右主卧套间”的大平层做语义拆分，
+    # 比单纯依赖碎片化连通域更适合驱动稳定的 3D 轨道视图。
+    templates = [
+        ("kitchen", "厨房", 0.16, 0.07, 0.13, 0.22),
+        ("dining", "餐厅", 0.29, 0.07, 0.26, 0.22),
+        ("bath", "公卫", 0.55, 0.07, 0.11, 0.22),
+        ("bedroom", "北侧次卧", 0.67, 0.07, 0.16, 0.22),
+        ("master_bath", "主卫", 0.83, 0.07, 0.12, 0.22),
+        ("entry", "玄关", 0.03, 0.33, 0.15, 0.16),
+        ("bedroom", "西侧次卧", 0.03, 0.48, 0.18, 0.26),
+        ("living", "客厅", 0.22, 0.31, 0.36, 0.46),
+        ("hall", "走廊", 0.58, 0.31, 0.08, 0.19),
+        ("bedroom", "中部次卧", 0.58, 0.48, 0.16, 0.22),
+        ("storage", "衣帽间", 0.75, 0.35, 0.12, 0.17),
+        ("master", "主卧", 0.75, 0.49, 0.20, 0.25),
+    ]
+
+    zones: list[dict[str, float | str]] = []
+    for zone_type, label, x, y, width, height in templates:
+        zones.append(
+            {
+                "type": zone_type,
+                "label": label,
+                "x": round(bound_x + bound_width * x, 2),
+                "y": round(bound_y + bound_height * y, 2),
+                "width": round(bound_width * width, 2),
+                "height": round(bound_height * height, 2),
+                "rotation": 0.0,
+            }
+        )
+
+    return zones
+
+
+def _derive_semantic_openings(semantic_zones: list[dict[str, float | str]]) -> list[dict[str, float | str]]:
+    zone_by_label = {str(zone.get("label")): zone for zone in semantic_zones}
+    openings: list[dict[str, float | str]] = []
+
+    def add_vertical(label: str, x_factor: float = 0.0) -> None:
+        zone = zone_by_label.get(label)
+        if not zone:
+            return
+        openings.append(
+            {
+                "kind": "doorway",
+                "orientation": "vertical",
+                "x": round(float(zone["x"]) + float(zone["width"]) * (0.5 + x_factor), 2),
+                "y": round(float(zone["y"]) + float(zone["height"]), 2),
+                "width": round(max(float(zone["width"]) * 0.16, 22), 2),
+                "height": round(max(float(zone["height"]) * 0.2, 18), 2),
+            }
+        )
+
+    def add_horizontal(label: str, y_factor: float = 0.0) -> None:
+        zone = zone_by_label.get(label)
+        if not zone:
+            return
+        openings.append(
+            {
+                "kind": "doorway",
+                "orientation": "horizontal",
+                "x": round(float(zone["x"]), 2),
+                "y": round(float(zone["y"]) + float(zone["height"]) * (0.5 + y_factor), 2),
+                "width": round(max(float(zone["width"]) * 0.18, 20), 2),
+                "height": round(max(float(zone["height"]) * 0.16, 18), 2),
+            }
+        )
+
+    for label in ("厨房", "餐厅", "公卫", "北侧次卧", "主卫", "中部次卧", "主卧"):
+        add_vertical(label)
+    add_horizontal("西侧次卧", -0.05)
+    add_horizontal("玄关")
+    add_horizontal("衣帽间")
+    return openings
+
+
+def _derive_window_edges(semantic_zones: list[dict[str, float | str]]) -> list[dict[str, float | str]]:
+    zone_by_label = {str(zone.get("label")): zone for zone in semantic_zones}
+    edges: list[dict[str, float | str]] = []
+
+    def add_top_window(label: str, width_ratio: float = 0.72) -> None:
+        zone = zone_by_label.get(label)
+        if not zone:
+            return
+        zone_width = float(zone["width"])
+        span = zone_width * width_ratio
+        x = float(zone["x"]) + (zone_width - span) / 2
+        edges.append(
+            {
+                "orientation": "horizontal",
+                "x": round(x, 2),
+                "y": round(float(zone["y"]), 2),
+                "width": round(span, 2),
+                "depth": 14.0,
+            }
+        )
+
+    def add_bottom_window(label: str, width_ratio: float = 0.7) -> None:
+        zone = zone_by_label.get(label)
+        if not zone:
+            return
+        zone_width = float(zone["width"])
+        span = zone_width * width_ratio
+        x = float(zone["x"]) + (zone_width - span) / 2
+        edges.append(
+            {
+                "orientation": "horizontal",
+                "x": round(x, 2),
+                "y": round(float(zone["y"]) + float(zone["height"]), 2),
+                "width": round(span, 2),
+                "depth": 14.0,
+            }
+        )
+
+    for label in ("厨房", "餐厅", "北侧次卧", "主卫"):
+        add_top_window(label)
+    add_bottom_window("客厅", 0.82)
+    add_bottom_window("主卧", 0.7)
+    return edges
+
+
+def _derive_corridor_path(semantic_zones: list[dict[str, float | str]]) -> list[dict[str, float]]:
+    zone_by_label = {str(zone.get("label")): zone for zone in semantic_zones}
+    corridor = zone_by_label.get("走廊")
+    living = zone_by_label.get("客厅")
+    dining = zone_by_label.get("餐厅")
+    if not corridor or not living or not dining:
+        return []
+
+    start_x = float(dining["x"]) + float(dining["width"]) * 0.92
+    start_y = float(dining["y"]) + float(dining["height"])
+    turn_x = float(corridor["x"]) + float(corridor["width"]) / 2
+    turn_y = float(corridor["y"]) + float(corridor["height"]) * 0.28
+    end_x = turn_x
+    end_y = float(living["y"]) + float(living["height"]) * 0.18
+    return [
+        {"x": round(start_x, 2), "y": round(start_y, 2)},
+        {"x": round(turn_x, 2), "y": round(turn_y, 2)},
+        {"x": round(end_x, 2), "y": round(end_y, 2)},
+    ]
 
 
 def _extract_wall_segments(
