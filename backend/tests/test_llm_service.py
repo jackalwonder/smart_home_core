@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
-from unittest.mock import MagicMock
-
 import pytest
 from pydantic import ValidationError
 
@@ -34,7 +32,7 @@ class _FakeAsyncClient:
         self.chat = _FakeChat(content)
 
 
-async def _fake_build_device_context(db) -> str:
+async def _fake_build_device_context() -> str:
     return "客厅 | 客厅空调 | entity=climate.living_room_ac | state=off | actions=turn_on|turn_off|toggle"
 
 
@@ -102,7 +100,6 @@ async def test_analyze_smart_home_intent_falls_back_when_required_field_is_missi
     )
 
     result = await llm_service.analyze_smart_home_intent(
-        db=MagicMock(),
         user_command="打开客厅灯",
         location="客厅",
     )
@@ -125,7 +122,6 @@ async def test_analyze_smart_home_intent_falls_back_when_json_is_invalid(
     )
 
     result = await llm_service.analyze_smart_home_intent(
-        db=MagicMock(),
         user_command="打开客厅灯",
         location="客厅",
     )

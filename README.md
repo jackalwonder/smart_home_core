@@ -77,6 +77,9 @@ docker compose up -d --build
 
 `/api/webhook/automation` 额外使用 HMAC-SHA256 请求签名。
 
+前端默认通过同域 Nginx 反向代理访问后端，`APP_CONTROL_API_KEY` 只保留在前端容器环境变量中，由代理层注入到 `/api/*` 和 `/ws/*` 请求。
+不要再使用 `VITE_API_KEY` 之类的前端构建变量承载后端主密钥。
+
 ## 语音控制链路
 
 `POST /api/chat/` 会立即返回：

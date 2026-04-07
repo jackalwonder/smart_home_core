@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+"""目录服务，负责把数据库实体整理成适合前端展示的房间与设备视图。"""
+
 import asyncio
 import logging
 from typing import Any
 
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, joinedload
 
+from app.database import run_in_threadpool_session
 from app.models import Device, Room, Zone
 from app.schemas import DeviceCreate, RoomCreate, ZoneCreate
 from app.services.errors import ConflictError, NotFoundError
@@ -134,11 +136,12 @@ def list_room_snapshots(db: Session) -> list[Room]:
 
 
 async def list_room_snapshots_for_ui(db: Session) -> list[dict[str, Any]]:
-    rooms = await run_in_threadpool(list_room_snapshots, db)
+    rooms = await run_in_threadpool_session(lambda session: list_room_snapshots(session))
     state_map, registry_map = await _load_home_assistant_context()
 
     snapshots: list[dict[str, Any]] = []
     for room in rooms:
+        # 这里会把 Home Assistant 的原始实体过滤、归一化后再输出给主面板。
         devices = [
             device_view
             for device in room.devices
@@ -167,7 +170,7 @@ async def list_room_snapshots_for_ui(db: Session) -> list[dict[str, Any]]:
 
 
 async def list_devices_by_room_for_ui(db: Session, room_id: int) -> list[dict[str, Any]]:
-    devices = await run_in_threadpool(list_devices_by_room, db, room_id)
+    devices = await run_in_threadpool_session(list_devices_by_room, room_id)
     state_map, registry_map = await _load_home_assistant_context()
     return sorted(
         [
@@ -182,6 +185,7 @@ async def list_devices_by_room_for_ui(db: Session, room_id: int) -> list[dict[st
 
 
 async def _load_home_assistant_context() -> tuple[dict[str, dict[str, Any]], dict[str, RegistryEntityInfo]]:
+    # 状态流和实体注册表互不依赖，适合并发拉取以缩短首屏等待。
     state_task = asyncio.create_task(_load_state_map())
     registry_task = asyncio.create_task(_load_registry_map())
     return await asyncio.gather(state_task, registry_task)

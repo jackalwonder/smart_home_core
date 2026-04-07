@@ -1,21 +1,23 @@
 from __future__ import annotations
 
+"""短期意图记忆服务，用于承接“补充一句”的语音交互。"""
+
 from datetime import datetime, timedelta, timezone
 
-from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import run_in_threadpool_session
 from app.models import PendingIntent
 
 INTENT_TTL_SECONDS = 60
 
 
-async def save_pending_intent(db: Session, user_id: str, command: str) -> PendingIntent:
+async def save_pending_intent(user_id: str, command: str) -> PendingIntent:
     logger.info("Saving pending intent for user_id={} command={}", user_id, command)
 
-    def _save() -> PendingIntent:
+    def _save(db: Session) -> PendingIntent:
         pending_intent = PendingIntent(
             user_id=user_id.strip(),
             original_command=command.strip(),
@@ -26,13 +28,13 @@ async def save_pending_intent(db: Session, user_id: str, command: str) -> Pendin
         db.refresh(pending_intent)
         return pending_intent
 
-    return await run_in_threadpool(_save)
+    return await run_in_threadpool_session(_save)
 
 
-async def get_and_clear_active_intent(db: Session, user_id: str) -> str | None:
+async def get_and_clear_active_intent(user_id: str) -> str | None:
     normalized_user_id = user_id.strip()
 
-    def _get_and_clear() -> str | None:
+    def _get_and_clear(db: Session) -> str | None:
         pending_intent = db.scalar(
             select(PendingIntent)
             .where(PendingIntent.user_id == normalized_user_id, PendingIntent.is_active.is_(True))
@@ -59,11 +61,11 @@ async def get_and_clear_active_intent(db: Session, user_id: str) -> str | None:
         db.commit()
         return pending_intent.original_command
 
-    return await run_in_threadpool(_get_and_clear)
+    return await run_in_threadpool_session(_get_and_clear)
 
 
-async def cleanup_expired_intents(db: Session) -> int:
-    def _cleanup() -> int:
+async def cleanup_expired_intents() -> int:
+    def _cleanup(db: Session) -> int:
         active_intents = list(
             db.scalars(
                 select(PendingIntent).where(PendingIntent.is_active.is_(True))
@@ -85,10 +87,11 @@ async def cleanup_expired_intents(db: Session) -> int:
         logger.info("Marked {} expired pending intents as inactive.", expired_count)
         return expired_count
 
-    return await run_in_threadpool(_cleanup)
+    return await run_in_threadpool_session(_cleanup)
 
 
 def _is_expired(created_at: datetime) -> bool:
+    # 数据库里保存的是无时区时间戳，这里统一按 UTC 解释后再做 TTL 判断。
     created_at_utc = created_at.replace(tzinfo=timezone.utc) if created_at.tzinfo is None else created_at.astimezone(timezone.utc)
     expires_at = created_at_utc + timedelta(seconds=INTENT_TTL_SECONDS)
     return datetime.now(timezone.utc) > expires_at

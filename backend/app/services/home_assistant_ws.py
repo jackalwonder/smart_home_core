@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""Home Assistant WebSocket 监听器，负责状态回流与自动导入。"""
+
 import asyncio
 import json
 import logging
@@ -81,6 +83,7 @@ class HomeAssistantWebSocketListener:
                 logger.exception("Home Assistant listener crashed; reconnect will be attempted.")
                 if self._stop_event.is_set():
                     break
+                # 采用指数退避，避免 Home Assistant 故障时持续高频重连。
                 await asyncio.sleep(delay)
                 delay = min(delay * 2, self.reconnect_max_delay)
 
@@ -188,6 +191,7 @@ class HomeAssistantWebSocketListener:
             return
 
         now = time.monotonic()
+        # 未知实体连续大量出现时，靠冷却时间限制导入风暴。
         if now - self._last_auto_import_at < self.auto_import_cooldown:
             logger.debug("Skipping automatic import for %s because cooldown is active.", entity_id)
             return
@@ -221,7 +225,7 @@ class HomeAssistantWebSocketListener:
     def _import_and_publish_entity(self, entity_id: str, status: DeviceStatus) -> bool:
         session = SessionLocal()
         try:
-            asyncio.run(home_assistant_import_service.import_home_assistant_entities(session))
+            asyncio.run(home_assistant_import_service.import_home_assistant_entities())
             device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
             if device is None:
                 return False

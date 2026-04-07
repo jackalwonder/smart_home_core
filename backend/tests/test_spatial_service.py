@@ -7,10 +7,6 @@ import pytest
 from app.services import spatial_service
 
 
-async def _run_inline(func, *args, **kwargs):
-    return func(*args, **kwargs)
-
-
 def _radar_state(entity_id: str, state: str) -> dict[str, object]:
     return {
         "entity_id": entity_id,
@@ -33,7 +29,6 @@ class _FakeHomeAssistantClient:
 async def test_get_contextual_room_returns_room_when_exactly_one_radar_is_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(spatial_service, "run_in_threadpool", _run_inline)
     monkeypatch.setattr(
         spatial_service.HomeAssistantRestClient,
         "from_env",
@@ -48,7 +43,12 @@ async def test_get_contextual_room_returns_room_when_exactly_one_radar_is_on(
     db = MagicMock()
     db.scalar.return_value = "主卧"
 
-    result = await spatial_service.get_contextual_room("unknown device", db)
+    async def _run_with_db(func, *args, **kwargs):
+        return func(db, *args, **kwargs)
+
+    monkeypatch.setattr(spatial_service, "run_in_threadpool_session", _run_with_db)
+
+    result = await spatial_service.get_contextual_room("unknown device")
 
     assert result == "主卧"
     db.scalar.assert_called_once()
@@ -58,7 +58,6 @@ async def test_get_contextual_room_returns_room_when_exactly_one_radar_is_on(
 async def test_get_contextual_room_returns_ambiguous_when_two_radars_are_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(spatial_service, "run_in_threadpool", _run_inline)
     monkeypatch.setattr(
         spatial_service.HomeAssistantRestClient,
         "from_env",
@@ -72,7 +71,12 @@ async def test_get_contextual_room_returns_ambiguous_when_two_radars_are_on(
 
     db = MagicMock()
 
-    result = await spatial_service.get_contextual_room("unknown device", db)
+    async def _run_with_db(func, *args, **kwargs):
+        return func(db, *args, **kwargs)
+
+    monkeypatch.setattr(spatial_service, "run_in_threadpool_session", _run_with_db)
+
+    result = await spatial_service.get_contextual_room("unknown device")
 
     assert result == spatial_service.AMBIGUOUS_ROOM
     db.scalar.assert_not_called()
@@ -82,7 +86,6 @@ async def test_get_contextual_room_returns_ambiguous_when_two_radars_are_on(
 async def test_get_contextual_room_returns_ambiguous_when_zero_radars_are_on(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(spatial_service, "run_in_threadpool", _run_inline)
     monkeypatch.setattr(
         spatial_service.HomeAssistantRestClient,
         "from_env",
@@ -96,7 +99,12 @@ async def test_get_contextual_room_returns_ambiguous_when_zero_radars_are_on(
 
     db = MagicMock()
 
-    result = await spatial_service.get_contextual_room("unknown device", db)
+    async def _run_with_db(func, *args, **kwargs):
+        return func(db, *args, **kwargs)
+
+    monkeypatch.setattr(spatial_service, "run_in_threadpool_session", _run_with_db)
+
+    result = await spatial_service.get_contextual_room("unknown device")
 
     assert result == spatial_service.AMBIGUOUS_ROOM
     db.scalar.assert_not_called()

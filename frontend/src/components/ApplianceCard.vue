@@ -86,9 +86,9 @@ const applianceMeta = computed(() => {
     fridge: {
       eyebrow: '冰箱控制面板',
       badge: '温控设备',
-      cardClass: 'border-sky-200/70 bg-gradient-to-br from-white via-sky-50/85 to-cyan-50/70 shadow-panel',
-      iconWrapperClass: 'bg-sky-500 text-white',
-      sectionClass: 'border-sky-100 bg-white/82',
+      cardClass: 'border-sky-200/60 bg-gradient-to-br from-white via-sky-50/82 to-cyan-50/60 shadow-panel',
+      iconWrapperClass: 'bg-sky-600 text-white',
+      sectionClass: 'border-sky-100 bg-white/76',
       chipClass: 'bg-sky-100 text-sky-700',
       accentColor: '#0ea5e9',
     },
@@ -185,9 +185,9 @@ const applianceMeta = computed(() => {
     generic: {
       eyebrow: '设备聚合视图',
       badge: '家庭设备',
-      cardClass: 'border-amber-200/80 bg-gradient-to-br from-white via-amber-50/80 to-orange-50/72 shadow-panel',
+      cardClass: 'border-amber-200/70 bg-gradient-to-br from-white via-amber-50/78 to-orange-50/68 shadow-panel',
       iconWrapperClass: 'bg-amber-500 text-white',
-      sectionClass: 'border-amber-100 bg-white/82',
+      sectionClass: 'border-amber-100 bg-white/76',
       chipClass: 'bg-amber-100 text-amber-700',
       accentColor: '#f59e0b',
     },
@@ -276,11 +276,13 @@ async function handleButtonPress(deviceId) {
 
 <template>
   <article
-    class="overflow-hidden rounded-[2rem] border p-5 sm:p-6"
+    class="relative overflow-hidden rounded-[2.15rem] border p-5 sm:p-6"
     :class="applianceMeta.cardClass"
   >
-    <div class="flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-start lg:justify-between" :class="applianceMeta.sectionClass">
-      <div class="flex items-start gap-4 rounded-[1.65rem] border px-4 py-4" :class="applianceMeta.sectionClass">
+    <div class="absolute right-[-3rem] top-[-3rem] h-36 w-36 rounded-full bg-white/35 blur-3xl" />
+
+    <div class="relative flex flex-col gap-4 border-b pb-5 lg:flex-row lg:items-start lg:justify-between" :class="applianceMeta.sectionClass">
+      <div class="flex items-start gap-4 rounded-[1.8rem] border px-4 py-4" :class="applianceMeta.sectionClass">
         <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl shadow-sm" :class="applianceMeta.iconWrapperClass">
           <svg v-if="applianceType === 'fridge'" class="h-7 w-7" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
             <path d="M7 3h10" />
@@ -336,21 +338,21 @@ async function handleButtonPress(deviceId) {
           <p class="text-xs font-semibold uppercase tracking-[0.28em]" :class="applianceMeta.chipClass">{{ applianceMeta.eyebrow }}</p>
           <h3 class="font-display mt-3 text-[2rem] leading-none text-ink sm:text-[2.25rem]">{{ title }}</h3>
           <p class="mt-2 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base">
-            这张卡片会优先按 Home Assistant 的设备维度聚合显示。后续同一台冰箱、空调、电视、NAS 或电脑新增相关实体时，也会优先并入这里。
+            这张卡片会优先按 Home Assistant 设备维度聚合显示，把同一台家电的控制与监测能力收拢到一个更稳定、更高级的操作表面。
           </p>
         </div>
       </div>
 
-      <div class="grid grid-cols-3 gap-3 sm:min-w-[280px]">
-        <div class="rounded-2xl border px-4 py-3" :class="applianceMeta.sectionClass">
+      <div class="grid grid-cols-3 gap-3 sm:min-w-[300px]">
+        <div class="rounded-[1.4rem] border px-4 py-3" :class="applianceMeta.sectionClass">
           <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">类型</p>
           <p class="mt-2 text-sm font-semibold text-ink">{{ applianceMeta.badge }}</p>
         </div>
-        <div class="rounded-2xl border px-4 py-3" :class="applianceMeta.sectionClass">
+        <div class="rounded-[1.4rem] border px-4 py-3" :class="applianceMeta.sectionClass">
           <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">控制项</p>
           <p class="mt-2 text-2xl font-semibold text-ink">{{ controlDevices.length }}</p>
         </div>
-        <div class="rounded-2xl border px-4 py-3" :class="applianceMeta.sectionClass">
+        <div class="rounded-[1.4rem] border px-4 py-3" :class="applianceMeta.sectionClass">
           <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">监测项</p>
           <p class="mt-2 text-2xl font-semibold text-ink">{{ sensorDevices.length }}</p>
         </div>

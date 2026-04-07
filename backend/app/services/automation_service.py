@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+"""设备控制与自动化执行服务。"""
+
 import logging
 
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy.orm import Session
 
+from app.database import run_in_threadpool_session
 from app.models import DeviceStatus
 from app.schemas import (
     AutomationExecutionResult,
@@ -23,12 +25,12 @@ logger = logging.getLogger(__name__)
 
 
 async def control_device(db: Session, payload: DeviceControlRequest) -> DeviceControlResponse:
-    device = await run_in_threadpool(catalog_service.get_device, db, payload.device_id)
+    device = await run_in_threadpool_session(catalog_service.get_device, payload.device_id)
     client = HomeAssistantRestClient.from_env()
     service_name, service_data = _service_call_for_payload(device.ha_entity_id, payload)
     result = await client.call_service(service_name, entity_id=device.ha_entity_id, service_data=service_data)
     if payload.control_kind == DeviceControlKind.TOGGLE and payload.action is not None:
-        await run_in_threadpool(_optimistically_update_device_state, db, device.id, payload.action)
+        await run_in_threadpool_session(_optimistically_update_device_state, device.id, payload.action)
     logger.info("Forwarded device control command %s for %s.", payload.control_kind.value, device.ha_entity_id)
     return DeviceControlResponse(
         device_id=device.id,
@@ -97,6 +99,7 @@ def _service_name_for_action(action: DeviceControlAction) -> str:
 def _service_call_for_payload(entity_id: str, payload: DeviceControlRequest) -> tuple[str, dict[str, object] | None]:
     entity_domain = entity_id.split(".", 1)[0]
 
+    # 这里统一把 UI 层的抽象控制语义翻译成 Home Assistant 的具体 service 调用。
     if payload.control_kind == DeviceControlKind.TOGGLE:
         action = payload.action or DeviceControlAction.TOGGLE
         return _service_name_for_action(action), None
@@ -126,6 +129,7 @@ def _optimistically_update_device_state(db: Session, device_id: int, action: Dev
     if next_status is None:
         return
     try:
+        # 开关动作先做一次乐观更新，减少界面等待 Home Assistant 回流时的卡顿感。
         device.current_status = next_status
         db.commit()
         db.refresh(device)

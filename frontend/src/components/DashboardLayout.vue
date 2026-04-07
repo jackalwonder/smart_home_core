@@ -34,75 +34,72 @@ const props = defineProps({
 
 defineEmits(['select-room'])
 
+// 侧边栏允许“未显式选择”状态，因此这里提供一个首房间兜底。
 const selectedRoom = computed(() => props.rooms.find((room) => room.id === props.selectedRoomId) ?? props.rooms[0] ?? null)
 </script>
 
 <template>
   <main class="app-shell relative min-h-screen overflow-hidden px-3 py-3 sm:px-4 sm:py-4 lg:px-6 xl:px-8">
     <div class="pointer-events-none absolute inset-0 overflow-hidden">
-      <div class="absolute left-[-4rem] top-[-2rem] h-56 w-56 rounded-full bg-auric/20 blur-3xl sm:h-72 sm:w-72" />
-      <div class="absolute right-[-3rem] top-[12rem] h-56 w-56 rounded-full bg-lagoon/20 blur-3xl sm:h-80 sm:w-80" />
-      <div class="absolute bottom-[-4rem] left-[22%] h-48 w-48 rounded-full bg-obsidian/12 blur-3xl sm:h-72 sm:w-72" />
+      <div class="absolute left-[-6rem] top-[-4rem] h-72 w-72 rounded-full bg-auric/20 blur-3xl sm:h-[24rem] sm:w-[24rem]" />
+      <div class="absolute right-[-5rem] top-[10rem] h-72 w-72 rounded-full bg-lagoon/20 blur-3xl sm:h-[26rem] sm:w-[26rem]" />
+      <div class="absolute bottom-[-5rem] left-[18%] h-64 w-64 rounded-full bg-obsidian/10 blur-3xl sm:h-[22rem] sm:w-[22rem]" />
     </div>
 
-    <div class="relative mx-auto grid max-w-[1720px] gap-5 xl:grid-cols-[390px_minmax(0,1fr)] xl:gap-7">
+    <div class="relative mx-auto grid max-w-[1780px] gap-5 xl:grid-cols-[410px_minmax(0,1fr)] xl:gap-7">
       <aside
         class="glass-dark overflow-hidden rounded-[2rem] border border-white/10 text-white shadow-float xl:sticky xl:top-6 xl:max-h-[calc(100vh-3rem)] xl:rounded-[2.8rem]"
       >
-        <div class="relative border-b border-white/10 px-5 py-5 sm:px-6 sm:py-6">
+        <div class="relative border-b border-white/10 px-5 py-6 sm:px-6 sm:py-7">
           <div class="absolute right-0 top-0 h-32 w-32 rounded-full bg-auric/15 blur-3xl" />
           <p class="text-[11px] font-semibold uppercase tracking-[0.42em] text-amber-200/80 sm:text-xs">
-            Residence Console
+            Domestic Atelier
           </p>
-          <h1 class="font-display mt-4 text-[2rem] leading-tight text-white sm:text-[2.55rem]">
-            更安静、更精致的
+          <h1 class="font-display mt-4 text-[2.2rem] leading-[0.95] text-white sm:text-[2.9rem]">
+            更沉稳的
             <br>
-            家庭控制中心
+            现代家庭控制台
           </h1>
           <p class="mt-4 max-w-md text-sm leading-6 text-slate-300">
-            以房间为入口，把 Home Assistant 里真正适合日常操作的实体提纯为一张高级、克制、可快速浏览的家庭仪表盘。
+            以房间为主线，把 Home Assistant 的原始实体提炼成一张更安静、更有秩序的居家操作界面。视觉上更像高端酒店中控，而不是普通设备列表。
           </p>
 
-          <div class="mt-5 flex flex-wrap gap-2">
-            <span class="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-200">
-              Home Assistant
-            </span>
-            <span class="rounded-full border border-white/10 bg-white/8 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-slate-200">
-              Realtime Sync
-            </span>
-            <span class="rounded-full border border-amber-300/20 bg-amber-300/12 px-3 py-1 text-[11px] uppercase tracking-[0.22em] text-amber-100">
-              Curated Devices
-            </span>
-          </div>
-        </div>
-
-        <div class="grid grid-cols-3 gap-3 px-5 py-5 sm:px-6">
-          <div class="rounded-[1.6rem] border border-white/8 bg-white/6 px-3 py-4 sm:px-4">
-            <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">房间</p>
-            <p class="mt-2 text-2xl font-semibold text-white">{{ roomCount }}</p>
-          </div>
-          <div class="rounded-[1.6rem] border border-emerald-300/12 bg-gradient-to-br from-lagoon/90 to-tide/70 px-3 py-4 sm:px-4">
-            <p class="text-[11px] uppercase tracking-[0.2em] text-emerald-100/70">设备</p>
-            <p class="mt-2 text-2xl font-semibold text-white">{{ deviceCount }}</p>
-          </div>
-          <div class="rounded-[1.6rem] border border-white/20 bg-white px-3 py-4 text-ink sm:px-4">
-            <p class="text-[11px] uppercase tracking-[0.2em] text-slate-500">实时</p>
-            <span class="status-pill mt-2" :class="connectionClass">
-              {{ connectionLabel }}
-            </span>
+          <div class="mt-6 grid gap-3 rounded-[1.8rem] border border-white/10 bg-white/5 p-4">
+            <div class="flex items-center justify-between text-[11px] uppercase tracking-[0.28em] text-slate-400">
+              <span>Residence Status</span>
+              <span>Live</span>
+            </div>
+            <div class="grid grid-cols-3 gap-3">
+              <div class="rounded-[1.2rem] border border-white/10 bg-white/6 px-3 py-3">
+                <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Rooms</p>
+                <p class="mt-2 text-2xl font-semibold text-white">{{ roomCount }}</p>
+              </div>
+              <div class="rounded-[1.2rem] border border-emerald-300/15 bg-gradient-to-br from-lagoon/90 to-tide/70 px-3 py-3">
+                <p class="text-[10px] uppercase tracking-[0.18em] text-emerald-100/70">Devices</p>
+                <p class="mt-2 text-2xl font-semibold text-white">{{ deviceCount }}</p>
+              </div>
+              <div class="rounded-[1.2rem] border border-white/20 bg-white px-3 py-3 text-ink">
+                <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Realtime</p>
+                <div class="mt-2">
+                  <span class="status-pill" :class="connectionClass">
+                    {{ connectionLabel }}
+                  </span>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
         <div class="border-t border-white/10 px-5 py-5 sm:px-6 sm:py-6">
-          <div class="rounded-[1.8rem] border border-white/10 bg-white/6 p-4">
+          <div class="rounded-[2rem] border border-white/10 bg-white/6 p-4">
             <div class="flex items-start justify-between gap-4">
               <div>
-                <p class="text-[11px] uppercase tracking-[0.28em] text-slate-400">当前房间</p>
-                <p class="font-display mt-3 text-[1.7rem] text-white sm:text-[2rem]">
+                <p class="text-[11px] uppercase tracking-[0.28em] text-slate-400">Current Room</p>
+                <p class="font-display mt-3 text-[1.8rem] text-white sm:text-[2.15rem]">
                   {{ selectedRoom?.name ?? '未选择房间' }}
                 </p>
                 <p class="mt-2 text-sm leading-6 text-slate-300">
-                  {{ selectedRoom?.description || '从房间入口切换整屋设备与状态，保证浏览路径稳定且轻量。' }}
+                  {{ selectedRoom?.description || '从房间入口切换整屋设备和实时控制，保持浏览路径稳定、聚焦、低干扰。' }}
                 </p>
               </div>
               <div class="rounded-[1.4rem] border border-white/10 bg-black/15 px-3 py-3 text-right">
@@ -113,7 +110,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
           </div>
 
           <div class="mt-6 flex items-center justify-between">
-            <p class="text-xs uppercase tracking-[0.32em] text-slate-400">房间导航</p>
+            <p class="text-xs uppercase tracking-[0.32em] text-slate-400">Room Navigator</p>
             <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[11px] tracking-[0.18em] text-slate-300">
               {{ props.rooms.length }} Rooms
             </span>
@@ -124,10 +121,10 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
               v-for="room in props.rooms"
               :key="room.id"
               type="button"
-              class="min-w-[220px] snap-start rounded-[1.7rem] border px-4 py-4 text-left transition duration-300"
+              class="min-w-[220px] snap-start rounded-[1.8rem] border px-4 py-4 text-left transition duration-300"
               :class="
                 room.id === props.selectedRoomId
-                  ? 'border-amber-300/35 bg-gradient-to-br from-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
+                  ? 'border-amber-300/40 bg-gradient-to-br from-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
                   : 'border-white/10 bg-white/5 text-slate-200'
               "
               @click="$emit('select-room', room.id)"
@@ -150,10 +147,10 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
               v-for="room in props.rooms"
               :key="room.id"
               type="button"
-              class="w-full rounded-[1.75rem] border px-4 py-4 text-left transition duration-300"
+              class="w-full rounded-[1.9rem] border px-4 py-4 text-left transition duration-300"
               :class="
                 room.id === props.selectedRoomId
-                  ? 'border-amber-300/35 bg-gradient-to-br from-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
+                  ? 'border-amber-300/40 bg-gradient-to-br from-white via-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
                   : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/20 hover:bg-white/10'
               "
               @click="$emit('select-room', room.id)"
@@ -184,9 +181,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
         </div>
       </aside>
 
-      <section
-        class="glass-panel overflow-hidden rounded-[2rem] border border-white/70 shadow-float xl:rounded-[2.8rem]"
-      >
+      <section class="glass-panel overflow-hidden rounded-[2rem] border border-white/60 xl:rounded-[2.8rem]">
         <slot />
       </section>
     </div>

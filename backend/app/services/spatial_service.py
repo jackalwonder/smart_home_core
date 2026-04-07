@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+"""空间仲裁服务，尝试把语音来源映射到当前所在房间。"""
+
 from typing import Any
 
-from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import run_in_threadpool_session
 from app.models import Device, Room
 from app.services.home_assistant_api import HomeAssistantRestClient
 
@@ -20,7 +22,7 @@ RADAR_DEVICE_CLASSES = {"motion", "presence", "occupancy"}
 AMBIGUOUS_ROOM = "AMBIGUOUS"
 
 
-async def get_contextual_room(source_device: str, db: Session) -> str:
+async def get_contextual_room(source_device: str) -> str:
     source_device_name = source_device.strip()
     logger.info("Resolving contextual room for source device: {}", source_device_name)
 
@@ -29,6 +31,7 @@ async def get_contextual_room(source_device: str, db: Session) -> str:
         logger.info("Matched source device {} to static room {}.", source_device_name, mapped_room)
         return mapped_room
 
+    # 静态来源映射命中失败后，再退回到雷达占用状态做实时推断。
     states = await HomeAssistantRestClient.from_env().get_states()
     active_radar_entity_ids = [
         entity_id
@@ -38,6 +41,7 @@ async def get_contextual_room(source_device: str, db: Session) -> str:
 
     logger.info("Found {} active radar sensors for contextual arbitration.", len(active_radar_entity_ids))
 
+    # 只有“恰好一个房间有人”时，才认为空间上下文足够明确。
     if len(active_radar_entity_ids) != 1:
         logger.warning(
             "Unable to determine room from radar sensors. Active radars: {}",
@@ -47,7 +51,7 @@ async def get_contextual_room(source_device: str, db: Session) -> str:
 
     target_entity_id = active_radar_entity_ids[0]
 
-    def _lookup_room_name() -> str | None:
+    def _lookup_room_name(db: Session) -> str | None:
         stmt = (
             select(Room.name)
             .join(Device, Device.room_id == Room.id)
@@ -56,7 +60,7 @@ async def get_contextual_room(source_device: str, db: Session) -> str:
         )
         return db.scalar(stmt)
 
-    room_name = await run_in_threadpool(_lookup_room_name)
+    room_name = await run_in_threadpool_session(_lookup_room_name)
     if room_name is None:
         logger.warning(
             "Active radar entity {} is not mapped to any room in the database.",

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""接口与 WebSocket 鉴权工具。"""
+
 import hashlib
 import hmac
 import os
@@ -60,6 +62,7 @@ def _resolve_context(token: str | None) -> AuthContext:
             headers={"WWW-Authenticate": "Bearer"},
         )
 
+    # 允许多个环境变量配置成相同 token，并把命中的权限做并集。
     matched_sources: list[str] = []
     matched_scopes: set[str] = set()
     for env_name, expected_token, scopes in configured_tokens:

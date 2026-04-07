@@ -19,10 +19,6 @@ class _FrozenDateTime(datetime):
         return cls.current.astimezone(tz)
 
 
-async def _run_inline(func, *args, **kwargs):
-    return func(*args, **kwargs)
-
-
 def test_is_expired_returns_false_within_ttl(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(intent_service, "datetime", _FrozenDateTime)
     created_at = _FrozenDateTime.current - timedelta(seconds=30)
@@ -41,7 +37,6 @@ def test_is_expired_returns_true_after_ttl(monkeypatch: pytest.MonkeyPatch) -> N
 async def test_get_and_clear_active_intent_returns_command_within_ttl(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(intent_service, "run_in_threadpool", _run_inline)
     monkeypatch.setattr(intent_service, "datetime", _FrozenDateTime)
 
     pending_intent = SimpleNamespace(
@@ -53,8 +48,13 @@ async def test_get_and_clear_active_intent_returns_command_within_ttl(
     )
     db = MagicMock()
     db.scalar.return_value = pending_intent
+    
+    async def _run_with_db(func, *args, **kwargs):
+        return func(db, *args, **kwargs)
 
-    result = await intent_service.get_and_clear_active_intent(db, "user-1")
+    monkeypatch.setattr(intent_service, "run_in_threadpool_session", _run_with_db)
+
+    result = await intent_service.get_and_clear_active_intent("user-1")
 
     assert result == "有点热，想看电影"
     assert pending_intent.is_active is False
@@ -66,7 +66,6 @@ async def test_get_and_clear_active_intent_returns_command_within_ttl(
 async def test_get_and_clear_active_intent_returns_none_when_expired(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(intent_service, "run_in_threadpool", _run_inline)
     monkeypatch.setattr(intent_service, "datetime", _FrozenDateTime)
 
     pending_intent = SimpleNamespace(
@@ -79,7 +78,12 @@ async def test_get_and_clear_active_intent_returns_none_when_expired(
     db = MagicMock()
     db.scalar.return_value = pending_intent
 
-    result = await intent_service.get_and_clear_active_intent(db, "user-2")
+    async def _run_with_db(func, *args, **kwargs):
+        return func(db, *args, **kwargs)
+
+    monkeypatch.setattr(intent_service, "run_in_threadpool_session", _run_with_db)
+
+    result = await intent_service.get_and_clear_active_intent("user-2")
 
     assert result is None
     assert pending_intent.is_active is False

@@ -1,15 +1,17 @@
 from __future__ import annotations
 
+"""Home Assistant 导入服务，把实体注册表与状态快照同步到本地目录。"""
+
 import json
 import logging
 from dataclasses import dataclass
 from typing import Any
 
-from fastapi.concurrency import run_in_threadpool
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 from websockets.asyncio.client import connect
 
+from app.database import run_in_threadpool_session
 from app.models import Device, DeviceStatus, DeviceType, Room, Zone
 from app.schemas import HomeAssistantImportResponse
 from app.services.errors import ConfigurationError
@@ -108,13 +110,14 @@ class ImportEntity:
     device_status: DeviceStatus
 
 
-async def import_home_assistant_entities(db: Session) -> HomeAssistantImportResponse:
+async def import_home_assistant_entities() -> HomeAssistantImportResponse:
     client = HomeAssistantRestClient.from_env()
     states = await client.get_states()
     registry_snapshot = await fetch_entity_registry_snapshot(client.websocket_url, client.access_token)
     entities = _build_import_entities(states, registry_snapshot)
 
-    summary = await run_in_threadpool(_sync_entities_to_database, db, entities)
+    # 网络侧先取齐快照，再在线程池里执行数据库写入，避免阻塞事件循环。
+    summary = await run_in_threadpool_session(_sync_entities_to_database, entities)
     logger.info(
         "Imported %s Home Assistant entities into zone %s.",
         summary.imported_device_count,

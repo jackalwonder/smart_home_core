@@ -18,6 +18,7 @@ const selectedOption = ref(props.device.raw_state ?? '')
 watch(
   () => props.device.number_value,
   (value) => {
+    // 后端状态回流后，用真实值覆盖本地草稿，避免滑杆长期漂移。
     if (value !== null && value !== undefined) {
       numberDraft.value = value
     }
@@ -66,8 +67,8 @@ const statusLabels = {
 
 const cardClass = computed(() =>
   isActive.value
-    ? 'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/85 to-teal-50/70 shadow-panel'
-    : 'border-white/80 bg-white/72 shadow-sm',
+    ? 'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/82 to-teal-50/68 shadow-panel'
+    : 'border-white/80 bg-gradient-to-br from-white/90 via-white/82 to-stone-50/75 shadow-sm',
 )
 
 const glowClass = computed(() => (isActive.value ? 'from-emerald-400/25 via-amber-200/10 to-sky-400/10' : 'from-slate-200/0 to-slate-200/0'))
@@ -174,11 +175,12 @@ async function handleButtonPress() {
 
 <template>
   <article
-    class="group relative overflow-hidden rounded-[2rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-panel"
+    class="group relative overflow-hidden rounded-[2.1rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-panel"
     :class="cardClass"
   >
     <div class="absolute inset-0 bg-gradient-to-br transition duration-500" :class="glowClass" />
     <div class="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-80" />
+    <div class="absolute right-[-2rem] top-[-2rem] h-28 w-28 rounded-full bg-white/35 blur-2xl" />
 
     <div class="relative flex items-start justify-between gap-4">
       <div class="flex items-center gap-4">
@@ -320,11 +322,18 @@ async function handleButtonPress() {
       </div>
     </div>
 
-    <div class="relative mt-6 rounded-[1.6rem] border border-white/70 bg-white/55 px-4 py-4">
-      <p class="text-sm font-medium text-ink">
-        {{ isInteractive ? '可执行控制' : '只读状态' }}
-      </p>
-      <p class="mt-1 text-sm leading-6 text-slate-500">{{ helperText }}</p>
+    <div class="relative mt-6 rounded-[1.75rem] border border-white/70 bg-white/60 px-4 py-4">
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <p class="text-sm font-medium text-ink">
+            {{ isInteractive ? '可执行控制' : '只读状态' }}
+          </p>
+          <p class="mt-1 text-sm leading-6 text-slate-500">{{ helperText }}</p>
+        </div>
+        <div class="rounded-full bg-slate-100 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
+          {{ isInteractive ? 'Interactive' : 'Readonly' }}
+        </div>
+      </div>
 
       <div v-if="isToggle" class="mt-4 flex items-center justify-between gap-4">
         <div class="text-sm text-slate-500">

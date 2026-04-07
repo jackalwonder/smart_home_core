@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+"""语音入口路由，负责接收口语化指令并交给后台异步处理。"""
+
 from typing import Any
 
 from fastapi import APIRouter, BackgroundTasks, Depends
@@ -7,7 +9,6 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.auth import CONTROL_SCOPE, require_scope
-from app.database import SessionLocal
 from app.services import intent_service, llm_service, spatial_service
 from app.services.errors import ConfigurationError, ExternalServiceError
 from app.services.home_assistant_api import HomeAssistantRestClient
@@ -41,7 +42,6 @@ async def submit_chat(
 
 
 async def process_voice_command(user_id: str, text: str, source_device: str | None = None) -> None:
-    db = SessionLocal()
     client: HomeAssistantRestClient | None = None
     reply = VOICE_FAILURE_REPLY
 
@@ -54,17 +54,19 @@ async def process_voice_command(user_id: str, text: str, source_device: str | No
         )
         client = HomeAssistantRestClient.from_env()
 
-        active_intent = await intent_service.get_and_clear_active_intent(db, user_id)
+        # 先拼接短期上下文，再做空间仲裁和意图分析，保证补充指令能被正确理解。
+        active_intent = await intent_service.get_and_clear_active_intent(user_id)
         combined_text = _combine_intent(active_intent, text)
 
-        location = await spatial_service.get_contextual_room(source_device or "", db)
-        llm_result = await llm_service.analyze_smart_home_intent(db, combined_text, location)
+        location = await spatial_service.get_contextual_room(source_device or "")
+        llm_result = await llm_service.analyze_smart_home_intent(combined_text, location)
 
         reply = _extract_reply(llm_result)
         actions = _extract_actions(llm_result)
 
+        # 只有在房间不明确且尚未产生动作时，才把口语上下文暂存起来等待补充说明。
         if location == spatial_service.AMBIGUOUS_ROOM and not actions:
-            await intent_service.save_pending_intent(db, user_id, combined_text)
+            await intent_service.save_pending_intent(user_id, combined_text)
 
         if actions:
             await _execute_actions(client, actions)
@@ -83,7 +85,6 @@ async def process_voice_command(user_id: str, text: str, source_device: str | No
                 await client.broadcast_tts(reply)
         except Exception as exc:
             logger.exception("Failed to broadcast voice reply via TTS: {}", exc)
-        db.close()
 
 
 def _combine_intent(active_intent: str | None, text: str) -> str:

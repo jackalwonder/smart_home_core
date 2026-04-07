@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+"""LLM 意图分析服务，把口语命令收敛成可执行的 Home Assistant 动作。"""
+
 import json
 import os
 from typing import Any
 
 import openai
-from fastapi.concurrency import run_in_threadpool
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.database import run_in_threadpool_session
 from app.models import Device, Room
 from app.services.home_assistant_api import HomeAssistantRestClient
 
@@ -36,12 +38,13 @@ class LlmIntentResponse(BaseModel):
     reply: str = Field(min_length=1)
 
 
-async def analyze_smart_home_intent(db: Session, user_command: str, location: str) -> dict[str, Any]:
+async def analyze_smart_home_intent(user_command: str, location: str) -> dict[str, Any]:
     logger.info("Analyzing smart home intent. location='{}' command='{}'", location, user_command)
 
-    device_context = await _build_device_context(db)
+    device_context = await _build_device_context()
     system_prompt = _build_system_prompt(device_context=device_context, location=location)
 
+    # 房间一旦不明确，就直接走澄清分支，避免把动作误发到错误空间。
     if location == AMBIGUOUS_LOCATION:
         logger.info("Location is ambiguous. Returning clarification response without LLM action execution intent.")
         return LlmIntentResponse(actions=[], reply=AMBIGUOUS_REPLY).model_dump()
@@ -71,7 +74,7 @@ async def analyze_smart_home_intent(db: Session, user_command: str, location: st
         return LlmIntentResponse(actions=[], reply=FALLBACK_REPLY).model_dump()
 
 
-async def _build_device_context(db: Session) -> str:
+async def _build_device_context() -> str:
     client = HomeAssistantRestClient.from_env()
     states = await client.get_states()
     state_map = {
@@ -80,7 +83,7 @@ async def _build_device_context(db: Session) -> str:
         if isinstance(item, dict) and isinstance(item.get("entity_id"), str)
     }
 
-    def _load_devices_and_rooms() -> tuple[list[Device], dict[int, str]]:
+    def _load_devices_and_rooms(db: Session) -> tuple[list[Device], dict[int, str]]:
         devices = list(
             db.scalars(
                 select(Device)
@@ -94,7 +97,7 @@ async def _build_device_context(db: Session) -> str:
         }
         return devices, room_names
 
-    devices, room_names = await run_in_threadpool(_load_devices_and_rooms)
+    devices, room_names = await run_in_threadpool_session(_load_devices_and_rooms)
 
     context_lines: list[str] = []
     for device in devices:
@@ -163,6 +166,7 @@ def _describe_capability(entity_id: str, current_state: str, attributes: dict[st
 
 
 def _build_system_prompt(device_context: str, location: str) -> str:
+    # Prompt 里显式给出设备清单和动作约束，尽量把模型输出限定为可直接执行的 JSON。
     ambiguity_rule = (
         "If the provided location is 'AMBIGUOUS', you must return an empty actions list and a polite clarification "
         f"question in the reply field, for example '{AMBIGUOUS_REPLY}'."

@@ -59,6 +59,7 @@ const formattedLastMessage = computed(() => {
 })
 
 onMounted(() => {
+  // 首次进入页面时同时拉首屏数据并建立实时连接。
   smartHomeStore.initialize().catch(() => {})
 })
 
@@ -69,6 +70,7 @@ watch(
       return
     }
 
+    // 房间切换后补拉一次该房间设备，保证详情视图拿到最新控制项。
     smartHomeStore.fetchRoomDevices(roomId).catch(() => {})
   },
   { immediate: false },

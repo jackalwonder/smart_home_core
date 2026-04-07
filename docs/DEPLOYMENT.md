@@ -49,6 +49,12 @@ APP_WEBHOOK_SECRET=replace_with_random_secret
 APP_WEBHOOK_MAX_SKEW_SECONDS=300
 ```
 
+前端安全约束：
+
+- 浏览器侧不要配置 `VITE_API_KEY`
+- 默认让前端走同域 `/api` 和 `/ws`，由前端容器内的 Nginx 代发 `X-API-Key`
+- `docker-compose*.yml` 已将前端容器的 `APP_CONTROL_API_KEY` 传给 Nginx 模板，不会进入浏览器 bundle
+
 ### 3.3 Home Assistant 连接
 
 ```dotenv
@@ -158,7 +164,8 @@ HMAC-SHA256
 
 ### 9.1 `/api/rooms` 返回 401 / 403
 
-通常是没有带 `X-API-Key`，或者值与后端配置不一致。
+如果你是通过前端页面访问，通常是前端容器没有拿到 `APP_CONTROL_API_KEY`。
+如果你是直接调用后端接口，通常是没有带 `X-API-Key`，或者值与后端配置不一致。
 
 ### 9.2 `/api/chat/` 无法执行动作
 
@@ -183,3 +190,4 @@ HMAC-SHA256
 - 定期轮换 `HOME_ASSISTANT_ACCESS_TOKEN` 和 `DEEPSEEK_API_KEY`
 - 生产环境优先使用反向代理和 HTTPS
 - `APP_ADMIN_API_KEY` 只用于受信任的内网终端
+- 不要把任何后端主密钥放进 `VITE_*` 前端环境变量

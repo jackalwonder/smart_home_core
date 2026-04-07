@@ -2,8 +2,6 @@ import { computed, ref } from 'vue'
 import { defineStore } from 'pinia'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || ''
-const API_KEY = import.meta.env.VITE_API_KEY?.trim() || ''
-const EXPLICIT_WS_URL = import.meta.env.VITE_WS_URL?.trim() || ''
 
 function resolveApiUrl(path) {
   if (!API_BASE_URL) {
@@ -14,42 +12,18 @@ function resolveApiUrl(path) {
 }
 
 function resolveWebSocketUrl(path = '/ws/devices') {
-  const applyAuthToken = (value) => {
-    if (!API_KEY) {
-      return value
-    }
-
-    const url = new URL(value, window.location.origin)
-    url.searchParams.set('token', API_KEY)
-    return API_BASE_URL || EXPLICIT_WS_URL ? url.toString() : `${url.pathname}${url.search}`
-  }
-
-  if (EXPLICIT_WS_URL) {
-    return applyAuthToken(EXPLICIT_WS_URL)
-  }
-
   if (API_BASE_URL) {
+    // 跨域部署时允许显式指定 API 基地址，再推导出对应的 WebSocket 地址。
     const url = new URL(API_BASE_URL)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.pathname = path
     url.search = ''
     url.hash = ''
-    return applyAuthToken(url.toString())
+    return url.toString()
   }
 
   const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-  return applyAuthToken(`${protocol}//${window.location.host}${path}`)
-}
-
-function authHeaders(headers = {}) {
-  if (!API_KEY) {
-    return headers
-  }
-
-  return {
-    ...headers,
-    'X-API-Key': API_KEY,
-  }
+  return `${protocol}//${window.location.host}${path}`
 }
 
 function sortRooms(rooms) {
@@ -91,7 +65,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     try {
       const authenticatedResponse = await fetch(resolveApiUrl('/api/rooms'), {
-        headers: authHeaders(),
+        headers: {},
       })
       if (!authenticatedResponse.ok) {
         throw new Error(`获取房间列表失败：${authenticatedResponse.status}`)
@@ -114,7 +88,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   async function fetchRoomDevices(roomId) {
     try {
       const response = await fetch(resolveApiUrl(`/api/devices/${roomId}`), {
-        headers: authHeaders(),
+        headers: {},
       })
       if (!response.ok) {
         throw new Error(`获取房间设备失败：${response.status}`)
@@ -212,6 +186,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }
 
     if (message.type === 'catalog_updated') {
+      // 目录结构变化时直接整页刷新数据，避免前端自己重算分组逻辑。
       fetchInitialState().catch(() => {})
       return
     }
@@ -302,6 +277,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     actionError.value = ''
     markPending(deviceId)
+    // 只在需要乐观更新时记录快照，失败后再回滚，避免无意义的数据复制。
     const previousSnapshot = typeof optimisticUpdate === 'function' ? snapshotDevice(deviceId) : null
 
     try {
@@ -312,7 +288,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const response = await fetch(resolveApiUrl('/api/device/control'), {
         method: 'POST',
         headers: {
-          ...authHeaders(),
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({

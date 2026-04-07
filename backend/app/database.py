@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+"""数据库连接、会话工厂与线程池会话辅助函数。"""
+
 import os
 from collections.abc import Generator
+from typing import Any, Callable, TypeVar
 
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
+from fastapi.concurrency import run_in_threadpool
 
 
 def _default_database_url() -> str:
@@ -26,6 +30,8 @@ class Base(DeclarativeBase):
 engine = create_engine(DATABASE_URL, echo=False, future=True)
 SessionLocal = sessionmaker(bind=engine, autoflush=False, autocommit=False, expire_on_commit=False)
 
+T = TypeVar("T")
+
 
 def ensure_runtime_schema() -> None:
     with engine.begin() as connection:
@@ -43,3 +49,18 @@ def get_db_session() -> Generator[Session, None, None]:
         yield session
     finally:
         session.close()
+
+
+async def run_in_threadpool_session(func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
+    def _run() -> T:
+        # 线程池任务必须持有自己独立的 Session，避免跨线程复用请求会话。
+        session = SessionLocal()
+        try:
+            return func(session, *args, **kwargs)
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+
+    return await run_in_threadpool(_run)

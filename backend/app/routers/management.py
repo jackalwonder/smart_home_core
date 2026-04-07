@@ -63,9 +63,9 @@ def list_devices(db: DbSession):
 
 
 @router.post("/integrations/home-assistant/import", response_model=HomeAssistantImportResponse)
-async def import_home_assistant_entities(db: DbSession):
+async def import_home_assistant_entities():
     try:
-        return await home_assistant_import_service.import_home_assistant_entities(db)
+        return await home_assistant_import_service.import_home_assistant_entities()
     except ConfigurationError as exc:
         raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail=str(exc)) from exc
     except ExternalServiceError as exc:
