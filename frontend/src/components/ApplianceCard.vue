@@ -40,6 +40,187 @@ const sensorDevices = computed(() =>
   props.devices.filter((device) => !device.can_control && ['temperature', 'humidity', 'moisture'].includes(device.device_class ?? '')),
 )
 const summaryLine = computed(() => `${controlDevices.value.length} 个控制项 · ${sensorDevices.value.length} 个监测项`)
+const activeControlCount = computed(() => controlDevices.value.filter((device) => isPoweredOn(device)).length)
+
+const primaryMetric = computed(() => {
+  if (climateDevices.value.length > 0) {
+    const primaryClimate = climateDevices.value[0]
+    return {
+      label: '模式',
+      value: primaryClimate.hvac_mode ?? primaryClimate.raw_state ?? primaryClimate.current_status ?? '待机',
+    }
+  }
+
+  if (mediaDevices.value.length > 0) {
+    const primaryMedia = mediaDevices.value[0]
+    return {
+      label: '状态',
+      value: primaryMedia.raw_state ?? primaryMedia.current_status ?? '待机',
+    }
+  }
+
+  if (genericControlDevices.value.length > 0) {
+    return {
+      label: '激活',
+      value: `${activeControlCount.value} 项`,
+    }
+  }
+
+  return {
+    label: '状态',
+    value: '在线',
+  }
+})
+
+const secondaryMetric = computed(() => {
+  const temperatureSensor = sensorDevices.value.find((device) => device.device_class === 'temperature')
+  if (temperatureSensor) {
+    return {
+      label: '温度',
+      value: formatReading(temperatureSensor.raw_state, temperatureSensor.unit_of_measurement ?? '°C'),
+    }
+  }
+
+  const humiditySensor = sensorDevices.value.find((device) => device.device_class === 'humidity')
+  if (humiditySensor) {
+    return {
+      label: '湿度',
+      value: formatReading(humiditySensor.raw_state, humiditySensor.unit_of_measurement ?? '%'),
+    }
+  }
+
+  const primaryClimate = climateDevices.value.find(
+    (device) => device.target_temperature !== null && device.target_temperature !== undefined,
+  )
+  if (primaryClimate) {
+    return {
+      label: '设定',
+      value: formatReading(primaryClimate.target_temperature, primaryClimate.unit_of_measurement ?? '°C'),
+    }
+  }
+
+  const primaryMedia = mediaDevices.value.find(
+    (device) => device.media_volume_level !== null && device.media_volume_level !== undefined,
+  )
+  if (primaryMedia) {
+    return {
+      label: '音量',
+      value: `${Math.round(primaryMedia.media_volume_level)}%`,
+    }
+  }
+
+  return {
+    label: '控制',
+    value: `${controlDevices.value.length} 项`,
+  }
+})
+
+const summaryStats = computed(() => [
+  {
+    label: '实体',
+    value: `${props.devices.length}`,
+  },
+  primaryMetric.value,
+  secondaryMetric.value,
+])
+
+const sensorSnapshots = computed(() => {
+  const readings = []
+
+  sensorDevices.value.forEach((device) => {
+    const value = formatReading(device.raw_state, device.unit_of_measurement ?? '')
+    if (value && readings.length < 3) {
+      readings.push({
+        label: shortLabel(device),
+        value,
+      })
+    }
+  })
+
+  climateDevices.value.forEach((device) => {
+    if (readings.length >= 3) {
+      return
+    }
+
+    if (device.current_temperature !== null && device.current_temperature !== undefined) {
+      readings.push({
+        label: `${shortLabel(device)} 室温`,
+        value: formatReading(device.current_temperature, device.unit_of_measurement ?? '°C'),
+      })
+    }
+  })
+
+  mediaDevices.value.forEach((device) => {
+    if (readings.length >= 3) {
+      return
+    }
+
+    if (device.media_volume_level !== null && device.media_volume_level !== undefined) {
+      readings.push({
+        label: `${shortLabel(device)} 音量`,
+        value: `${Math.round(device.media_volume_level)}%`,
+      })
+    }
+  })
+
+  return readings
+})
+
+const climateSummary = computed(() => {
+  if (climateDevices.value.length === 0) {
+    return ''
+  }
+
+  const primaryClimate = climateDevices.value[0]
+  const parts = []
+
+  if (primaryClimate.hvac_mode) {
+    parts.push(primaryClimate.hvac_mode)
+  }
+
+  if (primaryClimate.target_temperature !== null && primaryClimate.target_temperature !== undefined) {
+    parts.push(`设定 ${formatReading(primaryClimate.target_temperature, primaryClimate.unit_of_measurement ?? '°C')}`)
+  }
+
+  if (primaryClimate.current_temperature !== null && primaryClimate.current_temperature !== undefined) {
+    parts.push(`室温 ${formatReading(primaryClimate.current_temperature, primaryClimate.unit_of_measurement ?? '°C')}`)
+  }
+
+  return parts.join(' · ') || `${climateDevices.value.length} 个环境设备可控制`
+})
+
+const mediaSummary = computed(() => {
+  if (mediaDevices.value.length === 0) {
+    return ''
+  }
+
+  const primaryMedia = mediaDevices.value[0]
+  const parts = []
+
+  if (primaryMedia.raw_state ?? primaryMedia.current_status) {
+    parts.push(primaryMedia.raw_state ?? primaryMedia.current_status)
+  }
+
+  if (primaryMedia.media_source) {
+    parts.push(primaryMedia.media_source)
+  }
+
+  if (primaryMedia.media_volume_level !== null && primaryMedia.media_volume_level !== undefined) {
+    parts.push(`音量 ${Math.round(primaryMedia.media_volume_level)}%`)
+  }
+
+  return parts.join(' · ') || `${mediaDevices.value.length} 个影音设备可控制`
+})
+
+const genericSummary = computed(() => {
+  if (genericControlDevices.value.length === 0) {
+    return ''
+  }
+
+  const supportedKinds = [...new Set(genericControlDevices.value.map((device) => controlKindLabel(device.control_kind)))]
+  const preview = supportedKinds.slice(0, 2).join(' / ')
+  return preview ? `${preview} 等 ${genericControlDevices.value.length} 项` : `${genericControlDevices.value.length} 个子项可控制`
+})
 
 const sliderDrafts = ref({})
 const selectDrafts = ref({})
@@ -236,6 +417,15 @@ function formatNumber(value) {
   return Number.isInteger(numericValue) ? `${numericValue}` : numericValue.toFixed(1)
 }
 
+function formatReading(value, unit = '') {
+  if (value === null || value === undefined || value === '') {
+    return '--'
+  }
+
+  const formatted = Number.isNaN(Number(value)) ? `${value}` : formatNumber(value)
+  return `${formatted}${unit}`
+}
+
 async function handleToggle(deviceId) {
   try {
     await smartHomeStore.toggleDevice(deviceId)
@@ -277,7 +467,7 @@ async function handleButtonPress(deviceId) {
 
 <template>
   <article
-    class="relative flex h-full flex-col overflow-hidden rounded-[2rem] border p-4 sm:p-5"
+    class="relative flex h-full min-h-[23rem] flex-col overflow-hidden rounded-[2rem] border p-4 sm:p-5"
     :class="applianceMeta.cardClass"
   >
     <div class="absolute right-[-3rem] top-[-3rem] h-36 w-36 rounded-full bg-white/35 blur-3xl" />
@@ -347,271 +537,309 @@ async function handleButtonPress(deviceId) {
       </div>
     </div>
 
-    <div v-if="sensorDevices.length > 0" class="mt-4 grid gap-3 sm:grid-cols-2">
+    <div class="mt-4 grid grid-cols-3 gap-3">
       <div
-        v-for="device in sensorDevices"
-        :key="device.id"
-        class="rounded-[1.3rem] border px-4 py-3"
+        v-for="stat in summaryStats"
+        :key="stat.label"
+        class="rounded-[1.2rem] border px-3 py-3"
         :class="applianceMeta.sectionClass"
       >
-        <p class="text-xs uppercase tracking-[0.16em] text-slate-400">{{ shortLabel(device) }}</p>
-        <p class="mt-2 text-2xl font-semibold text-ink">
-          {{ device.raw_state ?? '--' }}
-          <span v-if="device.unit_of_measurement" class="ml-1 text-base font-medium text-slate-500">
-            {{ device.unit_of_measurement }}
-          </span>
-        </p>
+        <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">{{ stat.label }}</p>
+        <p class="mt-2 truncate text-lg font-semibold text-ink sm:text-xl">{{ stat.value }}</p>
       </div>
     </div>
 
-    <div v-if="climateDevices.length > 0" class="mt-4 space-y-3">
-      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">环境控制</p>
+    <div v-if="sensorSnapshots.length > 0" class="mt-4 flex flex-wrap gap-2">
       <div
-        v-for="device in climateDevices"
-        :key="`climate-${device.id}`"
-        class="rounded-[1.35rem] border px-4 py-4"
+        v-for="snapshot in sensorSnapshots"
+        :key="snapshot.label"
+        class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm"
         :class="applianceMeta.sectionClass"
       >
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
-            <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
-          </div>
-          <div class="rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
-            空调
-          </div>
-        </div>
-
-        <div class="mt-4 flex items-center justify-between gap-4">
-          <div>
-            <p class="text-sm text-slate-500">当前模式</p>
-            <p class="mt-1 text-base font-semibold text-ink">{{ device.hvac_mode ?? device.raw_state ?? device.current_status }}</p>
-          </div>
-          <button
-            type="button"
-            class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
-            :class="[isPoweredOn(device) ? applianceMeta.iconWrapperClass : 'bg-slate-300', isPending(device.id) ? 'animate-pulse' : '']"
-            :disabled="isPending(device.id)"
-            @click="handleToggle(device.id)"
-          >
-            <span
-              class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
-              :class="isPoweredOn(device) ? 'translate-x-8' : 'translate-x-0'"
-            />
-          </button>
-        </div>
-
-        <div v-if="device.target_temperature !== null && device.target_temperature !== undefined" class="mt-4">
-          <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
-            <span>目标温度</span>
-            <span class="font-medium text-ink">
-              {{ formatNumber(sliderDrafts[device.id]) }}
-              <span>{{ device.unit_of_measurement ?? '°C' }}</span>
-            </span>
-          </div>
-          <input
-            :value="sliderDrafts[device.id]"
-            type="range"
-            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
-            :style="{ accentColor: applianceMeta.accentColor }"
-            :min="device.min_value ?? 16"
-            :max="device.max_value ?? 30"
-            :step="device.step ?? 1"
-            :disabled="isPending(device.id)"
-            @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
-            @change="handleNumberChange(device.id, $event)"
-          >
-          <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
-            <span>{{ device.min_value ?? 16 }}</span>
-            <span>当前室温 {{ formatNumber(device.current_temperature) }}{{ device.unit_of_measurement ?? '°C' }}</span>
-            <span>{{ device.max_value ?? 30 }}</span>
-          </div>
-        </div>
-
-        <div v-if="device.hvac_modes?.length" class="mt-4">
-          <p class="mb-2 text-sm text-slate-500">运行模式</p>
-          <select
-            :value="selectDrafts[device.id]"
-            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
-            :disabled="isPending(device.id)"
-            @change="handleSelectChange(device.id, $event)"
-          >
-            <option
-              v-for="option in device.hvac_modes"
-              :key="option"
-              :value="option"
-            >
-              {{ option }}
-            </option>
-          </select>
-        </div>
+        <span class="text-slate-500">{{ snapshot.label }}</span>
+        <span class="font-semibold text-ink">{{ snapshot.value }}</span>
       </div>
     </div>
 
-    <div v-if="mediaDevices.length > 0" class="mt-4 space-y-3">
-      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">影音控制</p>
-      <div
-        v-for="device in mediaDevices"
-        :key="`media-${device.id}`"
-        class="rounded-[1.35rem] border px-4 py-4"
-        :class="applianceMeta.sectionClass"
-      >
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
-            <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
-          </div>
-          <div class="rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
-            影音
-          </div>
-        </div>
-
-        <div class="mt-4 flex items-center justify-between gap-4">
-          <div>
-            <p class="text-sm text-slate-500">播放状态</p>
-            <p class="mt-1 text-base font-semibold text-ink">{{ device.raw_state ?? device.current_status }}</p>
-          </div>
-          <button
-            type="button"
-            class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
-            :class="[isPoweredOn(device) ? applianceMeta.iconWrapperClass : 'bg-slate-300', isPending(device.id) ? 'animate-pulse' : '']"
-            :disabled="isPending(device.id)"
-            @click="handleToggle(device.id)"
-          >
-            <span
-              class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
-              :class="isPoweredOn(device) ? 'translate-x-8' : 'translate-x-0'"
-            />
-          </button>
-        </div>
-
-        <div v-if="device.media_volume_level !== null && device.media_volume_level !== undefined" class="mt-4">
-          <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
-            <span>音量</span>
-            <span class="font-medium text-ink">{{ Math.round(sliderDrafts[device.id] ?? 0) }}%</span>
-          </div>
-          <input
-            :value="sliderDrafts[device.id]"
-            type="range"
-            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
-            :style="{ accentColor: applianceMeta.accentColor }"
-            min="0"
-            max="100"
-            step="1"
-            :disabled="isPending(device.id)"
-            @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
-            @change="handleNumberChange(device.id, $event)"
-          >
-        </div>
-
-        <div v-if="device.media_source_options?.length" class="mt-4">
-          <p class="mb-2 text-sm text-slate-500">输入源</p>
-          <select
-            :value="selectDrafts[device.id]"
-            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
-            :disabled="isPending(device.id)"
-            @change="handleSelectChange(device.id, $event)"
-          >
-            <option
-              v-for="option in device.media_source_options"
-              :key="option"
-              :value="option"
-            >
-              {{ option }}
-            </option>
-          </select>
-        </div>
+    <div class="mt-5 flex flex-1 flex-col">
+      <div class="flex items-center justify-between gap-3">
+        <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">控制次级区域</p>
+        <p class="text-xs text-slate-400">按需展开，保持总览更整齐</p>
       </div>
-    </div>
 
-    <div v-if="genericControlDevices.length > 0" class="mt-4 space-y-3">
-      <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">设备控制</p>
-      <div
-        v-for="device in genericControlDevices"
-        :key="device.id"
-        class="rounded-[1.35rem] border px-4 py-4"
-        :class="applianceMeta.sectionClass"
-      >
-        <div class="flex items-start justify-between gap-3">
-          <div>
-            <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
-            <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
-          </div>
-          <div class="rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
-            {{ controlKindLabel(device.control_kind) }}
-          </div>
-        </div>
+      <div class="mt-3 space-y-3">
+        <details
+          v-if="climateDevices.length > 0"
+          class="rounded-[1.45rem] border"
+          :class="applianceMeta.sectionClass"
+        >
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-ink">环境控制</p>
+              <p class="mt-1 truncate text-sm text-slate-500">{{ climateSummary }}</p>
+            </div>
+            <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+              {{ climateDevices.length }} 项
+            </div>
+          </summary>
 
-        <div v-if="device.control_kind === 'toggle'" class="mt-4 flex items-center justify-between gap-4">
-          <p class="text-sm text-slate-500">{{ device.raw_state ?? device.current_status }}</p>
-          <button
-            type="button"
-            class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
-            :class="[device.current_status === 'on' ? applianceMeta.iconWrapperClass : 'bg-slate-300', isPending(device.id) ? 'animate-pulse' : '']"
-            :disabled="isPending(device.id)"
-            @click="handleToggle(device.id)"
-          >
-            <span
-              class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
-              :class="device.current_status === 'on' ? 'translate-x-8' : 'translate-x-0'"
-            />
-          </button>
-        </div>
-
-        <div v-else-if="device.control_kind === 'number'" class="mt-4">
-          <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
-            <span>{{ shortLabel(device) }}</span>
-            <span class="font-medium text-ink">
-              {{ sliderDrafts[device.id] }}
-              <span v-if="device.unit_of_measurement">{{ device.unit_of_measurement }}</span>
-            </span>
-          </div>
-          <input
-            :value="sliderDrafts[device.id]"
-            type="range"
-            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
-            :style="{ accentColor: applianceMeta.accentColor }"
-            :min="device.min_value ?? 0"
-            :max="device.max_value ?? 100"
-            :step="device.step ?? 1"
-            :disabled="isPending(device.id)"
-            @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
-            @change="handleNumberChange(device.id, $event)"
-          >
-          <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
-            <span>{{ device.min_value ?? 0 }}</span>
-            <span>{{ device.max_value ?? 100 }}</span>
-          </div>
-        </div>
-
-        <div v-else-if="device.control_kind === 'select'" class="mt-4">
-          <select
-            :value="selectDrafts[device.id]"
-            class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
-            :disabled="isPending(device.id)"
-            @change="handleSelectChange(device.id, $event)"
-          >
-            <option
-              v-for="option in device.control_options"
-              :key="option"
-              :value="option"
+          <div class="space-y-3 border-t border-black/5 px-4 py-4">
+            <div
+              v-for="device in climateDevices"
+              :key="`climate-${device.id}`"
+              class="rounded-[1.2rem] border border-white/60 bg-white/72 px-4 py-4"
             >
-              {{ option }}
-            </option>
-          </select>
-        </div>
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
+                  <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
+                  :class="[isPoweredOn(device) ? applianceMeta.iconWrapperClass : 'bg-slate-300', isPending(device.id) ? 'animate-pulse' : '']"
+                  :disabled="isPending(device.id)"
+                  @click="handleToggle(device.id)"
+                >
+                  <span
+                    class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
+                    :class="isPoweredOn(device) ? 'translate-x-8' : 'translate-x-0'"
+                  />
+                </button>
+              </div>
 
-        <div v-else-if="device.control_kind === 'button'" class="mt-4">
-          <button
-            type="button"
-            class="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
-            :class="applianceMeta.iconWrapperClass"
-            :disabled="isPending(device.id)"
-            @click="handleButtonPress(device.id)"
-          >
-            {{ isPending(device.id) ? '执行中...' : '执行动作' }}
-          </button>
-        </div>
+              <div v-if="device.target_temperature !== null && device.target_temperature !== undefined" class="mt-4">
+                <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+                  <span>目标温度</span>
+                  <span class="font-medium text-ink">
+                    {{ formatNumber(sliderDrafts[device.id]) }}
+                    <span>{{ device.unit_of_measurement ?? '°C' }}</span>
+                  </span>
+                </div>
+                <input
+                  :value="sliderDrafts[device.id]"
+                  type="range"
+                  class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
+                  :style="{ accentColor: applianceMeta.accentColor }"
+                  :min="device.min_value ?? 16"
+                  :max="device.max_value ?? 30"
+                  :step="device.step ?? 1"
+                  :disabled="isPending(device.id)"
+                  @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
+                  @change="handleNumberChange(device.id, $event)"
+                >
+                <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>{{ device.min_value ?? 16 }}</span>
+                  <span>当前室温 {{ formatNumber(device.current_temperature) }}{{ device.unit_of_measurement ?? '°C' }}</span>
+                  <span>{{ device.max_value ?? 30 }}</span>
+                </div>
+              </div>
+
+              <div v-if="device.hvac_modes?.length" class="mt-4">
+                <p class="mb-2 text-sm text-slate-500">运行模式</p>
+                <select
+                  :value="selectDrafts[device.id]"
+                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
+                  :disabled="isPending(device.id)"
+                  @change="handleSelectChange(device.id, $event)"
+                >
+                  <option
+                    v-for="option in device.hvac_modes"
+                    :key="option"
+                    :value="option"
+                  >
+                    {{ option }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details
+          v-if="mediaDevices.length > 0"
+          class="rounded-[1.45rem] border"
+          :class="applianceMeta.sectionClass"
+        >
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-ink">影音控制</p>
+              <p class="mt-1 truncate text-sm text-slate-500">{{ mediaSummary }}</p>
+            </div>
+            <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+              {{ mediaDevices.length }} 项
+            </div>
+          </summary>
+
+          <div class="space-y-3 border-t border-black/5 px-4 py-4">
+            <div
+              v-for="device in mediaDevices"
+              :key="`media-${device.id}`"
+              class="rounded-[1.2rem] border border-white/60 bg-white/72 px-4 py-4"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
+                  <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
+                  :class="[isPoweredOn(device) ? applianceMeta.iconWrapperClass : 'bg-slate-300', isPending(device.id) ? 'animate-pulse' : '']"
+                  :disabled="isPending(device.id)"
+                  @click="handleToggle(device.id)"
+                >
+                  <span
+                    class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
+                    :class="isPoweredOn(device) ? 'translate-x-8' : 'translate-x-0'"
+                  />
+                </button>
+              </div>
+
+              <div v-if="device.media_volume_level !== null && device.media_volume_level !== undefined" class="mt-4">
+                <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+                  <span>音量</span>
+                  <span class="font-medium text-ink">{{ Math.round(sliderDrafts[device.id] ?? 0) }}%</span>
+                </div>
+                <input
+                  :value="sliderDrafts[device.id]"
+                  type="range"
+                  class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
+                  :style="{ accentColor: applianceMeta.accentColor }"
+                  min="0"
+                  max="100"
+                  step="1"
+                  :disabled="isPending(device.id)"
+                  @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
+                  @change="handleNumberChange(device.id, $event)"
+                >
+              </div>
+
+              <div v-if="device.media_source_options?.length" class="mt-4">
+                <p class="mb-2 text-sm text-slate-500">输入源</p>
+                <select
+                  :value="selectDrafts[device.id]"
+                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
+                  :disabled="isPending(device.id)"
+                  @change="handleSelectChange(device.id, $event)"
+                >
+                  <option
+                    v-for="option in device.media_source_options"
+                    :key="option"
+                    :value="option"
+                  >
+                    {{ option }}
+                  </option>
+                </select>
+              </div>
+            </div>
+          </div>
+        </details>
+
+        <details
+          v-if="genericControlDevices.length > 0"
+          class="rounded-[1.45rem] border"
+          :class="applianceMeta.sectionClass"
+        >
+          <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+            <div class="min-w-0">
+              <p class="text-sm font-semibold text-ink">设备控制</p>
+              <p class="mt-1 truncate text-sm text-slate-500">{{ genericSummary }}</p>
+            </div>
+            <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+              {{ genericControlDevices.length }} 项
+            </div>
+          </summary>
+
+          <div class="space-y-3 border-t border-black/5 px-4 py-4">
+            <div
+              v-for="device in genericControlDevices"
+              :key="device.id"
+              class="rounded-[1.2rem] border border-white/60 bg-white/72 px-4 py-4"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
+                  <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
+                </div>
+                <div class="rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+                  {{ controlKindLabel(device.control_kind) }}
+                </div>
+              </div>
+
+              <div v-if="device.control_kind === 'toggle'" class="mt-4 flex items-center justify-between gap-4">
+                <p class="text-sm text-slate-500">{{ device.raw_state ?? device.current_status }}</p>
+                <button
+                  type="button"
+                  class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
+                  :class="[device.current_status === 'on' ? applianceMeta.iconWrapperClass : 'bg-slate-300', isPending(device.id) ? 'animate-pulse' : '']"
+                  :disabled="isPending(device.id)"
+                  @click="handleToggle(device.id)"
+                >
+                  <span
+                    class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
+                    :class="device.current_status === 'on' ? 'translate-x-8' : 'translate-x-0'"
+                  />
+                </button>
+              </div>
+
+              <div v-else-if="device.control_kind === 'number'" class="mt-4">
+                <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+                  <span>{{ shortLabel(device) }}</span>
+                  <span class="font-medium text-ink">
+                    {{ sliderDrafts[device.id] }}
+                    <span v-if="device.unit_of_measurement">{{ device.unit_of_measurement }}</span>
+                  </span>
+                </div>
+                <input
+                  :value="sliderDrafts[device.id]"
+                  type="range"
+                  class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
+                  :style="{ accentColor: applianceMeta.accentColor }"
+                  :min="device.min_value ?? 0"
+                  :max="device.max_value ?? 100"
+                  :step="device.step ?? 1"
+                  :disabled="isPending(device.id)"
+                  @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
+                  @change="handleNumberChange(device.id, $event)"
+                >
+                <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+                  <span>{{ device.min_value ?? 0 }}</span>
+                  <span>{{ device.max_value ?? 100 }}</span>
+                </div>
+              </div>
+
+              <div v-else-if="device.control_kind === 'select'" class="mt-4">
+                <select
+                  :value="selectDrafts[device.id]"
+                  class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
+                  :disabled="isPending(device.id)"
+                  @change="handleSelectChange(device.id, $event)"
+                >
+                  <option
+                    v-for="option in device.control_options"
+                    :key="option"
+                    :value="option"
+                  >
+                    {{ option }}
+                  </option>
+                </select>
+              </div>
+
+              <div v-else-if="device.control_kind === 'button'" class="mt-4">
+                <button
+                  type="button"
+                  class="inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold text-white transition disabled:cursor-not-allowed disabled:opacity-60"
+                  :class="applianceMeta.iconWrapperClass"
+                  :disabled="isPending(device.id)"
+                  @click="handleButtonPress(device.id)"
+                >
+                  {{ isPending(device.id) ? '执行中...' : '执行动作' }}
+                </button>
+              </div>
+            </div>
+          </div>
+        </details>
       </div>
     </div>
   </article>

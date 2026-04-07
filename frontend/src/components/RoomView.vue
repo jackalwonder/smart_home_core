@@ -169,7 +169,7 @@ const telemetryCount = computed(() =>
 
       <div
         v-if="groupedItems.length > 0"
-        class="mt-6 grid gap-4 md:grid-cols-2 md:gap-5 2xl:grid-cols-3"
+        class="mt-6 grid auto-rows-fr gap-4 [grid-template-columns:repeat(auto-fit,minmax(280px,1fr))] md:gap-5"
       >
         <template v-for="item in groupedItems" :key="item.key">
           <ApplianceCard

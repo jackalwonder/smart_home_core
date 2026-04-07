@@ -175,14 +175,14 @@ async function handleButtonPress() {
 
 <template>
   <article
-    class="group relative overflow-hidden rounded-[2.1rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-panel"
+    class="group relative flex h-full min-h-[23rem] flex-col overflow-hidden rounded-[2.1rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-panel"
     :class="cardClass"
   >
     <div class="absolute inset-0 bg-gradient-to-br transition duration-500" :class="glowClass" />
     <div class="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-80" />
     <div class="absolute right-[-2rem] top-[-2rem] h-28 w-28 rounded-full bg-white/35 blur-2xl" />
 
-    <div class="relative flex items-start justify-between gap-4">
+    <div class="relative flex min-h-[6.75rem] items-start justify-between gap-4">
       <div class="flex items-center gap-4">
         <div
           class="flex h-14 w-14 items-center justify-center rounded-[1.35rem] border border-white/70 bg-white/88 shadow-sm"
@@ -322,9 +322,9 @@ async function handleButtonPress() {
       </div>
     </div>
 
-    <div class="relative mt-6 rounded-[1.75rem] border border-white/70 bg-white/60 px-4 py-4">
+    <div class="relative mt-6 flex flex-1 flex-col rounded-[1.75rem] border border-white/70 bg-white/60 px-4 py-4">
       <div class="flex items-start justify-between gap-3">
-        <div>
+        <div class="min-h-[4.75rem]">
           <p class="text-sm font-medium text-ink">
             {{ isInteractive ? '可执行控制' : '只读状态' }}
           </p>
@@ -335,78 +335,80 @@ async function handleButtonPress() {
         </div>
       </div>
 
-      <div v-if="isToggle" class="mt-4 flex items-center justify-between gap-4">
-        <div class="text-sm text-slate-500">
-          {{ isActive ? '当前处于开启状态' : '当前处于关闭状态' }}
-        </div>
+      <div class="mt-auto pt-4">
+        <div v-if="isToggle" class="flex items-center justify-between gap-4">
+          <div class="text-sm text-slate-500">
+            {{ isActive ? '当前处于开启状态' : '当前处于关闭状态' }}
+          </div>
 
-        <button
-          type="button"
-          class="relative inline-flex h-8 w-16 shrink-0 items-center rounded-full border transition duration-300"
-          :class="[
-            isActive ? 'border-lagoon/40 bg-lagoon' : 'border-slate-300 bg-slate-300',
-            isInteractive ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
-            isPending ? 'animate-pulse' : '',
-          ]"
-          :disabled="!isInteractive || isPending"
-          :aria-pressed="isActive"
-          @click="handleToggle"
-        >
-          <span
-            class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
-            :class="isActive ? 'translate-x-8' : 'translate-x-0'"
-          />
-        </button>
-      </div>
-
-      <div v-else-if="isNumber" class="mt-4">
-        <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
-          <span>当前值</span>
-          <span class="font-medium text-ink">{{ numberLabel }}</span>
-        </div>
-        <input
-          type="range"
-          class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-tide"
-          :min="device.min_value ?? 0"
-          :max="device.max_value ?? 100"
-          :step="device.step ?? 1"
-          :value="numberDraft"
-          :disabled="!isInteractive || isPending"
-          @input="numberDraft = Number($event.target.value)"
-          @change="handleNumberChange"
-        >
-        <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
-          <span>{{ device.min_value ?? 0 }}</span>
-          <span>{{ device.max_value ?? 100 }}</span>
-        </div>
-      </div>
-
-      <div v-else-if="isSelect" class="mt-4">
-        <select
-          v-model="selectedOption"
-          class="w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition focus:border-lagoon"
-          :disabled="!isInteractive || isPending"
-          @change="handleSelectChange"
-        >
-          <option
-            v-for="option in device.control_options"
-            :key="option"
-            :value="option"
+          <button
+            type="button"
+            class="relative inline-flex h-8 w-16 shrink-0 items-center rounded-full border transition duration-300"
+            :class="[
+              isActive ? 'border-lagoon/40 bg-lagoon' : 'border-slate-300 bg-slate-300',
+              isInteractive ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
+              isPending ? 'animate-pulse' : '',
+            ]"
+            :disabled="!isInteractive || isPending"
+            :aria-pressed="isActive"
+            @click="handleToggle"
           >
-            {{ option }}
-          </option>
-        </select>
-      </div>
+            <span
+              class="absolute left-1 top-1 h-6 w-6 rounded-full bg-white shadow-md transition duration-300"
+              :class="isActive ? 'translate-x-8' : 'translate-x-0'"
+            />
+          </button>
+        </div>
 
-      <div v-else-if="isButton" class="mt-4">
-        <button
-          type="button"
-          class="inline-flex items-center justify-center rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
-          :disabled="!isInteractive || isPending"
-          @click="handleButtonPress"
-        >
-          {{ isPending ? '执行中...' : '执行动作' }}
-        </button>
+        <div v-else-if="isNumber">
+          <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+            <span>当前值</span>
+            <span class="font-medium text-ink">{{ numberLabel }}</span>
+          </div>
+          <input
+            type="range"
+            class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200 accent-tide"
+            :min="device.min_value ?? 0"
+            :max="device.max_value ?? 100"
+            :step="device.step ?? 1"
+            :value="numberDraft"
+            :disabled="!isInteractive || isPending"
+            @input="numberDraft = Number($event.target.value)"
+            @change="handleNumberChange"
+          >
+          <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+            <span>{{ device.min_value ?? 0 }}</span>
+            <span>{{ device.max_value ?? 100 }}</span>
+          </div>
+        </div>
+
+        <div v-else-if="isSelect">
+          <select
+            v-model="selectedOption"
+            class="w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition focus:border-lagoon"
+            :disabled="!isInteractive || isPending"
+            @change="handleSelectChange"
+          >
+            <option
+              v-for="option in device.control_options"
+              :key="option"
+              :value="option"
+            >
+              {{ option }}
+            </option>
+          </select>
+        </div>
+
+        <div v-else-if="isButton">
+          <button
+            type="button"
+            class="inline-flex items-center justify-center rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            :disabled="!isInteractive || isPending"
+            @click="handleButtonPress"
+          >
+            {{ isPending ? '执行中...' : '执行动作' }}
+          </button>
+        </div>
       </div>
     </div>
   </article>
