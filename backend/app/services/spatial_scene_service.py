@@ -313,7 +313,7 @@ def _should_refresh_floor_plan_analysis(zone_payload: dict[str, object]) -> bool
         return True
     if analysis.get("source") == "legacy":
         return True
-    return any(
+    if any(
         not isinstance(analysis.get(key), list)
         for key in (
             "wall_segments",
@@ -324,7 +324,17 @@ def _should_refresh_floor_plan_analysis(zone_payload: dict[str, object]) -> bool
             "window_edges",
             "corridor_path",
         )
-    )
+    ):
+        return True
+
+    semantic_openings = analysis.get("semantic_openings")
+    if isinstance(semantic_openings, list) and semantic_openings and not any(
+        isinstance(item, dict) and item.get("door_leaf")
+        for item in semantic_openings
+    ):
+        return True
+
+    return False
 
 
 def _write_floor_plan_asset(original_filename: str, payload: bytes) -> str:
@@ -786,6 +796,7 @@ def _assign_device_positions(devices: list[Device], layout: dict[str, float], *,
     device_payloads = [
         {
             "id": device.id,
+            "name": device.name,
             "entity_domain": device.ha_entity_id.split(".", 1)[0],
             "device_class": None,
             "appliance_type": None,
@@ -849,7 +860,10 @@ def _derive_device_positions(
             top_wall.append(device)
         elif entity_domain in {"light", "media_player"} or appliance_type in {"tv", "media", "speaker"}:
             bottom_wall.append(device)
-        elif device_class in {"temperature", "humidity", "moisture"} or entity_domain == "sensor":
+        elif (
+            device_class in {"temperature", "humidity", "moisture", "motion", "presence", "occupancy", "door", "window"}
+            or entity_domain in {"sensor", "binary_sensor"}
+        ):
             sensor_cluster.append(device)
         else:
             grid_cluster.append(device)
@@ -934,21 +948,58 @@ def _semantic_anchor_for_device(
     room_name: str,
     zone_index: dict[str, list[dict[str, object]]],
 ) -> dict[str, float] | None:
+    device_name = str(device.get("name") or "")
     appliance_type = str(device.get("appliance_type") or "")
     entity_domain = str(device.get("entity_domain") or "")
+    device_class = str(device.get("device_class") or "")
+    room_type = _classify_room_type(room_name, "")
+    room_zone = _pick_semantic_zone_for_room(room_type, room_name, zone_index)
+    text = f"{room_name} {device_name} {appliance_type} {entity_domain} {device_class}".lower()
 
     if appliance_type == "fridge":
-        return _anchor_in_zone(_first_zone(zone_index, "kitchen"), 0.18, 0.56, 0.55)
+        return _anchor_in_zone(_first_zone(zone_index, "kitchen"), 0.18, 0.56, 0.55, 90.0)
 
-    if appliance_type in {"tv", "media", "speaker"} or entity_domain == "media_player":
-        return _anchor_in_zone(_first_zone(zone_index, "living"), 0.76, 0.74, 0.32)
+    if appliance_type == "air_conditioner" or entity_domain == "climate":
+        return _anchor_in_zone(room_zone, 0.52, 0.12, 0.72, 180.0)
 
-    if entity_domain == "climate":
-        room_zone = _pick_semantic_zone_for_room(_classify_room_type(room_name, ""), room_name, zone_index)
-        return _anchor_in_zone(room_zone, 0.52, 0.12, 0.72)
+    if appliance_type == "tv":
+        return _anchor_in_zone(_first_zone(zone_index, "living") or room_zone, 0.76, 0.74, 0.34, 180.0)
+
+    if appliance_type in {"media", "speaker"} or entity_domain == "media_player":
+        target_zone = _first_zone(zone_index, "dining") if "餐" in room_name else _first_zone(zone_index, "living")
+        return _anchor_in_zone(target_zone or room_zone, 0.72, 0.66, 0.34, 165.0)
+
+    if appliance_type == "camera" or entity_domain == "camera":
+        target_zone = _first_zone(zone_index, "entry") or _first_zone(zone_index, "hall") or room_zone
+        return _anchor_in_zone(target_zone, 0.16, 0.2, 0.88, 215.0)
+
+    if entity_domain == "lock":
+        return _anchor_in_zone(_first_zone(zone_index, "entry"), 0.08, 0.52, 0.52, 90.0)
+
+    if entity_domain in {"switch", "button"} or appliance_type in {"switch", "scene_panel"}:
+        return _anchor_in_zone(room_zone, 0.12, 0.5, 0.48, 90.0)
+
+    if entity_domain == "light":
+        return _anchor_in_zone(room_zone, 0.5, 0.5, 0.94, 0.0)
+
+    if entity_domain == "cover":
+        return _anchor_in_zone(room_zone, 0.5, 0.1, 0.74, 180.0)
+
+    if entity_domain == "vacuum":
+        target_zone = _first_zone(zone_index, "hall") or _first_zone(zone_index, "entry") or _first_zone(zone_index, "living")
+        return _anchor_in_zone(target_zone, 0.3, 0.8, 0.22, -90.0)
+
+    if device_class in {"motion", "presence", "occupancy"}:
+        return _anchor_in_zone(room_zone, 0.84, 0.18, 0.88, -135.0)
+
+    if device_class in {"door", "window"}:
+        return _anchor_in_zone(room_zone, 0.12, 0.22, 0.74, 90.0)
+
+    if entity_domain in {"sensor", "binary_sensor"} and any(keyword in text for keyword in ("温度", "湿度", "temperature", "humidity")):
+        return _anchor_in_zone(room_zone, 0.84, 0.24, 0.82, -90.0)
 
     if "主卧" in room_name:
-        return _anchor_in_zone(_first_zone(zone_index, "master"), 0.72, 0.62, 0.42)
+        return _anchor_in_zone(_first_zone(zone_index, "master"), 0.72, 0.62, 0.42, 180.0)
 
     return None
 
@@ -958,6 +1009,7 @@ def _anchor_in_zone(
     x_ratio: float,
     y_ratio: float,
     z: float,
+    rotation: float = 0.0,
 ) -> dict[str, float] | None:
     if zone is None:
         return None
@@ -965,7 +1017,7 @@ def _anchor_in_zone(
         "plan_x": float(zone["x"]) + float(zone["width"]) * x_ratio,
         "plan_y": float(zone["y"]) + float(zone["height"]) * y_ratio,
         "plan_z": z,
-        "plan_rotation": 0.0,
+        "plan_rotation": rotation,
     }
 
 

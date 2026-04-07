@@ -309,36 +309,68 @@ def _derive_semantic_zones(
 def _derive_semantic_openings(semantic_zones: list[dict[str, float | str]]) -> list[dict[str, float | str]]:
     zone_by_label = {str(zone.get("label")): zone for zone in semantic_zones}
     openings: list[dict[str, float | str]] = []
+    swing_door_config = {
+        "公卫": {"hinge_anchor": "start", "swing_sign": 1, "leaf_angle_deg": 68.0, "door_family": "bath"},
+        "北侧次卧": {"hinge_anchor": "end", "swing_sign": -1, "leaf_angle_deg": 64.0, "door_family": "bedroom"},
+        "主卫": {"hinge_anchor": "end", "swing_sign": 1, "leaf_angle_deg": 68.0, "door_family": "bath"},
+        "西侧次卧": {"hinge_anchor": "start", "swing_sign": -1, "leaf_angle_deg": 62.0, "door_family": "bedroom"},
+        "中部次卧": {"hinge_anchor": "start", "swing_sign": 1, "leaf_angle_deg": 62.0, "door_family": "bedroom"},
+        "主卧": {"hinge_anchor": "start", "swing_sign": -1, "leaf_angle_deg": 66.0, "door_family": "master_bedroom"},
+    }
 
     def add_vertical(label: str, x_factor: float = 0.0) -> None:
         zone = zone_by_label.get(label)
         if not zone:
             return
-        openings.append(
-            {
-                "kind": "doorway",
-                "orientation": "vertical",
-                "x": round(float(zone["x"]) + float(zone["width"]) * (0.5 + x_factor), 2),
-                "y": round(float(zone["y"]) + float(zone["height"]), 2),
-                "width": round(max(float(zone["width"]) * 0.16, 22), 2),
-                "height": round(max(float(zone["height"]) * 0.2, 18), 2),
-            }
-        )
+        door_config = swing_door_config.get(label)
+        opening = {
+            "kind": "doorway",
+            "zone_label": label,
+            "orientation": "vertical",
+            "x": round(float(zone["x"]) + float(zone["width"]) * (0.5 + x_factor), 2),
+            "y": round(float(zone["y"]) + float(zone["height"]), 2),
+            "width": round(max(float(zone["width"]) * 0.16, 22), 2),
+            "height": round(max(float(zone["height"]) * 0.2, 18), 2),
+        }
+        if door_config:
+            opening.update(
+                {
+                    "kind": "swing_door",
+                    "door_leaf": True,
+                    "hinge_anchor": str(door_config["hinge_anchor"]),
+                    "swing_sign": int(door_config["swing_sign"]),
+                    "leaf_angle_deg": float(door_config["leaf_angle_deg"]),
+                    "door_family": str(door_config["door_family"]),
+                }
+            )
+        openings.append(opening)
 
     def add_horizontal(label: str, y_factor: float = 0.0) -> None:
         zone = zone_by_label.get(label)
         if not zone:
             return
-        openings.append(
-            {
-                "kind": "doorway",
-                "orientation": "horizontal",
-                "x": round(float(zone["x"]), 2),
-                "y": round(float(zone["y"]) + float(zone["height"]) * (0.5 + y_factor), 2),
-                "width": round(max(float(zone["width"]) * 0.18, 20), 2),
-                "height": round(max(float(zone["height"]) * 0.16, 18), 2),
-            }
-        )
+        door_config = swing_door_config.get(label)
+        opening = {
+            "kind": "doorway",
+            "zone_label": label,
+            "orientation": "horizontal",
+            "x": round(float(zone["x"]), 2),
+            "y": round(float(zone["y"]) + float(zone["height"]) * (0.5 + y_factor), 2),
+            "width": round(max(float(zone["width"]) * 0.18, 20), 2),
+            "height": round(max(float(zone["height"]) * 0.16, 18), 2),
+        }
+        if door_config:
+            opening.update(
+                {
+                    "kind": "swing_door",
+                    "door_leaf": True,
+                    "hinge_anchor": str(door_config["hinge_anchor"]),
+                    "swing_sign": int(door_config["swing_sign"]),
+                    "leaf_angle_deg": float(door_config["leaf_angle_deg"]),
+                    "door_family": str(door_config["door_family"]),
+                }
+            )
+        openings.append(opening)
 
     for label in ("厨房", "餐厅", "公卫", "北侧次卧", "主卫", "中部次卧", "主卧"):
         add_vertical(label)

@@ -43,6 +43,10 @@ const popupGroupKey = ref('')
 const popupCoordinates = ref({ left: 0, top: 0, visible: false, alignX: 'center', alignY: 'top' })
 const numericDrafts = ref({})
 const selectDrafts = ref({})
+const showDoorLayer = ref(true)
+const showWindowLayer = ref(true)
+const showFurnitureLayer = ref(true)
+const showGuideLayer = ref(true)
 
 const sceneRefs = {
   renderer: null,
@@ -109,6 +113,11 @@ const groupedMarkers = computed(() =>
 
 const activePopupGroup = computed(() => groupedMarkers.value.find((group) => group.key === popupGroupKey.value) ?? null)
 const structuralRenderMode = computed(() => resolveStructuralRenderMode(sceneAnalysis.value, sceneRooms.value))
+const selectedOrbitRoom = computed(() => sceneRooms.value.find((room) => room.id === props.selectedRoomId) ?? sceneRooms.value[0] ?? null)
+const orbitRooms = computed(() => sceneRooms.value.filter((room) => Boolean(room.name)))
+const semanticFocusChips = computed(() =>
+  semanticZones.value.filter((zone) => ['living', 'kitchen', 'dining', 'master', 'bedroom', 'bath', 'storage', 'entry'].includes(zone.type)).slice(0, 8),
+)
 const popupStyle = computed(() => {
   if (!popupCoordinates.value.visible) {
     return { display: 'none' }
@@ -134,8 +143,9 @@ const roamStats = computed(() => ({
   rooms: sceneRooms.value.length,
   semanticZones: semanticZones.value.length,
   markers: groupedMarkers.value.length,
-  walls: sceneAnalysis.value?.wall_segments?.length ?? 0,
-  openings: sceneAnalysis.value?.openings?.length ?? 0,
+  walls: structuralRenderMode.value === 'semantic' ? semanticZones.value.length : (sceneAnalysis.value?.wall_segments?.length ?? 0),
+  openings: structuralRenderMode.value === 'semantic' ? semanticOpenings.value.length : (sceneAnalysis.value?.openings?.length ?? 0),
+  windows: windowEdges.value.length,
   furniture: sceneAnalysis.value?.furniture_candidates?.length ?? 0,
 }))
 
@@ -198,7 +208,17 @@ watch(
 )
 
 watch(
-  () => [groupedMarkers.value, sceneAnalysis.value, sceneModelUrl.value, props.showHeatLayer, props.showDevices],
+  () => [
+    groupedMarkers.value,
+    sceneAnalysis.value,
+    sceneModelUrl.value,
+    props.showHeatLayer,
+    props.showDevices,
+    showDoorLayer.value,
+    showWindowLayer.value,
+    showFurnitureLayer.value,
+    showGuideLayer.value,
+  ],
   () => {
     rebuildScene()
   },
@@ -413,11 +433,17 @@ function rebuildScene() {
       root.add(buildSemanticZoneShell(zone))
       root.add(buildSemanticZonePlate(zone))
     })
-    semanticOpenings.value.forEach((opening) => root.add(buildSemanticOpeningMesh(opening)))
-    windowEdges.value.forEach((edge) => root.add(buildWindowEdgeMesh(edge)))
-    const corridorMesh = buildCorridorPathMesh(corridorPath.value)
-    if (corridorMesh) {
-      root.add(corridorMesh)
+    if (showDoorLayer.value) {
+      semanticOpenings.value.forEach((opening) => root.add(buildSemanticOpeningMesh(opening)))
+    }
+    if (showWindowLayer.value) {
+      windowEdges.value.forEach((edge) => root.add(buildWindowEdgeMesh(edge)))
+    }
+    if (showGuideLayer.value) {
+      const corridorMesh = buildCorridorPathMesh(corridorPath.value)
+      if (corridorMesh) {
+        root.add(corridorMesh)
+      }
     }
   } else {
     sceneRooms.value.forEach((room) => root.add(buildRoomShell(room)))
@@ -425,12 +451,16 @@ function rebuildScene() {
 
   if (structuralRenderMode.value === 'walls') {
     openings.forEach((opening) => root.add(buildOpeningMesh(opening)))
-    furnitureCandidates.forEach((item) => root.add(buildFurnitureMesh(item)))
+    if (showFurnitureLayer.value) {
+      furnitureCandidates.forEach((item) => root.add(buildFurnitureMesh(item)))
+    }
   } else if (structuralRenderMode.value === 'semantic') {
-    semanticZones.value.forEach((zone) => {
-      const semanticFurniture = buildSemanticFurniture(zone)
-      semanticFurniture.forEach((item) => root.add(item))
-    })
+    if (showFurnitureLayer.value) {
+      semanticZones.value.forEach((zone) => {
+        const semanticFurniture = buildSemanticFurniture(zone)
+        semanticFurniture.forEach((item) => root.add(item))
+      })
+    }
   }
   sceneRooms.value.forEach((room) => root.add(buildRoomPlate(room)))
 
@@ -565,20 +595,107 @@ function buildSemanticOpeningMesh(opening) {
   const isVertical = opening.orientation === 'vertical'
   const width = Math.max(Number(opening.width ?? 28) * WORLD_SCALE, 0.32)
   const depth = Math.max(Number(opening.height ?? 22) * WORLD_SCALE, 0.22)
-  const geometry = isVertical
-    ? new THREE.BoxGeometry(depth, 3.8, width)
-    : new THREE.BoxGeometry(width, 3.8, depth)
-  const material = new THREE.MeshStandardMaterial({
-    color: '#c08457',
+  const group = new THREE.Group()
+  group.userData.dynamic = true
+  group.position.set(projectX(opening.x), 0, projectZ(opening.y))
+
+  const frameGeometry = isVertical
+    ? new THREE.BoxGeometry(depth, 3.9, width)
+    : new THREE.BoxGeometry(width, 3.9, depth)
+  const frame = new THREE.Mesh(
+    frameGeometry,
+    new THREE.MeshStandardMaterial({
+      color: opening.kind === 'swing_door' ? '#af7e57' : '#c08457',
+      transparent: true,
+      opacity: opening.kind === 'swing_door' ? 0.56 : 0.42,
+      roughness: 0.42,
+      metalness: 0.04,
+    }),
+  )
+  frame.position.y = 1.95
+  group.add(frame)
+
+  if (opening.door_leaf) {
+    const doorLeaf = buildDoorLeafMesh(opening, width, depth, isVertical)
+    if (doorLeaf) {
+      group.add(doorLeaf)
+    }
+    const swingArc = buildDoorSwingArc(opening, width, isVertical)
+    if (swingArc) {
+      group.add(swingArc)
+    }
+  }
+
+  return group
+}
+
+function buildDoorLeafMesh(opening, span, thickness, isVertical) {
+  const hingeAnchor = opening.hinge_anchor === 'end' ? 'end' : 'start'
+  const swingSign = Number(opening.swing_sign ?? 1) >= 0 ? 1 : -1
+  const angle = THREE.MathUtils.degToRad(Number(opening.leaf_angle_deg ?? 64)) * swingSign
+  const leafLength = Math.max(span * 0.9, 0.24)
+  const leafThickness = Math.max(thickness * 0.22, 0.08)
+  const pivot = new THREE.Group()
+  const doorHeight = 3.18
+  const leaf = new THREE.Mesh(
+    isVertical
+      ? new THREE.BoxGeometry(leafThickness, doorHeight, leafLength)
+      : new THREE.BoxGeometry(leafLength, doorHeight, leafThickness),
+    new THREE.MeshStandardMaterial({
+      color: opening.door_family === 'bath' ? '#cbd5e1' : '#f3e8cf',
+      roughness: 0.54,
+      metalness: 0.03,
+    }),
+  )
+
+  if (isVertical) {
+    pivot.position.set(0, 0.2, hingeAnchor === 'start' ? -span / 2 : span / 2)
+    leaf.position.set(0, doorHeight / 2, hingeAnchor === 'start' ? leafLength / 2 : -leafLength / 2)
+  } else {
+    pivot.position.set(hingeAnchor === 'start' ? -span / 2 : span / 2, 0.2, 0)
+    leaf.position.set(hingeAnchor === 'start' ? leafLength / 2 : -leafLength / 2, doorHeight / 2, 0)
+  }
+
+  pivot.rotation.y = angle
+  pivot.add(leaf)
+
+  const handle = new THREE.Mesh(
+    new THREE.SphereGeometry(0.07, 10, 10),
+    new THREE.MeshStandardMaterial({
+      color: '#8b5e34',
+      roughness: 0.34,
+      metalness: 0.26,
+    }),
+  )
+  handle.position.set(
+    isVertical ? 0 : (hingeAnchor === 'start' ? leafLength * 0.36 : -leafLength * 0.36),
+    doorHeight * 0.52,
+    isVertical ? (hingeAnchor === 'start' ? leafLength * 0.36 : -leafLength * 0.36) : 0,
+  )
+  leaf.add(handle)
+
+  return pivot
+}
+
+function buildDoorSwingArc(opening, span, isVertical) {
+  const hingeAnchor = opening.hinge_anchor === 'end' ? 'end' : 'start'
+  const swingSign = Number(opening.swing_sign ?? 1) >= 0 ? 1 : -1
+  const angle = THREE.MathUtils.degToRad(Number(opening.leaf_angle_deg ?? 64))
+  const closedAngle = hingeAnchor === 'start' ? 0 : Math.PI
+  const openAngle = closedAngle + angle * swingSign
+  const curve = new THREE.EllipseCurve(0, 0, span * 0.9, span * 0.9, closedAngle, openAngle, swingSign < 0, 0)
+  const points = curve.getPoints(20).map((point) => (
+    isVertical
+      ? new THREE.Vector3(point.x, 0.12, (hingeAnchor === 'start' ? -span / 2 : span / 2) + point.y)
+      : new THREE.Vector3((hingeAnchor === 'start' ? -span / 2 : span / 2) + point.x, 0.12, point.y)
+  ))
+  const geometry = new THREE.BufferGeometry().setFromPoints(points)
+  const material = new THREE.LineBasicMaterial({
+    color: '#f59e0b',
     transparent: true,
-    opacity: 0.42,
-    roughness: 0.46,
-    metalness: 0.02,
+    opacity: 0.68,
   })
-  const mesh = new THREE.Mesh(geometry, material)
-  mesh.userData.dynamic = true
-  mesh.position.set(projectX(opening.x), 1.9, projectZ(opening.y))
-  return mesh
+  return new THREE.Line(geometry, material)
 }
 
 function buildWindowEdgeMesh(edge) {
@@ -847,10 +964,7 @@ function syncCameraMode() {
     return
   }
 
-  const targetX = projectX((currentRoom.plan_x ?? 0) + ((currentRoom.plan_width ?? 120) / 2))
-  const targetZ = projectZ((currentRoom.plan_y ?? 0) + ((currentRoom.plan_height ?? 90) / 2))
-  controls.target.set(targetX, 0, targetZ)
-  camera.position.set(targetX + 110, 240, targetZ + 160)
+  focusOrbitOnBox(currentRoom.plan_x ?? 0, currentRoom.plan_y ?? 0, currentRoom.plan_width ?? 120, currentRoom.plan_height ?? 90)
 }
 
 function resetWalkCamera() {
@@ -1025,6 +1139,63 @@ function resolveStructuralRenderMode(analysis, rooms) {
   }
 
   return 'walls'
+}
+
+function focusOverview() {
+  if (isWalkMode.value) {
+    return
+  }
+
+  const camera = sceneRefs.camera
+  const controls = sceneRefs.controls
+  if (!camera || !controls) {
+    return
+  }
+
+  controls.target.set(0, 0, 0)
+  camera.position.set(0, 320, 360)
+  controls.update()
+}
+
+function focusSelectedRoom() {
+  const room = selectedOrbitRoom.value
+  if (!room || isWalkMode.value) {
+    return
+  }
+
+  focusOrbitOnBox(room.plan_x ?? 0, room.plan_y ?? 0, room.plan_width ?? 120, room.plan_height ?? 90)
+}
+
+function focusOrbitRoom(room) {
+  emit('select-room', room.id)
+  if (isWalkMode.value) {
+    return
+  }
+
+  focusOrbitOnBox(room.plan_x ?? 0, room.plan_y ?? 0, room.plan_width ?? 120, room.plan_height ?? 90)
+}
+
+function focusSemanticZone(zone) {
+  if (!zone || isWalkMode.value) {
+    return
+  }
+
+  focusOrbitOnBox(zone.x ?? 0, zone.y ?? 0, zone.width ?? 120, zone.height ?? 90)
+}
+
+function focusOrbitOnBox(planX, planY, width, height) {
+  const camera = sceneRefs.camera
+  const controls = sceneRefs.controls
+  if (!camera || !controls) {
+    return
+  }
+
+  const targetX = projectX(Number(planX) + Number(width) / 2)
+  const targetZ = projectZ(Number(planY) + Number(height) / 2)
+  const span = Math.max(Number(width), Number(height), 120) * WORLD_SCALE
+  controls.target.set(targetX, 0, targetZ)
+  camera.position.set(targetX + span * 3.2, 200 + span * 16, targetZ + span * 2.8)
+  controls.update()
 }
 
 function handleResize() {
@@ -1316,6 +1487,32 @@ function semanticZoneColor(type) {
   return '#94a3b8'
 }
 
+function sceneStructureLabel() {
+  if (structuralRenderMode.value === 'walls') {
+    return '识别墙体结构'
+  }
+  if (structuralRenderMode.value === 'semantic') {
+    return '语义骨架结构'
+  }
+  return '稳定布局结构'
+}
+
+function layerToggleClass(active) {
+  return active
+    ? 'border-emerald-200 bg-emerald-50 text-emerald-700 shadow-[0_12px_30px_rgba(16,185,129,0.12)]'
+    : 'border-white/70 bg-white/78 text-slate-500'
+}
+
+function orbitRoomChipClass(active) {
+  return active
+    ? 'border-ink bg-ink text-white shadow-[0_12px_30px_rgba(15,23,42,0.2)]'
+    : 'border-white/70 bg-white/82 text-slate-600 hover:border-slate-300'
+}
+
+function focusChipClass() {
+  return 'border-white/70 bg-white/82 text-slate-600 hover:border-slate-300'
+}
+
 function controlTitle(device) {
   return device.appliance_name || device.name
 }
@@ -1434,9 +1631,9 @@ async function handleButtonPress(device) {
 </script>
 
 <template>
-  <section class="glass-soft rounded-[1.7rem] p-4 sm:p-5">
-    <div class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-      <div>
+  <section class="glass-soft overflow-hidden rounded-[1.9rem] p-4 sm:p-5 lg:p-6">
+    <div class="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(22rem,0.82fr)] xl:items-end">
+      <div class="min-w-0">
         <p class="text-[11px] uppercase tracking-[0.28em] text-lagoon">Immersive Spatial UI</p>
         <h3 class="font-display mt-3 text-[1.8rem] leading-none text-ink sm:text-[2.15rem]">
           {{ isWalkMode ? '第一人称 3D 漫游' : '真 3D 轨道视图' }}
@@ -1444,20 +1641,31 @@ async function handleButtonPress(device) {
         <p class="mt-3 max-w-3xl text-sm leading-6 text-slate-500">
           {{ hasImportedModel ? '当前已叠加导入的 3D 模型，可在模型与结构层上继续控制设备。' : '当前先使用户型结构层生成墙体、门洞和家具代理体，后续导入 GLB/GLTF 模型会自动叠加。' }}
         </p>
+        <div class="mt-4 flex flex-wrap gap-2">
+          <span class="rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-xs font-medium text-slate-600">
+            结构层：{{ sceneStructureLabel() }}
+          </span>
+          <span class="rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-xs font-medium text-slate-600">
+            模型层：{{ hasImportedModel ? '已叠加 3D 资产' : '等待导入模型' }}
+          </span>
+          <span class="rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-xs font-medium text-slate-600">
+            设备交互：点按直控，长按展开高级控制
+          </span>
+        </div>
       </div>
 
-      <div class="grid gap-3 sm:grid-cols-4">
+      <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
           <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">房间</p>
           <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.rooms }}</p>
         </div>
         <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
-          <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">墙体</p>
+          <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">{{ structuralRenderMode === 'semantic' ? '语义区' : '墙体' }}</p>
           <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.walls }}</p>
         </div>
         <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
-          <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门洞</p>
-          <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.openings }}</p>
+          <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门 / 窗</p>
+          <p class="mt-2 text-xl font-semibold text-ink">{{ roamStats.openings }} / {{ roamStats.windows }}</p>
         </div>
         <div class="rounded-[1.2rem] border border-slate-200 bg-white/82 px-4 py-3">
           <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">设备节点</p>
@@ -1468,17 +1676,142 @@ async function handleButtonPress(device) {
 
     <div
       ref="containerRef"
-      class="relative mt-5 h-[33rem] overflow-hidden rounded-[1.8rem] border border-white/70 bg-[#eef2ef] shadow-inner sm:h-[39rem] xl:h-[42rem]"
+      class="relative mt-5 h-[36rem] overflow-hidden rounded-[1.8rem] border border-white/70 bg-[#eef2ef] shadow-inner sm:h-[41rem] xl:h-[44rem]"
     >
-      <div class="pointer-events-none absolute left-3 top-3 z-10 max-w-sm rounded-[1.1rem] border border-white/70 bg-white/84 px-4 py-3 text-xs leading-6 text-slate-600 shadow-sm sm:left-4 sm:top-4 sm:text-sm">
-        <p>{{ isWalkMode ? '桌面端可用 WASD / 方向键移动，拖拽空白区域转头；手机和平板可直接使用底部触控摇杆。' : '拖拽旋转、双指或滚轮缩放。点灯默认开关，长按灯光弹出亮度与色温。' }}</p>
-      </div>
+      <div class="absolute inset-x-3 top-3 z-10 grid gap-3 xl:grid-cols-[minmax(0,1.1fr)_20rem] xl:items-start sm:inset-x-4 sm:top-4">
+        <div class="pointer-events-auto rounded-[1.3rem] border border-white/75 bg-white/86 p-3 shadow-[0_22px_50px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-4">
+          <div class="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">轨道工作台</p>
+              <p class="mt-2 text-sm font-semibold text-ink sm:text-base">
+                {{ selectedOrbitRoom ? `${selectedOrbitRoom.name} · ${selectedOrbitRoom.devices?.length ?? 0} 个设备` : '当前暂无房间聚焦' }}
+              </p>
+              <p class="mt-1 text-xs leading-5 text-slate-500 sm:text-sm">{{ structureHint }}</p>
+            </div>
+            <div class="flex flex-wrap gap-2">
+              <button
+                v-if="!isWalkMode"
+                type="button"
+                class="rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+                :class="orbitRoomChipClass(false)"
+                @click="focusOverview"
+              >
+                全屋视角
+              </button>
+              <button
+                v-if="!isWalkMode"
+                type="button"
+                class="rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+                :class="orbitRoomChipClass(Boolean(selectedOrbitRoom))"
+                @click="focusSelectedRoom"
+              >
+                当前房间
+              </button>
+            </div>
+          </div>
 
-      <div class="pointer-events-none absolute right-3 top-3 z-10 rounded-[1.1rem] border border-white/70 bg-white/84 px-4 py-3 text-xs leading-6 text-slate-600 shadow-sm sm:right-4 sm:top-4 sm:text-sm">
-        <p>结构层：{{ structuralRenderMode === 'walls' ? '识别墙体 / 门洞 / 家具候选' : structuralRenderMode === 'semantic' ? '语义空间骨架' : '按房间布局稳定渲染' }}</p>
-        <p>模型层：{{ hasImportedModel ? '已导入 3D 资产' : '等待导入 GLB / GLTF' }}</p>
-        <p>设备层：点按直控，长按展开高级控制</p>
-        <p class="max-w-[18rem] text-[11px] leading-5 text-slate-500 sm:text-xs">{{ structureHint }}</p>
+          <div v-if="!isWalkMode && orbitRooms.length" class="mt-4">
+            <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">房间聚焦</p>
+            <div class="mt-2 flex gap-2 overflow-x-auto pb-1">
+              <button
+                v-for="room in orbitRooms"
+                :key="`orbit-room-${room.id}`"
+                type="button"
+                class="shrink-0 rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+                :class="orbitRoomChipClass(room.id === selectedRoomId)"
+                @click="focusOrbitRoom(room)"
+              >
+                {{ room.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            <button
+              type="button"
+              class="rounded-[1rem] border px-3 py-2 text-left text-xs font-medium transition sm:text-sm"
+              :class="layerToggleClass(showDoorLayer)"
+              @click="showDoorLayer = !showDoorLayer"
+            >
+              <span class="block text-[10px] uppercase tracking-[0.18em] opacity-70">门扇层</span>
+              <span class="mt-1 block">{{ showDoorLayer ? '显示卧室 / 卫浴门扇' : '隐藏门扇效果' }}</span>
+            </button>
+            <button
+              type="button"
+              class="rounded-[1rem] border px-3 py-2 text-left text-xs font-medium transition sm:text-sm"
+              :class="layerToggleClass(showWindowLayer)"
+              @click="showWindowLayer = !showWindowLayer"
+            >
+              <span class="block text-[10px] uppercase tracking-[0.18em] opacity-70">窗边层</span>
+              <span class="mt-1 block">{{ showWindowLayer ? '显示采光立面' : '隐藏窗边' }}</span>
+            </button>
+            <button
+              type="button"
+              class="rounded-[1rem] border px-3 py-2 text-left text-xs font-medium transition sm:text-sm"
+              :class="layerToggleClass(showFurnitureLayer)"
+              @click="showFurnitureLayer = !showFurnitureLayer"
+            >
+              <span class="block text-[10px] uppercase tracking-[0.18em] opacity-70">家具层</span>
+              <span class="mt-1 block">{{ showFurnitureLayer ? '显示家具代理体' : '隐藏家具代理体' }}</span>
+            </button>
+            <button
+              type="button"
+              class="rounded-[1rem] border px-3 py-2 text-left text-xs font-medium transition sm:text-sm"
+              :class="layerToggleClass(showGuideLayer)"
+              @click="showGuideLayer = !showGuideLayer"
+            >
+              <span class="block text-[10px] uppercase tracking-[0.18em] opacity-70">动线层</span>
+              <span class="mt-1 block">{{ showGuideLayer ? '显示走廊引导线' : '隐藏走廊引导' }}</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="pointer-events-auto rounded-[1.3rem] border border-white/75 bg-white/86 p-3 shadow-[0_22px_50px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:p-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400">场景态势</p>
+              <p class="mt-2 text-sm font-semibold text-ink sm:text-base">{{ sceneStructureLabel() }}</p>
+            </div>
+            <div class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-500">
+              {{ isWalkMode ? 'Walk' : 'Orbit' }}
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-2 text-xs text-slate-500 sm:text-sm">
+            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">语义区</p>
+              <p class="mt-1 font-semibold text-ink">{{ roamStats.semanticZones }}</p>
+            </div>
+            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门洞</p>
+              <p class="mt-1 font-semibold text-ink">{{ roamStats.openings }}</p>
+            </div>
+            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">窗边</p>
+              <p class="mt-1 font-semibold text-ink">{{ roamStats.windows }}</p>
+            </div>
+            <div class="rounded-[1rem] bg-slate-50/90 px-3 py-2">
+              <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">设备</p>
+              <p class="mt-1 font-semibold text-ink">{{ roamStats.markers }}</p>
+            </div>
+          </div>
+
+          <div v-if="!isWalkMode && semanticFocusChips.length" class="mt-4">
+            <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">语义热点</p>
+            <div class="mt-2 flex flex-wrap gap-2">
+              <button
+                v-for="zone in semanticFocusChips"
+                :key="`semantic-chip-${zone.label}`"
+                type="button"
+                class="rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+                :class="focusChipClass()"
+                @click="focusSemanticZone(zone)"
+              >
+                {{ zone.label }}
+              </button>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div
@@ -1487,6 +1820,16 @@ async function handleButtonPress(device) {
       >
         <div class="rounded-full border border-white/80 bg-white/88 px-4 py-2 text-sm text-slate-600 shadow-sm">
           正在同步沉浸式空间…
+        </div>
+      </div>
+
+      <div
+        v-if="!isWalkMode"
+        class="pointer-events-auto absolute inset-x-3 bottom-3 z-20 rounded-[1.2rem] border border-white/75 bg-white/82 px-4 py-3 text-xs leading-6 text-slate-600 shadow-[0_18px_44px_rgba(15,23,42,0.12)] backdrop-blur-xl sm:inset-x-4 sm:bottom-4 sm:text-sm"
+      >
+        <div class="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+          <p>拖拽旋转，滚轮或双指缩放；点灯默认开关，长按灯光打开高级面板。</p>
+          <p class="text-slate-500">{{ selectedOrbitRoom ? `当前聚焦 ${selectedOrbitRoom.name}` : '可在上方房间带中快速切换聚焦' }}</p>
         </div>
       </div>
 

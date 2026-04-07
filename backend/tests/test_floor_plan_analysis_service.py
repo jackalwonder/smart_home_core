@@ -32,5 +32,9 @@ def test_analyze_floor_plan_image_extracts_room_candidates() -> None:
     assert analysis["furniture_candidates"]
     assert analysis["semantic_zones"]
     assert analysis["semantic_openings"]
+    semantic_doors = [item for item in analysis["semantic_openings"] if item.get("door_leaf")]
+    assert semantic_doors
+    assert any(item.get("zone_label") == "主卧" for item in semantic_doors)
+    assert any(item.get("zone_label") == "公卫" for item in semantic_doors)
     assert analysis["window_edges"]
     assert analysis["corridor_path"]

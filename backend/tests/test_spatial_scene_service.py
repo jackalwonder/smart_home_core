@@ -65,6 +65,25 @@ def test_should_refresh_floor_plan_analysis_when_new_structural_layers_are_missi
             "floor_plan_analysis": '{"summary":"ok","source":"local-structure","room_candidates":[]}',
         }
     ) is True
+    assert spatial_scene_service._should_refresh_floor_plan_analysis(
+        {
+            "floor_plan_image_path": "/media/floorplans/demo.png",
+            "floor_plan_analysis": json.dumps(
+                {
+                    "summary": "ok",
+                    "source": "local-structure",
+                    "wall_segments": [],
+                    "openings": [],
+                    "furniture_candidates": [],
+                    "semantic_zones": [{"type": "living", "label": "客厅"}],
+                    "semantic_openings": [{"kind": "doorway", "zone_label": "主卧"}],
+                    "window_edges": [],
+                    "corridor_path": [],
+                },
+                ensure_ascii=False,
+            ),
+        }
+    ) is True
 
 
 def test_derive_device_positions_prefers_semantic_kitchen_anchor_for_fridge() -> None:
@@ -95,6 +114,57 @@ def test_derive_device_positions_prefers_semantic_kitchen_anchor_for_fridge() ->
     assert points[27]["plan_y"] == 168.4
     assert points[27]["plan_z"] == 0.55
     assert points[27]["semantic_locked"] is True
+
+
+def test_derive_device_positions_semantically_places_tv_light_and_camera() -> None:
+    points = spatial_scene_service._derive_device_positions(
+        [
+            {
+                "id": 1,
+                "name": "客厅电视",
+                "entity_domain": "media_player",
+                "device_class": "",
+                "appliance_type": "tv",
+            },
+            {
+                "id": 2,
+                "name": "主卧顶灯",
+                "entity_domain": "light",
+                "device_class": "",
+                "appliance_type": "",
+            },
+            {
+                "id": 3,
+                "name": "入户摄像头",
+                "entity_domain": "camera",
+                "device_class": "",
+                "appliance_type": "camera",
+            },
+        ],
+        {
+            "plan_x": 0.0,
+            "plan_y": 0.0,
+            "plan_width": 800.0,
+            "plan_height": 600.0,
+            "plan_rotation": 0.0,
+        },
+        semantic_zones=[
+            {"type": "living", "label": "客厅", "x": 300.0, "y": 240.0, "width": 420.0, "height": 260.0},
+            {"type": "master", "label": "主卧", "x": 760.0, "y": 420.0, "width": 220.0, "height": 180.0},
+            {"type": "entry", "label": "玄关", "x": 80.0, "y": 260.0, "width": 120.0, "height": 120.0},
+        ],
+        room_name="主卧",
+    )
+
+    assert points[1]["plan_x"] == 619.2
+    assert points[1]["plan_y"] == 432.4
+    assert points[1]["plan_rotation"] == 180.0
+    assert points[2]["plan_x"] == 870.0
+    assert points[2]["plan_y"] == 510.0
+    assert points[2]["plan_z"] == 0.94
+    assert points[3]["plan_x"] == 99.2
+    assert points[3]["plan_y"] == 284.0
+    assert points[3]["plan_z"] == 0.88
 
 
 @pytest.mark.asyncio
