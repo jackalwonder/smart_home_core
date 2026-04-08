@@ -1,5 +1,5 @@
 <script setup>
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 import * as THREE from 'three'
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -32,11 +32,16 @@ const props = defineProps({
     type: String,
     default: 'orbit',
   },
+  embedded: {
+    type: Boolean,
+    default: false,
+  },
 })
 
 const emit = defineEmits(['select-room'])
 
 const smartHomeStore = useSmartHomeStore()
+const shellRef = ref(null)
 const containerRef = ref(null)
 const popupPanelRef = ref(null)
 const popupGroupKey = ref('')
@@ -47,6 +52,8 @@ const showDoorLayer = ref(true)
 const showWindowLayer = ref(true)
 const showFurnitureLayer = ref(true)
 const showGuideLayer = ref(true)
+const isFullscreen = ref(false)
+const detailRoomId = ref(null)
 
 const sceneRefs = {
   renderer: null,
@@ -58,13 +65,16 @@ const sceneRefs = {
   pointer: new THREE.Vector2(),
   interactiveMeshes: [],
   markerByKey: new Map(),
+  roomById: new Map(),
   loader: new GLTFLoader(),
   modelRoot: null,
   modelLoadToken: 0,
 }
 
 const pressState = reactive({
+  targetKind: '',
   groupKey: '',
+  roomId: null,
   startX: 0,
   startY: 0,
   longPressed: false,
@@ -116,10 +126,58 @@ const groupedMarkers = computed(() =>
 const activePopupGroup = computed(() => groupedMarkers.value.find((group) => group.key === popupGroupKey.value) ?? null)
 const structuralRenderMode = computed(() => resolveStructuralRenderMode(sceneAnalysis.value, sceneRooms.value))
 const selectedOrbitRoom = computed(() => sceneRooms.value.find((room) => room.id === props.selectedRoomId) ?? sceneRooms.value[0] ?? null)
+const activeWorkbenchRoom = computed(() => sceneRooms.value.find((room) => room.id === detailRoomId.value) ?? selectedOrbitRoom.value ?? null)
+const isRoomWorkbench = computed(() => !isWalkMode.value && detailRoomId.value !== null)
 const orbitRooms = computed(() => sceneRooms.value.filter((room) => Boolean(room.name)))
 const semanticFocusChips = computed(() =>
   semanticZones.value.filter((zone) => ['living', 'kitchen', 'dining', 'master', 'bedroom', 'bath', 'storage', 'entry'].includes(zone.type)).slice(0, 8),
 )
+const miniMapRooms = computed(() => sceneRooms.value.filter((room) => room.plan_x !== null && room.plan_y !== null))
+const detailRoomMarkers = computed(() => {
+  if (!activeWorkbenchRoom.value) {
+    return []
+  }
+  return groupedMarkers.value.filter((marker) => marker.room.id === activeWorkbenchRoom.value.id)
+})
+const detailZoom = computed(() => {
+  const room = activeWorkbenchRoom.value
+  if (!room) {
+    return 2.2
+  }
+  const span = Math.max(Number(room.plan_width ?? 120), Number(room.plan_height ?? 90))
+  return Math.max(1.8, Math.min(3.4, 4.2 - span / 170))
+})
+const miniMapBackgroundStyle = computed(() => (
+  planImageUrl.value
+    ? {
+      backgroundImage: `linear-gradient(rgba(255,255,255,0.12), rgba(255,255,255,0.12)), url(${planImageUrl.value})`,
+      backgroundSize: '100% 100%',
+      backgroundPosition: 'center',
+    }
+    : {
+      backgroundImage: 'radial-gradient(circle at 20% 20%, rgba(255,255,255,0.85), rgba(226,232,240,0.95))',
+    }
+))
+const detailMagnifierStyle = computed(() => {
+  const room = activeWorkbenchRoom.value
+  if (!room || !planImageUrl.value) {
+    return {
+      backgroundImage: 'linear-gradient(135deg, rgba(255,255,255,0.94), rgba(226,232,240,0.96))',
+    }
+  }
+
+  const zoom = detailZoom.value
+  const previewWidth = isFullscreen.value ? 360 : 320
+  const previewHeight = isFullscreen.value ? 252 : 224
+  const centerX = Number(room.plan_x ?? 0) + Number(room.plan_width ?? 120) / 2
+  const centerY = Number(room.plan_y ?? 0) + Number(room.plan_height ?? 90) / 2
+  return {
+    backgroundImage: `linear-gradient(rgba(255,255,255,0.02), rgba(255,255,255,0.02)), url(${planImageUrl.value})`,
+    backgroundRepeat: 'no-repeat',
+    backgroundSize: `${planWidth.value * zoom}px ${planHeight.value * zoom}px`,
+    backgroundPosition: `${(previewWidth / 2) - centerX * zoom}px ${(previewHeight / 2) - centerY * zoom}px`,
+  }
+})
 const popupStyle = computed(() => {
   if (!popupCoordinates.value.visible) {
     return { display: 'none' }
@@ -280,6 +338,29 @@ watch(
   () => [props.selectedRoomId, props.cameraMode],
   () => {
     syncCameraMode()
+  },
+)
+
+watch(
+  isFullscreen,
+  () => {
+    nextTick(() => {
+      handleResize()
+      if (isWalkMode.value) {
+        return
+      }
+      if (isRoomWorkbench.value && activeWorkbenchRoom.value) {
+        focusOrbitOnBox(
+          activeWorkbenchRoom.value.plan_x ?? 0,
+          activeWorkbenchRoom.value.plan_y ?? 0,
+          activeWorkbenchRoom.value.plan_width ?? 120,
+          activeWorkbenchRoom.value.plan_height ?? 90,
+          { detail: true },
+        )
+        return
+      }
+      focusOverview()
+    })
   },
 )
 
@@ -448,6 +529,7 @@ function teardownScene() {
   sceneRefs.interactiveMeshes = []
   sceneRefs.markerByKey.clear()
   sceneRefs.modelRoot = null
+  sceneRefs.roomById.clear()
 }
 
 function disposeDynamicScene() {
@@ -491,6 +573,7 @@ function rebuildScene() {
   disposeDynamicScene()
   sceneRefs.interactiveMeshes = []
   sceneRefs.markerByKey.clear()
+  sceneRefs.roomById.clear()
 
   const root = new THREE.Group()
   root.userData.dynamic = true
@@ -542,6 +625,7 @@ function rebuildScene() {
     }
   }
   sceneRooms.value.forEach((room) => root.add(buildRoomPlate(room)))
+  sceneRooms.value.forEach((room) => root.add(buildRoomHitArea(room)))
 
   if (props.showDevices) {
     groupedMarkers.value.forEach((marker) => root.add(buildMarkerMesh(marker)))
@@ -634,6 +718,29 @@ function buildRoomPlate(room) {
     projectZ((room.plan_y ?? 0) + ((room.plan_height ?? 90) / 2)),
   )
   mesh.rotation.y = THREE.MathUtils.degToRad(room.plan_rotation ?? 0)
+  return mesh
+}
+
+function buildRoomHitArea(room) {
+  const width = Math.max((room.plan_width ?? 120) * WORLD_SCALE, 2.5)
+  const depth = Math.max((room.plan_height ?? 90) * WORLD_SCALE, 2.2)
+  const geometry = new THREE.BoxGeometry(width, 0.45, depth)
+  const material = new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0.01,
+    depthWrite: false,
+  })
+  const mesh = new THREE.Mesh(geometry, material)
+  mesh.userData.dynamic = true
+  mesh.userData.interactiveKind = 'room'
+  mesh.userData.roomId = room.id
+  mesh.position.set(
+    projectX((room.plan_x ?? 0) + ((room.plan_width ?? 120) / 2)),
+    0.26,
+    projectZ((room.plan_y ?? 0) + ((room.plan_height ?? 90) / 2)),
+  )
+  sceneRefs.interactiveMeshes.push(mesh)
+  sceneRefs.roomById.set(room.id, mesh)
   return mesh
 }
 
@@ -1047,6 +1154,10 @@ function buildMarkerMesh(marker) {
   cap.position.y = marker.active ? 8.2 : 6.2
 
   markerGroup.add(base, orb, halo, beam, cap)
+  base.userData.interactiveKind = 'marker'
+  base.userData.groupKey = marker.key
+  orb.userData.interactiveKind = 'marker'
+  orb.userData.groupKey = marker.key
   markerGroup.position.set(
     projectX(marker.position.x),
     6.6 + marker.position.z * 9,
@@ -1163,12 +1274,18 @@ function syncCameraMode() {
     return
   }
 
-  const currentRoom = sceneRooms.value.find((room) => room.id === props.selectedRoomId) ?? sceneRooms.value[0] ?? null
+  const currentRoom = activeWorkbenchRoom.value ?? sceneRooms.value.find((room) => room.id === props.selectedRoomId) ?? sceneRooms.value[0] ?? null
   if (!currentRoom) {
     return
   }
 
-  focusOrbitOnBox(currentRoom.plan_x ?? 0, currentRoom.plan_y ?? 0, currentRoom.plan_width ?? 120, currentRoom.plan_height ?? 90)
+  focusOrbitOnBox(
+    currentRoom.plan_x ?? 0,
+    currentRoom.plan_y ?? 0,
+    currentRoom.plan_width ?? 120,
+    currentRoom.plan_height ?? 90,
+    { detail: isRoomWorkbench.value },
+  )
 }
 
 function resetWalkCamera() {
@@ -1350,6 +1467,7 @@ function focusOverview() {
     return
   }
 
+  detailRoomId.value = null
   const camera = sceneRefs.camera
   const controls = sceneRefs.controls
   if (!camera || !controls) {
@@ -1370,16 +1488,15 @@ function focusSelectedRoom() {
     return
   }
 
-  focusOrbitOnBox(room.plan_x ?? 0, room.plan_y ?? 0, room.plan_width ?? 120, room.plan_height ?? 90)
+  activateRoomWorkbench(room)
 }
 
 function focusOrbitRoom(room) {
-  emit('select-room', room.id)
   if (isWalkMode.value) {
     return
   }
 
-  focusOrbitOnBox(room.plan_x ?? 0, room.plan_y ?? 0, room.plan_width ?? 120, room.plan_height ?? 90)
+  activateRoomWorkbench(room)
 }
 
 function focusSemanticZone(zone) {
@@ -1387,10 +1504,26 @@ function focusSemanticZone(zone) {
     return
   }
 
-  focusOrbitOnBox(zone.x ?? 0, zone.y ?? 0, zone.width ?? 120, zone.height ?? 90)
+  detailRoomId.value = null
+  focusOrbitOnBox(zone.x ?? 0, zone.y ?? 0, zone.width ?? 120, zone.height ?? 90, { detail: false })
 }
 
-function focusOrbitOnBox(planX, planY, width, height) {
+function activateRoomWorkbench(room) {
+  if (!room) {
+    return
+  }
+  detailRoomId.value = room.id
+  emit('select-room', room.id)
+  focusOrbitOnBox(room.plan_x ?? 0, room.plan_y ?? 0, room.plan_width ?? 120, room.plan_height ?? 90, { detail: true })
+}
+
+function exitRoomWorkbench() {
+  detailRoomId.value = null
+  closePopup()
+  focusOverview()
+}
+
+function focusOrbitOnBox(planX, planY, width, height, options = {}) {
   const camera = sceneRefs.camera
   const controls = sceneRefs.controls
   if (!camera || !controls) {
@@ -1401,13 +1534,20 @@ function focusOrbitOnBox(planX, planY, width, height) {
   const targetZ = projectZ(Number(planY) + Number(height) / 2)
   const container = containerRef.value
   const span = Math.max(Number(width), Number(height), 120) * WORLD_SCALE
+  const detail = Boolean(options.detail)
   const aspectBias = container ? THREE.MathUtils.clamp(container.clientHeight / Math.max(container.clientWidth, 1), 0.55, 1.2) : 0.82
-  const distance = THREE.MathUtils.clamp(span * (1.18 + aspectBias * 0.38), 16, 74)
-  const elevation = THREE.MathUtils.clamp(span * (0.96 + aspectBias * 0.32) + 12, 16, 76)
-  const lateral = THREE.MathUtils.clamp(span * 0.5, 4, 22)
+  const distance = detail
+    ? THREE.MathUtils.clamp(span * (0.72 + aspectBias * 0.18), 8, 28)
+    : THREE.MathUtils.clamp(span * (1.18 + aspectBias * 0.38), 16, 74)
+  const elevation = detail
+    ? THREE.MathUtils.clamp(span * (0.44 + aspectBias * 0.14) + 5, 6, 26)
+    : THREE.MathUtils.clamp(span * (0.96 + aspectBias * 0.32) + 12, 16, 76)
+  const lateral = detail
+    ? THREE.MathUtils.clamp(span * 0.14, 0.8, 5.2)
+    : THREE.MathUtils.clamp(span * 0.5, 4, 22)
   controls.target.set(targetX, 0, targetZ)
-  controls.minDistance = Math.max(distance * 0.42, 8)
-  controls.maxDistance = Math.max(distance * 4.8, 180)
+  controls.minDistance = detail ? Math.max(distance * 0.5, 4) : Math.max(distance * 0.42, 8)
+  controls.maxDistance = detail ? Math.max(distance * 2.8, 42) : Math.max(distance * 4.8, 180)
   camera.position.set(targetX + lateral, elevation, targetZ + distance)
   controls.update()
 }
@@ -1425,7 +1565,7 @@ function handleResize() {
   camera.updateProjectionMatrix()
 }
 
-function pickMarker(event) {
+function pickSceneTarget(event) {
   const renderer = sceneRefs.renderer
   const camera = sceneRefs.camera
   if (!renderer || !camera) {
@@ -1437,17 +1577,35 @@ function pickMarker(event) {
   sceneRefs.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1
   sceneRefs.raycaster.setFromCamera(sceneRefs.pointer, camera)
   const intersections = sceneRefs.raycaster.intersectObjects(sceneRefs.interactiveMeshes, false)
-  const root = intersections[0]?.object?.parent
+  const object = intersections[0]?.object
+  const interactiveKind = object?.userData?.interactiveKind
+
+  if (interactiveKind === 'marker') {
+    const groupKey = object.userData.groupKey
+    const group = groupedMarkers.value.find((item) => item.key === groupKey) ?? null
+    return group ? { kind: 'marker', group } : null
+  }
+
+  if (interactiveKind === 'room') {
+    const room = sceneRooms.value.find((item) => item.id === object.userData.roomId) ?? null
+    return room ? { kind: 'room', room } : null
+  }
+
+  const root = object?.parent
   if (!root?.userData?.groupKey) {
     return null
   }
-  return groupedMarkers.value.find((group) => group.key === root.userData.groupKey) ?? null
+  const group = groupedMarkers.value.find((item) => item.key === root.userData.groupKey) ?? null
+  return group ? { kind: 'marker', group } : null
 }
 
 function handlePointerDown(event) {
-  const group = pickMarker(event)
-  if (group) {
+  const target = pickSceneTarget(event)
+  if (target?.kind === 'marker') {
+    const group = target.group
+    pressState.targetKind = 'marker'
     pressState.groupKey = group.key
+    pressState.roomId = null
     pressState.startX = event.clientX
     pressState.startY = event.clientY
     pressState.longPressed = false
@@ -1461,9 +1619,22 @@ function handlePointerDown(event) {
     return
   }
 
+  if (target?.kind === 'room' && !isWalkMode.value) {
+    pressState.targetKind = 'room'
+    pressState.groupKey = ''
+    pressState.roomId = target.room.id
+    pressState.startX = event.clientX
+    pressState.startY = event.clientY
+    pressState.longPressed = false
+    clearLongPressTimer()
+    return
+  }
+
   closePopup()
   clearLongPressTimer()
+  pressState.targetKind = ''
   pressState.groupKey = ''
+  pressState.roomId = null
 
   if (!isWalkMode.value) {
     return
@@ -1476,7 +1647,7 @@ function handlePointerDown(event) {
 }
 
 function handlePointerMove(event) {
-  if (pressState.groupKey) {
+  if (pressState.groupKey || pressState.roomId !== null) {
     const distance = Math.hypot(event.clientX - pressState.startX, event.clientY - pressState.startY)
     if (distance > 8) {
       clearLongPressTimer()
@@ -1496,16 +1667,23 @@ function handlePointerMove(event) {
 }
 
 function handlePointerUp(event) {
-  const group = pickMarker(event)
-  const sameTarget = group && group.key === pressState.groupKey
+  const target = pickSceneTarget(event)
+  const group = target?.kind === 'marker' ? target.group : null
+  const room = target?.kind === 'room' ? target.room : null
+  const sameMarkerTarget = group && group.key === pressState.groupKey
+  const sameRoomTarget = room && room.id === pressState.roomId
   const didLongPress = pressState.longPressed
   clearLongPressTimer()
 
-  if (sameTarget && !didLongPress) {
+  if (sameMarkerTarget && !didLongPress) {
     handlePrimaryMarkerAction(group)
+  } else if (sameRoomTarget && !didLongPress) {
+    activateRoomWorkbench(room)
   }
 
+  pressState.targetKind = ''
   pressState.groupKey = ''
+  pressState.roomId = null
   pressState.longPressed = false
 
   if (walkState.pointerId === event.pointerId) {
@@ -1516,7 +1694,9 @@ function handlePointerUp(event) {
 
 function handlePointerCancel(event) {
   clearLongPressTimer()
+  pressState.targetKind = ''
   pressState.groupKey = ''
+  pressState.roomId = null
   pressState.longPressed = false
 
   if (!event || walkState.pointerId === event.pointerId) {
@@ -1534,6 +1714,10 @@ function clearLongPressTimer() {
 
 function openPopup(group) {
   popupGroupKey.value = group.key
+  if (!isWalkMode.value) {
+    activateRoomWorkbench(group.room)
+    return
+  }
   emit('select-room', group.room.id)
 }
 
@@ -1542,7 +1726,11 @@ function closePopup() {
 }
 
 async function handlePrimaryMarkerAction(group) {
-  emit('select-room', group.room.id)
+  if (!isWalkMode.value) {
+    activateRoomWorkbench(group.room)
+  } else {
+    emit('select-room', group.room.id)
+  }
 
   if (group.clickToggles && group.primaryInteractive) {
     try {
@@ -1557,11 +1745,26 @@ async function handlePrimaryMarkerAction(group) {
 }
 
 function handleKeyDown(event) {
+  const code = event.code.toLowerCase()
+  if (code === 'escape') {
+    if (popupGroupKey.value) {
+      closePopup()
+      return
+    }
+    if (isRoomWorkbench.value) {
+      exitRoomWorkbench()
+      return
+    }
+    if (isFullscreen.value) {
+      setFullscreenMode(false)
+      return
+    }
+  }
+
   if (!isWalkMode.value) {
     return
   }
 
-  const code = event.code.toLowerCase()
   if (code === 'keyw' || code === 'arrowup') {
     walkState.keyForward = true
   } else if (code === 'keys' || code === 'arrowdown') {
@@ -1711,6 +1914,17 @@ function sceneStructureLabel() {
   return '稳定布局结构'
 }
 
+function setFullscreenMode(nextValue) {
+  if (isFullscreen.value === nextValue) {
+    return
+  }
+  isFullscreen.value = nextValue
+}
+
+function toggleFullscreenMode() {
+  setFullscreenMode(!isFullscreen.value)
+}
+
 function layerToggleClass(active) {
   return active
     ? 'border-teal-300/35 bg-teal-400/15 text-teal-50 shadow-[0_16px_34px_rgba(20,184,166,0.18)]'
@@ -1725,6 +1939,41 @@ function orbitRoomChipClass(active) {
 
 function focusChipClass() {
   return 'border-white/12 bg-white/[0.06] text-slate-100 hover:border-teal-200/30 hover:bg-white/[0.12]'
+}
+
+function miniMapRoomStyle(room) {
+  const left = (Number(room.plan_x ?? 0) / Math.max(planWidth.value, 1)) * 100
+  const top = (Number(room.plan_y ?? 0) / Math.max(planHeight.value, 1)) * 100
+  const width = (Number(room.plan_width ?? 120) / Math.max(planWidth.value, 1)) * 100
+  const height = (Number(room.plan_height ?? 90) / Math.max(planHeight.value, 1)) * 100
+  return {
+    left: `${left}%`,
+    top: `${top}%`,
+    width: `${width}%`,
+    height: `${height}%`,
+  }
+}
+
+function miniMapMarkerStyle(marker) {
+  return {
+    left: `${(Number(marker.position.x ?? 0) / Math.max(planWidth.value, 1)) * 100}%`,
+    top: `${(Number(marker.position.y ?? 0) / Math.max(planHeight.value, 1)) * 100}%`,
+  }
+}
+
+function magnifierMarkerStyle(marker) {
+  const room = activeWorkbenchRoom.value
+  if (!room) {
+    return {}
+  }
+  const roomWidth = Math.max(Number(room.plan_width ?? 120), 1)
+  const roomHeight = Math.max(Number(room.plan_height ?? 90), 1)
+  const relativeX = ((Number(marker.position.x ?? 0) - Number(room.plan_x ?? 0)) / roomWidth) * 100
+  const relativeY = ((Number(marker.position.y ?? 0) - Number(room.plan_y ?? 0)) / roomHeight) * 100
+  return {
+    left: `${Math.max(4, Math.min(96, relativeX))}%`,
+    top: `${Math.max(4, Math.min(96, relativeY))}%`,
+  }
 }
 
 function controlTitle(device) {
@@ -1845,8 +2094,18 @@ async function handleButtonPress(device) {
 </script>
 
 <template>
-  <section class="orbit-shell glass-soft overflow-hidden rounded-[2rem] p-4 sm:p-5 lg:p-6">
-    <div class="grid gap-4 2xl:grid-cols-[minmax(0,1.18fr)_minmax(20rem,0.82fr)] 2xl:items-end">
+  <section
+    ref="shellRef"
+    :class="isFullscreen
+      ? 'fixed inset-0 z-[120] overflow-hidden bg-[#e6ece7]'
+      : props.embedded
+        ? 'h-full overflow-hidden'
+        : 'orbit-shell glass-soft overflow-hidden rounded-[2rem] p-4 sm:p-5 lg:p-6'"
+  >
+    <div
+      v-if="!isFullscreen && !props.embedded"
+      class="grid gap-4 2xl:grid-cols-[minmax(0,1.18fr)_minmax(20rem,0.82fr)] 2xl:items-end"
+    >
       <div class="min-w-0">
         <p class="text-[11px] uppercase tracking-[0.28em] text-lagoon">Immersive Spatial UI</p>
         <h3 class="font-display mt-3 text-[1.8rem] leading-none text-ink sm:text-[2.15rem]">
@@ -1904,7 +2163,11 @@ async function handleButtonPress(device) {
 
     <div
       ref="containerRef"
-      class="orbit-canvas-shell relative mt-5 h-[38rem] overflow-hidden rounded-[2rem] border border-white/70 shadow-inner sm:h-[43rem] xl:h-[46rem]"
+      :class="isFullscreen
+        ? 'relative h-[100dvh] overflow-hidden bg-[#eef2ef]'
+        : props.embedded
+          ? 'orbit-canvas-shell relative h-[38rem] overflow-hidden rounded-[2rem] border border-white/8 bg-[#eef2ef] shadow-inner sm:h-[43rem] xl:h-[46rem]'
+          : 'orbit-canvas-shell relative mt-5 h-[38rem] overflow-hidden rounded-[2rem] border border-white/70 bg-[#eef2ef] shadow-inner sm:h-[43rem] xl:h-[46rem]'"
     >
       <div class="orbit-atmosphere orbit-atmosphere--aurora" />
       <div class="orbit-atmosphere orbit-atmosphere--grid" />
@@ -1947,7 +2210,28 @@ async function handleButtonPress(device) {
               >
                 当前房间
               </button>
+              <button
+                type="button"
+                class="rounded-full border px-3 py-1.5 text-xs font-medium transition sm:text-sm"
+                :class="orbitRoomChipClass(isFullscreen)"
+                @click="toggleFullscreenMode"
+              >
+                {{ isFullscreen ? '退出全屏' : '全屏沉浸' }}
+              </button>
             </div>
+          </div>
+
+          <div v-if="isRoomWorkbench" class="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              class="rounded-full border border-white/70 bg-white/84 px-3 py-1.5 text-xs font-medium text-slate-600 transition sm:text-sm"
+              @click="exitRoomWorkbench"
+            >
+              退出近景
+            </button>
+            <span class="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs font-medium text-emerald-700 sm:text-sm">
+              房间工作模式
+            </span>
           </div>
 
           <div class="mt-4 grid grid-cols-2 gap-2">
@@ -2034,6 +2318,76 @@ async function handleButtonPress(device) {
                 {{ zone.label }}
               </button>
             </div>
+          </div>
+        </div>
+      </div>
+
+      <div
+        v-if="!isWalkMode && (isRoomWorkbench || isFullscreen)"
+        class="pointer-events-none absolute right-3 top-[8.5rem] z-20 flex flex-col gap-3 sm:right-4 sm:top-[9.25rem]"
+      >
+        <div
+          v-if="activeWorkbenchRoom && isRoomWorkbench"
+          class="pointer-events-auto w-[18.5rem] rounded-[1.25rem] border border-white/70 bg-white/76 p-3 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur-xl"
+        >
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">局部放大镜</p>
+              <p class="mt-1 text-sm font-semibold text-ink">{{ activeWorkbenchRoom.name }}</p>
+            </div>
+            <div class="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] text-slate-500">
+              ×{{ detailZoom.toFixed(1) }}
+            </div>
+          </div>
+
+          <div class="relative mt-3 h-56 overflow-hidden rounded-[1rem] border border-white/75 bg-slate-100/80" :style="detailMagnifierStyle">
+            <div class="absolute inset-0 bg-gradient-to-br from-white/10 via-transparent to-slate-900/6" />
+            <div
+              v-for="marker in detailRoomMarkers"
+              :key="`detail-marker-${marker.key}`"
+              class="absolute h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80 shadow-[0_8px_18px_rgba(15,23,42,0.18)]"
+              :style="{ ...magnifierMarkerStyle(marker), backgroundColor: markerColor(marker) }"
+            />
+            <div class="absolute inset-x-3 bottom-3 rounded-[0.85rem] border border-white/60 bg-white/72 px-3 py-2 text-[11px] leading-5 text-slate-600 backdrop-blur">
+              进入近景后会保持贴近相机视角，适合继续点设备、调灯光和观察局部结构。
+            </div>
+          </div>
+        </div>
+
+        <div class="pointer-events-auto w-[11.5rem] rounded-[1.2rem] border border-white/70 bg-white/76 p-3 shadow-[0_18px_40px_rgba(15,23,42,0.1)] backdrop-blur-xl">
+          <div class="flex items-center justify-between gap-2">
+            <div>
+              <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">小地图</p>
+              <p class="mt-1 text-xs font-medium text-slate-500">{{ isRoomWorkbench ? '已锁定近景房间' : '全屋总览' }}</p>
+            </div>
+            <button
+              v-if="isRoomWorkbench"
+              type="button"
+              class="rounded-full bg-slate-100 px-2 py-1 text-[11px] text-slate-500"
+              @click="focusOverview"
+            >
+              复位
+            </button>
+          </div>
+
+          <div class="relative mt-3 h-36 overflow-hidden rounded-[0.95rem] border border-white/75 bg-slate-100/90" :style="miniMapBackgroundStyle">
+            <button
+              v-for="room in miniMapRooms"
+              :key="`mini-room-${room.id}`"
+              type="button"
+              class="absolute rounded-[0.55rem] border text-[10px] text-transparent transition"
+              :class="room.id === activeWorkbenchRoom?.id ? 'border-ink bg-ink/12 shadow-[0_10px_20px_rgba(15,23,42,0.18)]' : 'border-white/70 bg-white/14 hover:bg-white/24'"
+              :style="miniMapRoomStyle(room)"
+              @click="focusOrbitRoom(room)"
+            >
+              {{ room.name }}
+            </button>
+            <div
+              v-for="marker in groupedMarkers"
+              :key="`mini-marker-${marker.key}`"
+              class="absolute h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full border border-white/80"
+              :style="{ ...miniMapMarkerStyle(marker), backgroundColor: markerColor(marker) }"
+            />
           </div>
         </div>
       </div>

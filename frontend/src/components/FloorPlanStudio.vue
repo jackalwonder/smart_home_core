@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineAsyncComponent, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue'
 
 import { useSmartHomeStore } from '../stores/smartHome'
 
@@ -36,6 +36,7 @@ const emit = defineEmits(['select-room'])
 
 const smartHomeStore = useSmartHomeStore()
 const viewportRef = ref(null)
+const clockNow = ref(Date.now())
 const selectedDeviceId = ref(null)
 const showHeatLayer = ref(true)
 const showDevices = ref(true)
@@ -130,6 +131,82 @@ const analysisText = computed(() =>
   extractAnalysisSummary(sceneAnalysis.value ?? sceneZone.value?.floor_plan_analysis)
     || '上传户型图后，系统会先按房间名称和画布比例生成初始布局，然后允许继续拖拽和精修。',
 )
+const connectionLabel = computed(() => {
+  const labels = {
+    idle: '待连接',
+    connecting: '连接中',
+    connected: '实时在线',
+    reconnecting: '重连中',
+    disconnected: '已断开',
+    error: '连接异常',
+  }
+
+  return labels[smartHomeStore.connectionStatus] ?? '未知状态'
+})
+const connectionToneClass = computed(() => {
+  const map = {
+    idle: 'bg-slate-500/20 text-slate-200',
+    connecting: 'bg-amber-400/18 text-amber-100',
+    connected: 'bg-emerald-400/18 text-emerald-100',
+    reconnecting: 'bg-sky-400/18 text-sky-100',
+    disconnected: 'bg-rose-400/18 text-rose-100',
+    error: 'bg-rose-400/18 text-rose-100',
+  }
+  return map[smartHomeStore.connectionStatus] ?? map.idle
+})
+const stageModeLabel = computed(() => {
+  if (activeStudioMode.value === 'layout') {
+    return '2D 中控'
+  }
+  if (activeStudioMode.value === 'walk') {
+    return '第一人称漫游'
+  }
+  return '3D 轨道'
+})
+const currentClockTime = computed(() =>
+  new Intl.DateTimeFormat('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(clockNow.value),
+)
+const currentClockDate = computed(() =>
+  new Intl.DateTimeFormat('zh-CN', {
+    month: 'long',
+    day: 'numeric',
+    weekday: 'long',
+  }).format(clockNow.value),
+)
+const lastSyncText = computed(() => {
+  if (!smartHomeStore.lastMessageAt) {
+    return '等待首条实时同步'
+  }
+
+  return `最近同步 ${new Date(smartHomeStore.lastMessageAt).toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  })}`
+})
+const selectedRoomDevices = computed(() =>
+  selectedRoomWithDraft.value
+    ? positionedDevices.value.filter((device) => device.room.id === selectedRoomWithDraft.value.id)
+    : [],
+)
+const selectedRoomActiveCount = computed(() =>
+  selectedRoomDevices.value.filter((device) => isActive(device)).length,
+)
+const selectedRoomPrimaryClimate = computed(() =>
+  selectedRoomDevices.value.find((device) => device.entity_domain === 'climate') ?? null,
+)
+const sceneStatusSummary = computed(() => ([
+  { label: '已布房间', value: placedRoomCount.value },
+  { label: '设备节点', value: placedDeviceCount.value },
+  { label: '可控设备', value: controllableDeviceCount.value },
+]))
+
+let clockTimer = 0
 
 watch(
   () => sceneRooms.value,
@@ -843,637 +920,867 @@ function handleInspectorSliderInput(deviceId, value) {
 onBeforeUnmount(() => {
   window.removeEventListener('pointermove', handlePointerMove)
   window.removeEventListener('pointerup', handlePointerUp)
+  if (clockTimer) {
+    window.clearInterval(clockTimer)
+  }
+})
+
+onMounted(() => {
+  clockTimer = window.setInterval(() => {
+    clockNow.value = Date.now()
+  }, 1000)
 })
 </script>
 
 <template>
   <section class="px-4 pb-4 sm:px-5 sm:pb-5 xl:px-8 xl:pb-8">
-    <div class="relative overflow-hidden rounded-[2.1rem] border border-white/70 bg-gradient-to-br from-white/94 via-white/88 to-stone-50/72 px-5 py-5 shadow-sm sm:px-6 sm:py-6">
-      <div class="pointer-events-none absolute inset-0">
-        <div class="absolute left-[-4rem] top-[-3rem] h-48 w-48 rounded-full bg-lagoon/10 blur-3xl" />
-        <div class="absolute right-[-5rem] top-[20%] h-56 w-56 rounded-full bg-sky-200/24 blur-3xl" />
-        <div class="absolute bottom-[-4rem] left-[32%] h-48 w-48 rounded-full bg-amber-200/18 blur-3xl" />
+    <div class="console-shell">
+      <div class="console-topbar">
+        <div class="min-w-0">
+          <p class="console-kicker">Spatial Console</p>
+          <h2 class="console-title">真实户型中台控制</h2>
+          <p class="console-subtitle">
+            2D 先作为主控制台，房间、设备、热力和状态都基于户型图组织；3D 轨道与漫游则从这套 2D 布局继续展开。
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <span class="console-pill" :class="connectionToneClass">{{ connectionLabel }}</span>
+          <span class="console-pill">画布 {{ planWidth }} × {{ planHeight }}</span>
+          <button
+            type="button"
+            class="console-mode"
+            :class="{ 'is-active': activeStudioMode === 'layout' }"
+            @click="activeStudioMode = 'layout'"
+          >
+            2D 中控
+          </button>
+          <button
+            type="button"
+            class="console-mode"
+            :class="{ 'is-active': activeStudioMode === 'orbit' }"
+            @click="activeStudioMode = 'orbit'"
+          >
+            3D 轨道
+          </button>
+          <button
+            type="button"
+            class="console-mode"
+            :class="{ 'is-active': activeStudioMode === 'walk' }"
+            @click="activeStudioMode = 'walk'"
+          >
+            漫游
+          </button>
+        </div>
       </div>
 
-      <div class="relative">
-        <div class="flex flex-col gap-5 xl:flex-row xl:items-end xl:justify-between">
-          <div class="max-w-3xl">
-            <p class="text-xs font-semibold uppercase tracking-[0.34em] text-lagoon sm:text-sm">Floorplan Studio</p>
-            <h2 class="font-display mt-3 text-[2.1rem] leading-[0.96] text-ink sm:text-[2.6rem]">真实户型空间工作台</h2>
-            <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500 sm:text-base">
-              这里把上传户型图、空间热力层、设备点位和直接控制合到一块。你可以先让系统给出初始布局，再继续拖拽、加设备、修正坐标。
-            </p>
-          </div>
+      <div
+        v-if="spatialError || actionError"
+        class="console-alert mt-4"
+      >
+        {{ spatialError || actionError }}
+      </div>
 
-          <div class="grid gap-3 sm:grid-cols-3 xl:min-w-[520px]">
-            <div class="control-surface rounded-[1.4rem] px-4 py-4">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">已布房间</p>
-              <p class="mt-2 text-2xl font-semibold text-ink">{{ placedRoomCount }}</p>
-            </div>
-            <div class="control-surface rounded-[1.4rem] px-4 py-4">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">设备点位</p>
-              <p class="mt-2 text-2xl font-semibold text-ink">{{ placedDeviceCount }}</p>
-            </div>
-            <div class="control-surface rounded-[1.4rem] px-4 py-4">
-              <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">可直接控制</p>
-              <p class="mt-2 text-2xl font-semibold text-ink">{{ controllableDeviceCount }}</p>
-            </div>
-          </div>
-        </div>
-
-        <div
-          v-if="spatialError || actionError"
-          class="mt-5 rounded-[1.6rem] border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700 shadow-sm"
-        >
-          {{ spatialError || actionError }}
-        </div>
-
-        <div class="mt-6 grid gap-4 lg:grid-cols-[minmax(0,1.45fr)_minmax(300px,360px)] 2xl:grid-cols-[minmax(0,1.55fr)_360px]">
-          <div class="space-y-4">
-            <div class="glass-soft rounded-[1.8rem] p-4 sm:p-5">
-              <div class="flex flex-col gap-4 xl:flex-row xl:items-end xl:justify-between">
-                <div class="max-w-3xl">
-                  <p class="text-[11px] uppercase tracking-[0.28em] text-slate-500">分析结果</p>
-                  <p class="mt-3 text-sm leading-6 text-slate-500">
-                    {{ analysisText }}
-                  </p>
-                </div>
-
-                <div class="flex flex-wrap items-center gap-2">
-                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white/78 px-3 py-2 text-sm text-slate-600">
-                    <input
-                      v-model="showHeatLayer"
-                      type="checkbox"
-                      class="h-4 w-4 rounded border-slate-300 text-lagoon focus:ring-lagoon"
-                    >
-                    热力层
-                  </label>
-                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white/78 px-3 py-2 text-sm text-slate-600">
-                    <input
-                      v-model="showDevices"
-                      type="checkbox"
-                      class="h-4 w-4 rounded border-slate-300 text-lagoon focus:ring-lagoon"
-                    >
-                    设备点位
-                  </label>
-                  <label class="inline-flex cursor-pointer items-center gap-2 rounded-full border border-slate-200 bg-white/78 px-3 py-2 text-sm text-slate-600">
-                    <input
-                      v-model="preserveExistingLayout"
-                      type="checkbox"
-                      class="h-4 w-4 rounded border-slate-300 text-lagoon focus:ring-lagoon"
-                    >
-                    保留已有布局
-                  </label>
-                </div>
-              </div>
-
-              <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">候选房间</p>
-                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.rooms }}</p>
-                </div>
-                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">墙体线段</p>
-                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.walls }}</p>
-                </div>
-                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">门洞开口</p>
-                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.openings }}</p>
-                </div>
-                <div class="rounded-[1.25rem] border border-slate-200 bg-white/80 px-4 py-3">
-                  <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">家具候选</p>
-                  <p class="mt-2 text-lg font-semibold text-ink">{{ analysisInsights.furniture }}</p>
-                </div>
-              </div>
-
-              <div class="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto_auto]">
-                <label class="flex min-h-[4.1rem] cursor-pointer items-center gap-3 rounded-[1.4rem] border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-600 hover:border-lagoon/40">
-                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-lagoon/10 text-lagoon">图</span>
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate font-medium text-ink">
-                      {{ pendingFloorPlanFile?.name || (sceneZone?.floor_plan_image_path ? '替换当前户型图' : '上传你的户型图') }}
-                    </span>
-                    <span class="mt-1 block text-xs text-slate-500">
-                      {{ pendingFloorPlanMeta ? `${pendingFloorPlanMeta.width} × ${pendingFloorPlanMeta.height}` : '支持 PNG / JPG / WEBP' }}
-                    </span>
-                  </span>
-                  <input type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="handleFloorPlanSelection">
-                </label>
-
-                <button
-                  type="button"
-                  class="rounded-[1.4rem] bg-lagoon px-5 py-3 text-sm font-semibold text-white transition hover:bg-lagoon/90 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="!pendingFloorPlanFile || !pendingFloorPlanMeta || spatialBusy"
-                  @click="submitFloorPlan"
-                >
-                  上传并分析
-                </button>
-
-                <button
-                  type="button"
-                  class="rounded-[1.4rem] border border-slate-200 bg-white/84 px-5 py-3 text-sm font-semibold text-ink transition hover:border-lagoon/30 hover:text-lagoon disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="!sceneZone || spatialBusy"
-                  @click="runAutoLayout"
-                >
-                  重新自动布局
-                </button>
-              </div>
-
-              <div class="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_112px_132px]">
-                <label class="flex min-h-[4.1rem] cursor-pointer items-center gap-3 rounded-[1.4rem] border border-dashed border-slate-300 bg-white/70 px-4 py-3 text-sm text-slate-600 hover:border-lagoon/40">
-                  <span class="inline-flex h-10 w-10 items-center justify-center rounded-2xl bg-ink/8 text-ink">模</span>
-                  <span class="min-w-0 flex-1">
-                    <span class="block truncate font-medium text-ink">
-                      {{ pendingSceneModelFile?.name || (sceneZone?.three_d_model_path ? '替换当前 3D 模型' : '导入 GLB / GLTF 模型') }}
-                    </span>
-                    <span class="mt-1 block text-xs text-slate-500">
-                      {{ sceneModelUrl ? `当前模型已接入，缩放 ${sceneZone?.three_d_model_scale ?? 1}` : '用于 3D 模式与第一人称漫游' }}
-                    </span>
-                  </span>
-                  <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" class="hidden" @change="handleSceneModelSelection">
-                </label>
-
-                <label class="rounded-[1.4rem] border border-slate-200 bg-white/84 px-4 py-3 text-sm text-slate-600">
-                  <span class="mb-2 block text-[11px] uppercase tracking-[0.16em] text-slate-400">缩放</span>
-                  <input v-model.number="pendingSceneModelScale" type="number" min="0.1" step="0.1" class="w-full bg-transparent text-sm font-semibold text-ink outline-none">
-                </label>
-
-                <button
-                  type="button"
-                  class="rounded-[1.4rem] bg-ink px-5 py-3 text-sm font-semibold text-white transition hover:bg-ink/92 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="!pendingSceneModelFile || spatialBusy"
-                  @click="submitSceneModel"
-                >
-                  接入 3D 模型
-                </button>
-              </div>
-
-              <p v-if="uploadMessage" class="mt-3 text-sm text-lagoon">
-                {{ uploadMessage }}
+      <div class="console-grid mt-5">
+        <div class="console-stage-panel">
+          <div class="console-stage-header">
+            <div>
+              <p class="console-stage-header__eyebrow">{{ sceneZone?.name || '全屋空间' }} · {{ stageModeLabel }}</p>
+              <p class="console-stage-header__title">
+                {{ selectedRoomWithDraft ? `${selectedRoomWithDraft.name} · ${selectedRoomDevices.length} 个设备` : '等待房间数据' }}
               </p>
+              <p class="console-stage-header__summary">{{ analysisText }}</p>
             </div>
 
-            <div class="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                class="rounded-full px-4 py-2 text-sm font-semibold transition"
-                :class="activeStudioMode === 'orbit' ? 'bg-ink text-white shadow-sm' : 'border border-slate-200 bg-white/84 text-slate-600'"
-                @click="activeStudioMode = 'orbit'"
+            <div class="grid grid-cols-3 gap-2">
+              <div
+                v-for="item in sceneStatusSummary"
+                :key="item.label"
+                class="console-stat"
               >
-                3D 轨道模式
-              </button>
-              <button
-                type="button"
-                class="rounded-full px-4 py-2 text-sm font-semibold transition"
-                :class="activeStudioMode === 'walk' ? 'bg-ink text-white shadow-sm' : 'border border-slate-200 bg-white/84 text-slate-600'"
-                @click="activeStudioMode = 'walk'"
-              >
-                第一人称漫游
-              </button>
-              <button
-                type="button"
-                class="rounded-full px-4 py-2 text-sm font-semibold transition"
-                :class="activeStudioMode === 'layout' ? 'bg-ink text-white shadow-sm' : 'border border-slate-200 bg-white/84 text-slate-600'"
-                @click="activeStudioMode = 'layout'"
-              >
-                2D 精修模式
-              </button>
+                <span class="console-stat__label">{{ item.label }}</span>
+                <span class="console-stat__value">{{ item.value }}</span>
+              </div>
             </div>
+          </div>
 
+          <div
+            v-if="activeStudioMode === 'layout'"
+            class="console-map-shell"
+          >
+            <div
+              ref="viewportRef"
+              class="console-map relative"
+              :style="{ aspectRatio: `${planWidth} / ${planHeight}` }"
+            >
+              <img
+                v-if="planImageUrl"
+                :src="planImageUrl"
+                alt="上传后的户型图"
+                class="absolute inset-0 h-full w-full object-cover opacity-[0.94]"
+              >
+
+              <div v-else class="console-map__placeholder absolute inset-0 flex items-center justify-center">
+                <div class="rounded-[1.4rem] border border-white/10 bg-white/6 px-6 py-5 text-center text-slate-200">
+                  <p class="text-base font-semibold">还没有户型图</p>
+                  <p class="mt-2 text-sm text-slate-400">先在右侧上传户型图，2D 中控台会按真实比例生成。</p>
+                </div>
+              </div>
+
+              <div class="console-map__glow absolute inset-0" />
+              <div class="console-map__grid absolute inset-0" />
+
+              <div class="pointer-events-none absolute inset-x-4 top-4 z-20 flex items-start justify-between gap-3">
+                <div class="rounded-[1.1rem] border border-white/10 bg-slate-950/34 px-4 py-3 text-slate-100 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+                  <p class="text-[11px] uppercase tracking-[0.28em] text-slate-400">2D 中控主视图</p>
+                  <p class="mt-2 text-lg font-semibold">{{ selectedRoomWithDraft?.name || sceneZone?.name || '全屋空间' }}</p>
+                </div>
+
+                <div class="rounded-[1rem] border border-white/10 bg-slate-950/34 px-3 py-2 text-right text-slate-100 shadow-[0_18px_40px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+                  <p class="text-[10px] uppercase tracking-[0.22em] text-slate-400">Heat / Devices</p>
+                  <p class="mt-1 text-sm font-medium">{{ showHeatLayer ? '热力已开' : '热力关闭' }} · {{ showDevices ? '设备已开' : '设备隐藏' }}</p>
+                </div>
+              </div>
+
+              <div
+                v-if="spatialLoading"
+                class="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/28 backdrop-blur-sm"
+              >
+                <div class="rounded-full border border-white/10 bg-slate-900/82 px-4 py-2 text-sm text-slate-200 shadow-sm">
+                  正在同步空间场景…
+                </div>
+              </div>
+
+              <article
+                v-for="room in sceneRooms"
+                :key="`room-${room.id}`"
+                class="room-shell absolute cursor-grab overflow-hidden rounded-[1.35rem] border transition duration-300 active:cursor-grabbing"
+                :class="{ 'is-selected': room.id === selectedRoom?.id }"
+                :style="roomToStyle(getRoomView(room))"
+                @click="selectRoom(room.id)"
+                @pointerdown="beginRoomDrag(getRoomView(room), $event)"
+              >
+                <div class="room-shell__depth" />
+                <div class="room-shell__body">
+                  <div class="room-shell__header">
+                    <p class="room-shell__title">{{ room.name }}</p>
+                    <span class="room-shell__badge">{{ room.devices.length }}</span>
+                  </div>
+                  <div class="room-shell__metrics">
+                    <span>{{ room.ambient_temperature ?? '--' }}°</span>
+                    <span>{{ room.ambient_humidity ?? '--' }}%</span>
+                    <span>{{ roomOccupancyLabel(room) }}</span>
+                  </div>
+                </div>
+              </article>
+
+              <button
+                v-for="device in positionedDevices"
+                v-show="showDevices"
+                :key="`device-${device.id}`"
+                type="button"
+                class="device-node absolute transition duration-300"
+                :class="{
+                  'is-selected': device.id === selectedDevice?.id,
+                  'is-active': isActive(device),
+                  'is-pending': isDevicePending(device.id),
+                }"
+                :style="deviceToStyle(device)"
+                @click.stop="selectDevice(device)"
+                @pointerdown.stop="beginDeviceDrag(device, $event)"
+              >
+                <span class="device-node__core">
+                  {{ deviceGlyph(device) }}
+                </span>
+                <span class="device-node__label">
+                  {{ device.name }}
+                </span>
+              </button>
+
+              <div class="pointer-events-none absolute inset-x-4 bottom-4 z-20 flex justify-between gap-3">
+                <div class="console-bottom-strip">
+                  <span>拖拽房间与设备可直接修正 2D 布局</span>
+                  <span>{{ lastSyncText }}</span>
+                </div>
+                <div class="console-bottom-strip console-bottom-strip--compact">
+                  <span>当前聚焦</span>
+                  <strong>{{ selectedRoomWithDraft?.name || '全屋' }}</strong>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div v-else class="console-immersive-shell">
             <ImmersiveFloorPlan3D
-              v-if="activeStudioMode !== 'layout'"
               :scene="scene"
               :selected-room-id="selectedRoomId"
               :show-heat-layer="showHeatLayer"
               :show-devices="showDevices"
               :spatial-loading="spatialLoading"
               :camera-mode="cameraMode"
+              :embedded="true"
               @select-room="$emit('select-room', $event)"
             />
+          </div>
+        </div>
 
-            <div
-              v-else
-              class="studio-surface overflow-hidden rounded-[2rem] border border-white/70 bg-[#f7f6f1] p-3 shadow-sm sm:p-4"
-            >
-              <div
-                ref="viewportRef"
-                class="studio-viewport relative overflow-hidden rounded-[1.7rem] border border-white/70 bg-[#f1efe7]"
-                :style="{ aspectRatio: `${planWidth} / ${planHeight}` }"
-              >
-                <img
-                  v-if="planImageUrl"
-                  :src="planImageUrl"
-                  alt="上传后的户型图"
-                  class="absolute inset-0 h-full w-full object-cover opacity-92"
-                >
-
-                <div class="studio-viewport__grid absolute inset-0" />
-                <div class="studio-viewport__wash absolute inset-0" />
-
-                <div
-                  v-if="spatialLoading"
-                  class="absolute inset-0 z-30 flex items-center justify-center bg-white/55 backdrop-blur-sm"
-                >
-                  <div class="rounded-full border border-white/80 bg-white/85 px-4 py-2 text-sm text-slate-600 shadow-sm">
-                    正在同步空间场景…
-                  </div>
-                </div>
-
-                <article
-                  v-for="room in sceneRooms"
-                  :key="`room-${room.id}`"
-                  class="room-shell absolute cursor-grab overflow-hidden rounded-[1.65rem] border transition duration-300 active:cursor-grabbing"
-                  :class="{ 'is-selected': room.id === selectedRoom?.id }"
-                  :style="roomToStyle(getRoomView(room))"
-                  @click="selectRoom(room.id)"
-                  @pointerdown="beginRoomDrag(getRoomView(room), $event)"
-                >
-                  <div class="room-shell__depth" />
-                  <div class="room-shell__body">
-                    <div class="flex items-start justify-between gap-3">
-                      <div class="min-w-0">
-                        <p class="truncate text-sm font-semibold text-ink sm:text-base">{{ room.name }}</p>
-                        <p class="mt-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">{{ room.zone.name }}</p>
-                      </div>
-                      <span class="rounded-full bg-white/82 px-2.5 py-1 text-[10px] font-semibold tracking-[0.16em] text-slate-500">
-                        {{ room.devices.length }} 设
-                      </span>
-                    </div>
-
-                    <div class="mt-3 grid grid-cols-3 gap-2">
-                      <div class="room-chip">
-                        <p class="room-chip__label">温度</p>
-                        <p class="room-chip__value">{{ room.ambient_temperature ?? '--' }}</p>
-                      </div>
-                      <div class="room-chip">
-                        <p class="room-chip__label">湿度</p>
-                        <p class="room-chip__value">{{ room.ambient_humidity ?? '--' }}</p>
-                      </div>
-                      <div class="room-chip">
-                        <p class="room-chip__label">占用</p>
-                        <p class="room-chip__value">{{ roomOccupancyLabel(room) }}</p>
-                      </div>
-                    </div>
-                  </div>
-                </article>
-
-                <button
-                  v-for="device in positionedDevices"
-                  v-show="showDevices"
-                  :key="`device-${device.id}`"
-                  type="button"
-                  class="device-node absolute transition duration-300"
-                  :class="{
-                    'is-selected': device.id === selectedDevice?.id,
-                    'is-active': isActive(device),
-                    'is-pending': isDevicePending(device.id),
-                  }"
-                  :style="deviceToStyle(device)"
-                  @click.stop="selectDevice(device)"
-                  @pointerdown.stop="beginDeviceDrag(device, $event)"
-                >
-                  <span class="device-node__core">
-                    {{ deviceGlyph(device) }}
-                  </span>
-                  <span class="device-node__label">
-                    {{ device.name }}
-                  </span>
-                </button>
-              </div>
-            </div>
-
-            <div class="grid gap-4 md:grid-cols-3">
-              <div class="glass-soft rounded-[1.7rem] px-4 py-4">
-                <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">当前画布</p>
-                <p class="mt-2 text-lg font-semibold text-ink">{{ planWidth }} × {{ planHeight }}</p>
-                <p class="mt-2 text-sm text-slate-500">上传图片后会按真实画布比例渲染，坐标也跟着落地保存。</p>
-              </div>
-              <div class="glass-soft rounded-[1.7rem] px-4 py-4">
-                <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">新增设备策略</p>
-                <p class="mt-2 text-lg font-semibold text-ink">自动补位</p>
-                <p class="mt-2 text-sm text-slate-500">后续从 Home Assistant 新同步来的设备，如果还没有坐标，会按房间自动补到空间图里。</p>
-              </div>
-              <div class="glass-soft rounded-[1.7rem] px-4 py-4">
-                <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">拖拽方式</p>
-                <p class="mt-2 text-lg font-semibold text-ink">房间与设备都可拖</p>
-                <p class="mt-2 text-sm text-slate-500">房间支持整体移动，设备支持在房间内部重新定位，右侧还能精确输入坐标。</p>
-              </div>
+        <aside class="console-sidebar">
+          <div class="console-card console-card--clock">
+            <p class="console-card__kicker">系统时间</p>
+            <p class="console-clock">{{ currentClockTime }}</p>
+            <p class="console-card__meta">{{ currentClockDate }}</p>
+            <div class="mt-4 flex flex-wrap gap-2">
+              <span class="console-pill" :class="connectionToneClass">{{ connectionLabel }}</span>
+              <span class="console-pill">{{ lastSyncText }}</span>
             </div>
           </div>
 
-          <aside class="glass-soft flex min-h-[32rem] flex-col overflow-hidden rounded-[2rem] lg:max-h-[calc(100vh-10rem)]">
-            <div class="border-b border-slate-200/80 px-5 py-5">
-              <p class="text-[11px] uppercase tracking-[0.28em] text-lagoon">Inspector</p>
-              <h3 class="font-display mt-3 text-[2rem] leading-none text-ink">空间编辑器</h3>
-              <p class="mt-3 text-sm leading-6 text-slate-500">
-                先选房间，再选设备。这里可以精修坐标尺寸，也能直接从空间图发出控制。
-              </p>
+          <div v-if="selectedRoomWithDraft" class="console-card">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="console-card__kicker">当前房间</p>
+                <p class="console-card__title">{{ selectedRoomWithDraft.name }}</p>
+              </div>
+              <span class="console-card__tag">{{ selectedRoomDevices.length }} 设备</span>
             </div>
 
-            <div class="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-5">
-              <section v-if="selectedRoomWithDraft" class="rounded-[1.7rem] border border-slate-200 bg-white/74 p-4">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-semibold text-ink">房间布局</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ selectedRoomWithDraft.name }} · {{ selectedRoomWithDraft.zone.name }}</p>
-                  </div>
-                  <span class="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600">
-                    {{ selectedRoomWithDraft.devices.length }} 设备
-                  </span>
-                </div>
-
-                <div class="mt-4 grid grid-cols-2 gap-3">
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>X</span>
-                    <input v-model.number="roomDraft.plan_x" type="number" class="inspector-input">
-                  </label>
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>Y</span>
-                    <input v-model.number="roomDraft.plan_y" type="number" class="inspector-input">
-                  </label>
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>宽度</span>
-                    <input v-model.number="roomDraft.plan_width" type="number" class="inspector-input">
-                  </label>
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>高度</span>
-                    <input v-model.number="roomDraft.plan_height" type="number" class="inspector-input">
-                  </label>
-                </div>
-
-                <label class="mt-3 block space-y-2 text-sm text-slate-500">
-                  <span>旋转角度</span>
-                  <input v-model.number="roomDraft.plan_rotation" type="number" class="inspector-input">
-                </label>
-
-                <button
-                  type="button"
-                  class="mt-4 w-full rounded-[1.2rem] bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-ink/92 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="spatialBusy"
-                  @click="saveRoomInspector"
-                >
-                  保存房间坐标
-                </button>
-              </section>
-
-              <section v-if="selectedDevice" class="rounded-[1.7rem] border border-slate-200 bg-white/74 p-4">
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <p class="text-sm font-semibold text-ink">设备点位与控制</p>
-                    <p class="mt-1 text-sm text-slate-500">{{ selectedDevice.name }} · {{ selectedDevice.room.name }}</p>
-                  </div>
-                  <span
-                    class="rounded-full px-3 py-1 text-xs font-semibold"
-                    :class="isActive(selectedDevice) ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'"
-                  >
-                    {{ displayState(selectedDevice) }}
-                  </span>
-                </div>
-
-                <div class="mt-4 grid grid-cols-2 gap-3">
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>X</span>
-                    <input v-model.number="deviceDraft.plan_x" type="number" class="inspector-input">
-                  </label>
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>Y</span>
-                    <input v-model.number="deviceDraft.plan_y" type="number" class="inspector-input">
-                  </label>
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>Z</span>
-                    <input v-model.number="deviceDraft.plan_z" type="number" class="inspector-input">
-                  </label>
-                  <label class="space-y-2 text-sm text-slate-500">
-                    <span>旋转</span>
-                    <input v-model.number="deviceDraft.plan_rotation" type="number" class="inspector-input">
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  class="mt-4 w-full rounded-[1.2rem] border border-slate-200 bg-white px-4 py-3 text-sm font-semibold text-ink transition hover:border-lagoon/30 hover:text-lagoon disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="spatialBusy"
-                  @click="saveDeviceInspector"
-                >
-                  保存设备点位
-                </button>
-
-                <div class="mt-4 rounded-[1.4rem] border border-slate-200/80 bg-slate-50/80 p-4">
-                  <p class="text-sm font-semibold text-ink">直接控制</p>
-                  <div class="mt-3 space-y-3">
-                    <button
-                      v-if="selectedDevice.can_control && (selectedDevice.control_kind === 'toggle' || ['climate', 'media_player'].includes(selectedDevice.entity_domain))"
-                      type="button"
-                      class="w-full rounded-[1.1rem] bg-lagoon px-4 py-3 text-sm font-semibold text-white transition hover:bg-lagoon/90 disabled:cursor-not-allowed disabled:opacity-60"
-                      :disabled="isDevicePending(selectedDevice.id)"
-                      @click="handleToggle(selectedDevice)"
-                    >
-                      {{ isActive(selectedDevice) ? '关闭设备' : '打开设备' }}
-                    </button>
-
-                    <div v-if="selectedDevice.supports_brightness" class="space-y-2">
-                      <div class="flex items-center justify-between text-sm text-slate-500">
-                        <span>亮度</span>
-                        <span class="font-medium text-ink">{{ numericDrafts[advancedNumberKey('brightness', selectedDevice.id)] ?? 50 }}%</span>
-                      </div>
-                      <input
-                        :value="numericDrafts[advancedNumberKey('brightness', selectedDevice.id)] ?? 50"
-                        type="range"
-                        min="1"
-                        max="100"
-                        step="1"
-                        class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
-                        :disabled="isDevicePending(selectedDevice.id)"
-                        @input="handleInspectorSliderInput(advancedNumberKey('brightness', selectedDevice.id), $event.target.value)"
-                        @change="handleBrightnessChange(selectedDevice, $event)"
-                      >
-                    </div>
-
-                    <div v-if="selectedDevice.supports_color_temperature" class="space-y-2">
-                      <div class="flex items-center justify-between text-sm text-slate-500">
-                        <span>色温</span>
-                        <span class="font-medium text-ink">
-                          {{ numericDrafts[advancedNumberKey('color', selectedDevice.id)] ?? selectedDevice.color_temperature ?? 3500 }}K
-                        </span>
-                      </div>
-                      <input
-                        :value="numericDrafts[advancedNumberKey('color', selectedDevice.id)] ?? selectedDevice.color_temperature ?? 3500"
-                        type="range"
-                        class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
-                        :min="selectedDevice.min_color_temperature ?? 2700"
-                        :max="selectedDevice.max_color_temperature ?? 6500"
-                        step="50"
-                        :disabled="isDevicePending(selectedDevice.id)"
-                        @input="handleInspectorSliderInput(advancedNumberKey('color', selectedDevice.id), $event.target.value)"
-                        @change="handleColorTemperatureChange(selectedDevice, $event)"
-                      >
-                    </div>
-
-                    <div
-                      v-if="(selectedDevice.entity_domain === 'climate' && selectedDevice.target_temperature !== null && selectedDevice.target_temperature !== undefined)
-                        || (selectedDevice.entity_domain === 'media_player' && selectedDevice.media_volume_level !== null && selectedDevice.media_volume_level !== undefined)
-                        || selectedDevice.control_kind === 'number'"
-                      class="space-y-2"
-                    >
-                      <div class="flex items-center justify-between text-sm text-slate-500">
-                        <span>{{ selectedDevice.entity_domain === 'media_player' ? '音量' : '数值控制' }}</span>
-                        <span class="font-medium text-ink">
-                          {{ numericDrafts[selectedDevice.id] }}
-                          {{ sliderRange(selectedDevice).unit }}
-                        </span>
-                      </div>
-                      <input
-                        :value="numericDrafts[selectedDevice.id]"
-                        type="range"
-                        class="h-2 w-full cursor-pointer appearance-none rounded-full bg-slate-200"
-                        :min="sliderRange(selectedDevice).min"
-                        :max="sliderRange(selectedDevice).max"
-                        :step="sliderRange(selectedDevice).step"
-                        :disabled="isDevicePending(selectedDevice.id)"
-                        @input="handleInspectorSliderInput(selectedDevice.id, $event.target.value)"
-                        @change="handleNumberChange(selectedDevice, $event)"
-                      >
-                    </div>
-
-                    <div v-if="selectOptions(selectedDevice).length" class="space-y-2">
-                      <p class="text-sm text-slate-500">模式 / 来源</p>
-                      <select
-                        :value="selectDrafts[selectedDevice.id]"
-                        class="inspector-input"
-                        :disabled="isDevicePending(selectedDevice.id)"
-                        @change="handleSelectChange(selectedDevice, $event)"
-                      >
-                        <option
-                          v-for="option in selectOptions(selectedDevice)"
-                          :key="option"
-                          :value="option"
-                        >
-                          {{ option }}
-                        </option>
-                      </select>
-                    </div>
-
-                    <button
-                      v-if="selectedDevice.control_kind === 'button'"
-                      type="button"
-                      class="w-full rounded-[1.1rem] bg-ink px-4 py-3 text-sm font-semibold text-white transition hover:bg-ink/92 disabled:cursor-not-allowed disabled:opacity-60"
-                      :disabled="isDevicePending(selectedDevice.id)"
-                      @click="handleButtonPress(selectedDevice)"
-                    >
-                      执行动作
-                    </button>
-                  </div>
-                </div>
-              </section>
-
-              <section class="rounded-[1.7rem] border border-slate-200 bg-white/74 p-4">
-                <p class="text-sm font-semibold text-ink">手动增加设备</p>
-                <p class="mt-1 text-sm text-slate-500">
-                  这里可以先把计划中的设备放进户型图。即便暂时还没接入 Home Assistant，也会先显示为点位。
-                </p>
-
-                <div class="mt-4 space-y-3">
-                  <label class="block space-y-2 text-sm text-slate-500">
-                    <span>所属房间</span>
-                    <select v-model.number="manualDeviceForm.room_id" class="inspector-input">
-                      <option
-                        v-for="room in sceneRooms"
-                        :key="room.id"
-                        :value="room.id"
-                      >
-                        {{ room.name }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label class="block space-y-2 text-sm text-slate-500">
-                    <span>设备名称</span>
-                    <input v-model="manualDeviceForm.name" type="text" class="inspector-input" placeholder="例如：岛台吊灯、次卧空调">
-                  </label>
-
-                  <label class="block space-y-2 text-sm text-slate-500">
-                    <span>设备类型</span>
-                    <select v-model="manualDeviceForm.device_type" class="inspector-input">
-                      <option
-                        v-for="option in DEVICE_TYPE_OPTIONS"
-                        :key="option.value"
-                        :value="option.value"
-                      >
-                        {{ option.label }}
-                      </option>
-                    </select>
-                  </label>
-
-                  <label class="block space-y-2 text-sm text-slate-500">
-                    <span>实体 ID（可选）</span>
-                    <input v-model="manualDeviceForm.ha_entity_id" type="text" class="inspector-input" placeholder="例如：light.island_lamp">
-                  </label>
-                </div>
-
-                <button
-                  type="button"
-                  class="mt-4 w-full rounded-[1.2rem] bg-auric px-4 py-3 text-sm font-semibold text-white transition hover:bg-auric/90 disabled:cursor-not-allowed disabled:opacity-60"
-                  :disabled="spatialBusy || !manualDeviceForm.name.trim() || !manualDeviceForm.room_id"
-                  @click="createManualDevice"
-                >
-                  添加到空间图
-                </button>
-              </section>
+            <div class="console-room-grid mt-4">
+              <div class="console-room-metric">
+                <span class="console-room-metric__label">温度</span>
+                <strong>{{ selectedRoomWithDraft.ambient_temperature ?? selectedRoomPrimaryClimate?.current_temperature ?? '--' }}{{ selectedRoomPrimaryClimate?.unit_of_measurement ?? '°C' }}</strong>
+              </div>
+              <div class="console-room-metric">
+                <span class="console-room-metric__label">湿度</span>
+                <strong>{{ selectedRoomWithDraft.ambient_humidity ?? '--' }}%</strong>
+              </div>
+              <div class="console-room-metric">
+                <span class="console-room-metric__label">占用</span>
+                <strong>{{ roomOccupancyLabel(selectedRoomWithDraft) }}</strong>
+              </div>
+              <div class="console-room-metric">
+                <span class="console-room-metric__label">活跃设备</span>
+                <strong>{{ selectedRoomActiveCount }}</strong>
+              </div>
             </div>
-          </aside>
-        </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <label class="console-switch">
+                <input
+                  v-model="showHeatLayer"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-500 bg-slate-950/10 text-lagoon focus:ring-lagoon"
+                >
+                热力层
+              </label>
+              <label class="console-switch">
+                <input
+                  v-model="showDevices"
+                  type="checkbox"
+                  class="h-4 w-4 rounded border-slate-500 bg-slate-950/10 text-lagoon focus:ring-lagoon"
+                >
+                设备点位
+              </label>
+            </div>
+          </div>
+
+          <div class="console-card">
+            <p class="console-card__kicker">房间导航</p>
+            <div class="mt-3 flex flex-wrap gap-2">
+              <button
+                v-for="room in sceneRooms"
+                :key="`room-list-${room.id}`"
+                type="button"
+                class="console-room-pill"
+                :class="{ 'is-active': room.id === selectedRoomId }"
+                @click="selectRoom(room.id)"
+              >
+                {{ room.name }}
+              </button>
+            </div>
+          </div>
+
+          <div class="console-card">
+            <p class="console-card__kicker">布局与模型</p>
+            <p class="console-card__meta mt-2">{{ analysisText }}</p>
+
+            <div class="mt-4 space-y-3">
+              <label class="console-upload">
+                <span class="console-upload__icon">图</span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate font-medium text-white">
+                    {{ pendingFloorPlanFile?.name || (sceneZone?.floor_plan_image_path ? '替换当前户型图' : '上传户型图') }}
+                  </span>
+                  <span class="mt-1 block text-xs text-slate-400">
+                    {{ pendingFloorPlanMeta ? `${pendingFloorPlanMeta.width} × ${pendingFloorPlanMeta.height}` : 'PNG / JPG / WEBP' }}
+                  </span>
+                </span>
+                <input type="file" accept="image/png,image/jpeg,image/webp" class="hidden" @change="handleFloorPlanSelection">
+              </label>
+
+              <div class="grid gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  class="console-action console-action--primary"
+                  :disabled="!pendingFloorPlanFile || !pendingFloorPlanMeta || spatialBusy"
+                  @click="submitFloorPlan"
+                >
+                  上传并分析
+                </button>
+                <button
+                  type="button"
+                  class="console-action"
+                  :disabled="!sceneZone || spatialBusy"
+                  @click="runAutoLayout"
+                >
+                  重新布局
+                </button>
+              </div>
+
+              <label class="console-upload">
+                <span class="console-upload__icon">模</span>
+                <span class="min-w-0 flex-1">
+                  <span class="block truncate font-medium text-white">
+                    {{ pendingSceneModelFile?.name || (sceneZone?.three_d_model_path ? '替换当前 3D 模型' : '导入 GLB / GLTF') }}
+                  </span>
+                  <span class="mt-1 block text-xs text-slate-400">
+                    {{ sceneModelUrl ? `当前模型缩放 ${sceneZone?.three_d_model_scale ?? 1}` : '让 3D 视图直接贴着 2D 基础走' }}
+                  </span>
+                </span>
+                <input type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json" class="hidden" @change="handleSceneModelSelection">
+              </label>
+
+              <div class="grid gap-2 sm:grid-cols-[104px_minmax(0,1fr)]">
+                <input v-model.number="pendingSceneModelScale" type="number" min="0.1" step="0.1" class="console-input" placeholder="缩放">
+                <button
+                  type="button"
+                  class="console-action console-action--primary"
+                  :disabled="!pendingSceneModelFile || spatialBusy"
+                  @click="submitSceneModel"
+                >
+                  接入 3D 模型
+                </button>
+              </div>
+            </div>
+
+            <label class="console-switch mt-4">
+              <input
+                v-model="preserveExistingLayout"
+                type="checkbox"
+                class="h-4 w-4 rounded border-slate-500 bg-slate-950/10 text-lagoon focus:ring-lagoon"
+              >
+              保留已有布局
+            </label>
+
+            <p v-if="uploadMessage" class="mt-3 text-sm text-emerald-300">
+              {{ uploadMessage }}
+            </p>
+          </div>
+
+          <div v-if="selectedDevice" class="console-card">
+            <div class="flex items-start justify-between gap-3">
+              <div>
+                <p class="console-card__kicker">设备控制</p>
+                <p class="console-card__title">{{ selectedDevice.name }}</p>
+              </div>
+              <span class="console-card__tag">{{ displayState(selectedDevice) }}</span>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-2">
+              <input v-model.number="deviceDraft.plan_x" type="number" class="console-input" placeholder="X">
+              <input v-model.number="deviceDraft.plan_y" type="number" class="console-input" placeholder="Y">
+              <input v-model.number="deviceDraft.plan_z" type="number" class="console-input" placeholder="Z">
+              <input v-model.number="deviceDraft.plan_rotation" type="number" class="console-input" placeholder="旋转">
+            </div>
+
+            <button
+              type="button"
+              class="console-action mt-3"
+              :disabled="spatialBusy"
+              @click="saveDeviceInspector"
+            >
+              保存设备点位
+            </button>
+
+            <button
+              v-if="selectedDevice.can_control && (selectedDevice.control_kind === 'toggle' || ['climate', 'media_player'].includes(selectedDevice.entity_domain))"
+              type="button"
+              class="console-action console-action--primary mt-3"
+              :disabled="isDevicePending(selectedDevice.id)"
+              @click="handleToggle(selectedDevice)"
+            >
+              {{ isActive(selectedDevice) ? '关闭设备' : '打开设备' }}
+            </button>
+
+            <div
+              v-if="(selectedDevice.entity_domain === 'climate' && selectedDevice.target_temperature !== null && selectedDevice.target_temperature !== undefined)
+                || (selectedDevice.entity_domain === 'media_player' && selectedDevice.media_volume_level !== null && selectedDevice.media_volume_level !== undefined)
+                || selectedDevice.control_kind === 'number'"
+              class="mt-4"
+            >
+              <div class="mb-2 flex items-center justify-between text-sm text-slate-300">
+                <span>{{ selectedDevice.entity_domain === 'media_player' ? '音量' : '数值控制' }}</span>
+                <span>{{ numericDrafts[selectedDevice.id] }}{{ sliderRange(selectedDevice).unit }}</span>
+              </div>
+              <input
+                :value="numericDrafts[selectedDevice.id]"
+                type="range"
+                class="console-range"
+                :min="sliderRange(selectedDevice).min"
+                :max="sliderRange(selectedDevice).max"
+                :step="sliderRange(selectedDevice).step"
+                :disabled="isDevicePending(selectedDevice.id)"
+                @input="handleInspectorSliderInput(selectedDevice.id, $event.target.value)"
+                @change="handleNumberChange(selectedDevice, $event)"
+              >
+            </div>
+
+            <div v-if="selectOptions(selectedDevice).length" class="mt-4">
+              <select
+                :value="selectDrafts[selectedDevice.id]"
+                class="console-input"
+                :disabled="isDevicePending(selectedDevice.id)"
+                @change="handleSelectChange(selectedDevice, $event)"
+              >
+                <option
+                  v-for="option in selectOptions(selectedDevice)"
+                  :key="option"
+                  :value="option"
+                >
+                  {{ option }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <div class="console-card">
+            <p class="console-card__kicker">手动增加设备</p>
+            <div class="mt-4 space-y-3">
+              <select v-model.number="manualDeviceForm.room_id" class="console-input">
+                <option
+                  v-for="room in sceneRooms"
+                  :key="room.id"
+                  :value="room.id"
+                >
+                  {{ room.name }}
+                </option>
+              </select>
+              <input v-model="manualDeviceForm.name" type="text" class="console-input" placeholder="例如：岛台吊灯、次卧空调">
+              <select v-model="manualDeviceForm.device_type" class="console-input">
+                <option
+                  v-for="option in DEVICE_TYPE_OPTIONS"
+                  :key="option.value"
+                  :value="option.value"
+                >
+                  {{ option.label }}
+                </option>
+              </select>
+              <input v-model="manualDeviceForm.ha_entity_id" type="text" class="console-input" placeholder="例如：light.island_lamp">
+            </div>
+
+            <button
+              type="button"
+              class="console-action console-action--primary mt-4"
+              :disabled="spatialBusy || !manualDeviceForm.name.trim() || !manualDeviceForm.room_id"
+              @click="createManualDevice"
+            >
+              添加到空间图
+            </button>
+          </div>
+        </aside>
       </div>
     </div>
   </section>
 </template>
 
 <style scoped>
-.studio-surface {
+.console-shell {
+  position: relative;
+  overflow: hidden;
+  border-radius: 2rem;
+  border: 1px solid rgba(148, 163, 184, 0.12);
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.88), rgba(244, 239, 229, 0.92));
+    radial-gradient(circle at top, rgba(59, 130, 246, 0.12), transparent 30%),
+    linear-gradient(180deg, rgba(14, 19, 36, 0.98), rgba(16, 22, 40, 0.94));
+  padding: 1.25rem;
+  box-shadow: 0 28px 80px rgba(15, 23, 42, 0.28);
 }
 
-.studio-viewport__grid {
+.console-topbar {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.console-kicker {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: rgba(125, 211, 252, 0.82);
+}
+
+.console-title {
+  margin-top: 0.65rem;
+  font-size: clamp(1.9rem, 2vw + 1.35rem, 3rem);
+  line-height: 0.95;
+  color: rgba(248, 250, 252, 0.98);
+}
+
+.console-subtitle {
+  margin-top: 0.85rem;
+  max-width: 48rem;
+  color: rgba(203, 213, 225, 0.78);
+  line-height: 1.75;
+  font-size: 0.96rem;
+}
+
+.console-pill,
+.console-mode,
+.console-card__tag,
+.console-room-pill,
+.console-action,
+.console-input,
+.console-switch,
+.console-upload {
+  backdrop-filter: blur(18px);
+}
+
+.console-pill {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  padding: 0.5rem 0.85rem;
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 0.78rem;
+}
+
+.console-mode {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.58rem 1rem;
+  color: rgba(191, 219, 254, 0.9);
+  font-size: 0.86rem;
+  font-weight: 600;
+  transition: all 180ms ease;
+}
+
+.console-mode.is-active {
+  border-color: rgba(125, 211, 252, 0.36);
+  background: linear-gradient(180deg, rgba(30, 64, 175, 0.62), rgba(12, 110, 115, 0.54));
+  color: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 30px rgba(8, 47, 73, 0.28);
+}
+
+.console-alert {
+  border-radius: 1.2rem;
+  border: 1px solid rgba(251, 113, 133, 0.25);
+  background: rgba(127, 29, 29, 0.24);
+  padding: 0.9rem 1rem;
+  color: rgba(254, 205, 211, 0.95);
+}
+
+.console-grid {
+  display: grid;
+  gap: 1rem;
+}
+
+.console-stage-panel,
+.console-sidebar {
+  min-width: 0;
+}
+
+.console-stage-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.console-stage-header,
+.console-card {
+  border-radius: 1.55rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(18, 25, 46, 0.88), rgba(17, 24, 40, 0.8));
+  padding: 1rem;
+  box-shadow: 0 22px 54px rgba(3, 7, 18, 0.22);
+}
+
+.console-stage-header {
+  display: grid;
+  gap: 1rem;
+}
+
+.console-stage-header__eyebrow,
+.console-card__kicker,
+.console-stat__label,
+.console-room-metric__label {
+  font-size: 0.68rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: rgba(148, 163, 184, 0.72);
+}
+
+.console-stage-header__title,
+.console-card__title {
+  margin-top: 0.45rem;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0.98);
+}
+
+.console-stage-header__summary,
+.console-card__meta {
+  color: rgba(191, 219, 254, 0.7);
+  line-height: 1.7;
+  font-size: 0.88rem;
+}
+
+.console-stat {
+  border-radius: 1.1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.75rem 0.85rem;
+}
+
+.console-stat__value {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.98);
+}
+
+.console-map-shell,
+.console-immersive-shell {
+  border-radius: 1.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(15, 22, 38, 0.92), rgba(20, 30, 49, 0.88));
+  padding: 0.75rem;
+}
+
+.console-map {
+  overflow: hidden;
+  border-radius: 1.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(30, 41, 59, 0.94));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.console-map__placeholder {
+  background: radial-gradient(circle at 30% 20%, rgba(30, 41, 59, 0.86), rgba(15, 23, 42, 0.96));
+}
+
+.console-map__glow {
+  background:
+    radial-gradient(circle at 16% 24%, rgba(96, 165, 250, 0.14), transparent 24%),
+    radial-gradient(circle at 78% 18%, rgba(56, 189, 248, 0.08), transparent 18%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0.01));
+}
+
+.console-map__grid {
   background-image:
-    linear-gradient(rgba(39, 53, 76, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(39, 53, 76, 0.08) 1px, transparent 1px);
-  background-size: 54px 54px;
-  mix-blend-mode: multiply;
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 42px 42px;
+  mix-blend-mode: screen;
 }
 
-.studio-viewport__wash {
+.console-bottom-strip {
+  display: inline-flex;
+  align-items: center;
+  gap: 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(2, 6, 23, 0.56);
+  padding: 0.65rem 0.95rem;
+  color: rgba(226, 232, 240, 0.82);
+  font-size: 0.8rem;
+}
+
+.console-bottom-strip--compact {
+  gap: 0.45rem;
+}
+
+.console-immersive-shell :deep(section) {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  padding: 0;
+}
+
+.console-sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 0.95rem;
+}
+
+.console-card--clock {
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.05)),
-    radial-gradient(circle at 16% 18%, rgba(255, 255, 255, 0.54), transparent 22%),
-    radial-gradient(circle at 84% 24%, rgba(255, 255, 255, 0.3), transparent 20%);
+    radial-gradient(circle at top, rgba(56, 189, 248, 0.12), transparent 40%),
+    linear-gradient(180deg, rgba(17, 24, 39, 0.94), rgba(16, 24, 40, 0.84));
+}
+
+.console-clock {
+  margin-top: 0.5rem;
+  font-size: clamp(2rem, 2vw + 1rem, 3rem);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(248, 250, 252, 0.98);
+}
+
+.console-card__tag {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  background: rgba(14, 165, 233, 0.1);
+  padding: 0.45rem 0.75rem;
+  color: rgba(186, 230, 253, 0.96);
+  font-size: 0.74rem;
+}
+
+.console-room-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem;
+}
+
+.console-room-metric {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.8rem 0.85rem;
+  color: rgba(248, 250, 252, 0.95);
+}
+
+.console-room-metric strong {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 1rem;
+}
+
+.console-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.75rem 0.9rem;
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 0.86rem;
+}
+
+.console-room-pill {
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.5rem 0.85rem;
+  color: rgba(226, 232, 240, 0.88);
+  font-size: 0.84rem;
+  transition: all 180ms ease;
+}
+
+.console-room-pill.is-active {
+  border-color: rgba(125, 211, 252, 0.3);
+  background: rgba(14, 165, 233, 0.18);
+  color: rgba(240, 249, 255, 0.98);
+}
+
+.console-upload {
+  display: flex;
+  min-height: 4rem;
+  cursor: pointer;
+  align-items: center;
+  gap: 0.8rem;
+  border-radius: 1.15rem;
+  border: 1px dashed rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.85rem 0.95rem;
+  color: rgba(226, 232, 240, 0.9);
+}
+
+.console-upload__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.3rem;
+  height: 2.3rem;
+  border-radius: 0.95rem;
+  background: rgba(125, 211, 252, 0.14);
+  color: rgba(186, 230, 253, 0.96);
+  font-weight: 700;
+}
+
+.console-action {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.85rem 1rem;
+  color: rgba(226, 232, 240, 0.96);
+  font-weight: 600;
+  transition: all 180ms ease;
+}
+
+.console-action--primary {
+  border-color: rgba(56, 189, 248, 0.24);
+  background: linear-gradient(180deg, rgba(14, 165, 233, 0.48), rgba(8, 47, 73, 0.9));
+}
+
+.console-action:disabled {
+  opacity: 0.46;
+  cursor: not-allowed;
+}
+
+.console-input {
+  width: 100%;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: rgba(248, 250, 252, 0.96);
+  padding: 0.78rem 0.9rem;
+  outline: none;
+}
+
+.console-range {
+  width: 100%;
+  height: 0.5rem;
+  cursor: pointer;
+  appearance: none;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.28);
 }
 
 .room-shell {
-  border-color: var(--room-outline);
-  box-shadow: 0 22px 40px rgba(15, 23, 42, 0.14);
   transform-origin: center;
+  border-color: var(--room-outline);
 }
 
 .room-shell__depth {
   position: absolute;
-  inset: 0.55rem 0.4rem -0.55rem 0.6rem;
-  border-radius: 1.35rem;
-  background: linear-gradient(180deg, color-mix(in srgb, var(--room-heat-glow) 70%, rgba(22, 28, 45, 0.14)), rgba(21, 31, 47, 0.08));
-  opacity: 0.78;
-  transform: translateY(0.75rem) skewX(-6deg);
+  inset: 0.3rem;
+  border-radius: 1.1rem;
+  background: color-mix(in srgb, var(--room-heat-glow) 64%, rgba(15, 23, 42, 0.08));
+  opacity: 0.38;
   filter: blur(12px);
 }
 
 .room-shell__body {
   position: relative;
+  display: flex;
   height: 100%;
-  border-radius: 1.45rem;
-  border: 1px solid rgba(255, 255, 255, 0.88);
+  flex-direction: column;
+  justify-content: space-between;
+  border-radius: 1.18rem;
+  border: 1px solid rgba(255, 255, 255, 0.18);
   background:
-    linear-gradient(180deg, color-mix(in srgb, var(--room-heat) 68%, rgba(255, 255, 255, 0.78)), rgba(255, 255, 255, 0.78) 72%),
-    linear-gradient(135deg, rgba(255, 255, 255, 0.86), rgba(250, 247, 240, 0.74));
-  backdrop-filter: blur(16px);
-  padding: 0.9rem;
+    linear-gradient(180deg, color-mix(in srgb, var(--room-heat) 68%, rgba(15, 23, 42, 0.32)), rgba(15, 23, 42, 0.18)),
+    linear-gradient(135deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.02));
+  padding: 0.75rem;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
 .room-shell.is-selected {
@@ -1481,49 +1788,68 @@ onBeforeUnmount(() => {
 }
 
 .room-shell.is-selected .room-shell__body {
+  border-color: rgba(255, 255, 255, 0.34);
   box-shadow:
-    0 26px 48px rgba(15, 23, 42, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.96);
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 14px 36px rgba(15, 23, 42, 0.28);
 }
 
-.room-chip {
-  border-radius: 0.9rem;
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(255, 255, 255, 0.84);
-  padding: 0.55rem 0.65rem;
+.room-shell__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
 }
 
-.room-chip__label {
-  color: rgb(100 116 139);
-  font-size: 0.65rem;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
+.room-shell__title {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: rgba(248, 250, 252, 0.95);
 }
 
-.room-chip__value {
-  color: rgb(15 23 42);
-  font-size: 0.95rem;
-  font-weight: 600;
-  margin-top: 0.2rem;
+.room-shell__badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 0.72rem;
+}
+
+.room-shell__metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.room-shell__metrics span {
+  border-radius: 999px;
+  background: rgba(2, 6, 23, 0.34);
+  padding: 0.28rem 0.48rem;
+  color: rgba(226, 232, 240, 0.86);
+  font-size: 0.68rem;
 }
 
 .device-node {
   display: inline-flex;
   align-items: center;
-  gap: 0.55rem;
-  min-width: 2.8rem;
+  gap: 0.4rem;
+  min-width: 2.4rem;
 }
 
 .device-node__core {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
+  width: 2.1rem;
+  height: 2.1rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.96);
-  border: 1px solid rgba(255, 255, 255, 0.96);
-  box-shadow: 0 16px 24px rgba(15, 23, 42, 0.18);
+  background: rgba(255, 255, 255, 0.98);
+  border: 1px solid rgba(255, 255, 255, 0.98);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.26);
   color: rgb(15 23 42);
   font-size: 0.72rem;
   font-weight: 700;
@@ -1533,52 +1859,42 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.95);
-  color: rgb(51 65 85);
-  font-size: 0.72rem;
+  background: rgba(15, 23, 42, 0.78);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(248, 250, 252, 0.9);
+  font-size: 0.68rem;
   line-height: 1;
-  padding: 0.42rem 0.62rem;
-  max-width: 11rem;
+  padding: 0.35rem 0.55rem;
+  max-width: 8.5rem;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  box-shadow: 0 12px 24px rgba(15, 23, 42, 0.12);
+  opacity: 0;
+  transform: translateX(-0.2rem);
+  transition: opacity 180ms ease, transform 180ms ease;
+}
+
+.device-node:hover .device-node__label,
+.device-node.is-selected .device-node__label {
+  opacity: 1;
+  transform: translateX(0);
 }
 
 .device-node.is-active .device-node__core {
-  background: linear-gradient(180deg, rgba(12, 110, 115, 0.96), rgba(17, 132, 139, 0.92));
-  color: white;
+  background: linear-gradient(180deg, rgba(250, 204, 21, 0.98), rgba(234, 179, 8, 0.92));
+  color: rgb(17 24 39);
 }
 
-.device-node.is-selected .device-node__label {
-  border-color: rgba(12, 110, 115, 0.32);
-  color: rgb(12 110 115);
+.device-node.is-selected .device-node__core {
+  box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.2), 0 14px 24px rgba(15, 23, 42, 0.3);
 }
 
 .device-node.is-pending .device-node__core {
   animation: pulse 1.3s infinite;
 }
 
-.inspector-input {
-  width: 100%;
-  border-radius: 1rem;
-  border: 1px solid rgba(148, 163, 184, 0.32);
-  background: rgba(255, 255, 255, 0.92);
-  color: rgb(15 23 42);
-  outline: none;
-  padding: 0.78rem 0.95rem;
-  transition: border-color 180ms ease, box-shadow 180ms ease;
-}
-
-.inspector-input:focus {
-  border-color: rgba(12, 110, 115, 0.42);
-  box-shadow: 0 0 0 3px rgba(12, 110, 115, 0.1);
-}
-
 @keyframes pulse {
-  0%,
-  100% {
+  0%, 100% {
     transform: scale(1);
   }
 
@@ -1587,17 +1903,33 @@ onBeforeUnmount(() => {
   }
 }
 
+@media (min-width: 1100px) {
+  .console-grid {
+    grid-template-columns: minmax(0, 1.55fr) 22rem;
+  }
+
+  .console-stage-header {
+    grid-template-columns: minmax(0, 1fr) 18rem;
+    align-items: start;
+  }
+}
+
 @media (max-width: 767px) {
+  .console-shell {
+    padding: 1rem;
+  }
+
+  .console-mode {
+    flex: 1 1 calc(50% - 0.5rem);
+    justify-content: center;
+  }
+
   .device-node__label {
     display: none;
   }
 
-  .room-shell__body {
-    padding: 0.75rem;
-  }
-
-  .room-chip__value {
-    font-size: 0.82rem;
+  .console-room-grid {
+    grid-template-columns: 1fr 1fr;
   }
 }
 </style>
