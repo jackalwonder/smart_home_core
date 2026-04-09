@@ -1,4 +1,4 @@
-﻿<script setup>
+<script setup>
 import { computed } from 'vue'
 
 const props = defineProps({
@@ -28,7 +28,7 @@ const props = defineProps({
   },
   formattedLastMessage: {
     type: String,
-    default: '等待同步中',
+    default: '',
   },
 })
 
@@ -46,12 +46,14 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
     </div>
 
     <div class="relative mx-auto grid max-w-[1780px] gap-5 xl:grid-cols-[350px_minmax(0,1fr)] 2xl:grid-cols-[370px_minmax(0,1fr)] xl:gap-7">
-      <aside class="shell-surface-strong overflow-hidden xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)] xl:rounded-[2.8rem]">
+      <aside
+        class="shell-surface-strong overflow-hidden xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)] xl:rounded-[2.8rem]"
+      >
         <div class="flex h-full flex-col">
           <div class="relative border-b border-[rgba(39,53,76,0.08)] px-5 py-5 sm:px-6 sm:py-6">
             <div class="absolute right-0 top-0 h-32 w-32 rounded-full bg-auric/12 opacity-80" />
             <p class="shell-kicker sm:text-xs">
-              全屋智控
+              Whole Home Control
             </p>
             <h1 class="shell-title-hero mt-4 text-[2rem] sm:text-[2.5rem]">
               全屋智能
@@ -59,7 +61,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
               控制中心
             </h1>
             <p class="shell-copy mt-3 max-w-md text-sm">
-              把房间导航、实时状态和常用设备控制收拢到同一块主屏里，让家庭管理更直观、更沉浸。
+              将房间导航、实时状态与日常控制收拢到同一个更清晰、更沉浸的家庭控制界面中。
             </p>
 
             <div class="mt-5 grid grid-cols-3 gap-3">
@@ -91,7 +93,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
                     {{ selectedRoom?.name ?? '未选择房间' }}
                   </p>
                   <p class="shell-copy mt-2 text-sm leading-6">
-                    {{ selectedRoom?.description || '从左侧快速切换空间，把注意力稳定地放在最常用的设备与环境状态上。' }}
+                    {{ selectedRoom?.description || '从左侧快速切换空间，将视线稳定地聚焦在最常用的家庭设备与环境状态上。' }}
                   </p>
                 </div>
                 <div class="shell-card px-3 py-3 text-right">
@@ -108,7 +110,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
               </span>
             </div>
 
-            <div class="mt-4 flex snap-x gap-3 overflow-x-auto pb-2 xl:hidden">
+            <div class="mt-4 flex gap-3 overflow-x-auto snap-x pb-2 xl:hidden">
               <button
                 v-for="room in props.rooms"
                 :key="room.id"
@@ -167,7 +169,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
                   </div>
 
                   <p class="shell-copy mt-3 text-sm leading-6">
-                    {{ room.description || '基于 Home Assistant 房间自动整理出的家庭控制入口。' }}
+                    {{ room.description || '按 Home Assistant 房间自动整理的家庭控制入口。' }}
                   </p>
                 </button>
               </div>

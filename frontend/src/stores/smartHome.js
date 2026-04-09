@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+﻿import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
 import { mergeDevicePatch, normalizeDeviceRead } from '../adapters/deviceAdapter'
@@ -20,6 +20,7 @@ import {
   isDevShowcaseDeviceId,
   isDevShowcaseRoomId,
 } from '../utils/devShowcase'
+import { useNotificationStore } from './notification'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || ''
 const CACHE_KEYS = {
@@ -27,6 +28,8 @@ const CACHE_KEYS = {
   spatialScene: 'smart-home-cache:spatial-scene',
   uiPreferences: 'smart-home-cache:ui-preferences',
 }
+const RECONNECT_BASE_DELAY_MS = 1000
+const RECONNECT_MAX_DELAY_MS = 30000
 
 function resolveApiUrl(path) {
   if (!API_BASE_URL) {
@@ -54,7 +57,7 @@ function resolveAssetUrl(path) {
 
 function resolveWebSocketUrl(path = '/ws/devices') {
   if (API_BASE_URL) {
-    // 跨域部署时允许显式指定 API 基地址，再推导出对应的 WebSocket 地址。
+    // 璺ㄥ煙閮ㄧ讲鏃跺厑璁告樉寮忔寚瀹?API 鍩哄湴鍧€锛屽啀鎺ㄥ鍑哄搴旂殑 WebSocket 鍦板潃銆?
     const url = new URL(API_BASE_URL)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.pathname = path
@@ -279,6 +282,7 @@ async function fetchWithControlSession(path, options = {}) {
 }
 
 export const useSmartHomeStore = defineStore('smartHome', () => {
+  const notificationStore = useNotificationStore()
   const rooms = ref([])
   const spatialScene = ref({ zone: null, analysis: null, rooms: [] })
   const isLoading = ref(false)
@@ -288,6 +292,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const spatialError = ref('')
   const actionError = ref('')
   const connectionStatus = ref('idle')
+  const wsConnected = ref(false)
+  const reconnectDelayMs = ref(0)
   const lastMessageAt = ref('')
   const socket = ref(null)
   const reconnectTimer = ref(null)
@@ -304,6 +310,96 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const visualActivity = ref([])
   const devShowcaseSeeded = ref(false)
   const userSelectedRoom = ref(false)
+  const isOffline = computed(() => ['disconnected', 'reconnecting', 'error'].includes(connectionStatus.value))
+
+  function pushNotification(type, message, duration = 3200) {
+    notificationStore.pushToast({
+      type,
+      message,
+      duration,
+    })
+  }
+
+  function buildRequestFailureMessage(actionLabel, error, fallbackStatus = null) {
+    if (error instanceof TypeError) {
+      return `${actionLabel}失败：网络不可用`
+    }
+
+    if (error instanceof Error && error.message) {
+      return error.message
+    }
+
+    if (fallbackStatus !== null && fallbackStatus !== undefined) {
+      if (fallbackStatus >= 500) {
+        return `${actionLabel}失败：服务暂时不可用`
+      }
+      if (fallbackStatus === 404) {
+        return `${actionLabel}失败：资源不存在`
+      }
+      if (fallbackStatus === 403) {
+        return `${actionLabel}失败：权限不足`
+      }
+      if (fallbackStatus === 401) {
+        return `${actionLabel}失败：需要重新认证`
+      }
+      return `${actionLabel}失败：请求被拒绝 (${fallbackStatus})`
+    }
+
+    return `${actionLabel}失败，请稍后重试`
+  }
+  function notifyRequestFailure(error, actionLabel, fallbackStatus = null) {
+    pushNotification('error', buildRequestFailureMessage(actionLabel, error, fallbackStatus), 4200)
+  }
+
+  async function createHttpError(response, actionLabel) {
+    let detail = ''
+
+    try {
+      detail = (await response.text()).trim()
+    } catch {
+      detail = ''
+    }
+
+    const baseMessage = buildRequestFailureMessage(actionLabel, null, response.status)
+    return new Error(detail ? `${baseMessage} - ${detail}` : baseMessage)
+  }
+
+  async function requestControlSession() {
+    const apiKey = window.prompt('请输入控制口令后继续操作')
+    if (!apiKey) {
+      throw new Error('已取消控制解锁。')
+    }
+
+    const response = await fetch(resolveApiUrl('/api/auth/control-session'), {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ api_key: apiKey.trim() }),
+    })
+
+    if (!response.ok) {
+      throw await createHttpError(response, '鎺у埗浼氳瘽鏍￠獙')
+    }
+
+    return response.json()
+  }
+
+  async function fetchWithControlSession(path, options = {}, actionLabel = '璇锋眰') {
+    let response = await fetch(resolveApiUrl(path), options)
+    if (response.status !== 401 && response.status !== 403) {
+      return response
+    }
+
+    await requestControlSession()
+    response = await fetch(resolveApiUrl(path), options)
+
+    if (!response.ok && response.status !== 401 && response.status !== 403) {
+      throw await createHttpError(response, actionLabel)
+    }
+
+    return response
+  }
 
   watch(rooms, (value) => {
     if (value.length > 0) {
@@ -487,7 +583,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         headers: {},
       })
       if (!authenticatedResponse.ok) {
-        throw new Error(`获取房间列表失败：${authenticatedResponse.status}`)
+        throw await createHttpError(authenticatedResponse, '加载房间列表')
       }
 
       const payload = await authenticatedResponse.json()
@@ -495,6 +591,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       ensureSelectedRoom()
     } catch (fetchError) {
       error.value = fetchError instanceof Error ? fetchError.message : '获取智能家居数据失败。'
+      notifyRequestFailure(fetchError, '加载房间列表')
       throw fetchError
     } finally {
       isLoading.value = false
@@ -516,7 +613,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       })
 
       if (!response.ok) {
-        throw new Error(`获取空间场景失败：${response.status}`)
+        throw await createHttpError(response, '加载空间场景')
       }
 
       spatialScene.value = normalizeSpatialScene(await response.json())
@@ -524,6 +621,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return spatialScene.value
     } catch (fetchError) {
       spatialError.value = fetchError instanceof Error ? fetchError.message : '获取空间场景失败。'
+      notifyRequestFailure(fetchError, '加载空间场景')
       throw fetchError
     } finally {
       if (!silent) {
@@ -542,7 +640,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         headers: {},
       })
       if (!response.ok) {
-        throw new Error(`获取房间设备失败：${response.status}`)
+        throw await createHttpError(response, '加载房间设备')
       }
 
       const devicesPayload = await response.json()
@@ -559,6 +657,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       ensureSelectedRoom()
     } catch (fetchError) {
       actionError.value = fetchError instanceof Error ? fetchError.message : '刷新房间设备失败。'
+      notifyRequestFailure(fetchError, '加载房间设备')
       throw fetchError
     }
   }
@@ -568,16 +667,39 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return
     }
 
+    if (reconnectTimer.value) {
+      window.clearTimeout(reconnectTimer.value)
+      reconnectTimer.value = null
+      reconnectDelayMs.value = 0
+    }
+
     manualDisconnect.value = false
     connectionStatus.value = reconnectAttempt.value > 0 ? 'reconnecting' : 'connecting'
+    wsConnected.value = false
     const shouldRefreshAfterOpen = reconnectAttempt.value > 0
 
-    const ws = new WebSocket(resolveWebSocketUrl())
+    let ws
+    try {
+      ws = new WebSocket(resolveWebSocketUrl())
+    } catch (error) {
+      console.error('Failed to create realtime websocket connection.', error)
+      connectionStatus.value = 'error'
+      wsConnected.value = false
+      scheduleReconnect()
+      return
+    }
     socket.value = ws
 
     ws.addEventListener('open', () => {
+      if (socket.value !== ws) {
+        ws.close()
+        return
+      }
+
       reconnectTimer.value = null
+      reconnectDelayMs.value = 0
       connectionStatus.value = 'connected'
+      wsConnected.value = true
       reconnectAttempt.value = 0
 
       // 仅在重连成功后补拉一次，弥补断线期间可能漏掉的 patch。
@@ -598,9 +720,14 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     })
 
     ws.addEventListener('close', () => {
-      socket.value = null
+      if (socket.value === ws) {
+        socket.value = null
+      }
+      wsConnected.value = false
       if (manualDisconnect.value) {
         connectionStatus.value = 'idle'
+        reconnectAttempt.value = 0
+        reconnectDelayMs.value = 0
         return
       }
 
@@ -609,20 +736,31 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     })
 
     ws.addEventListener('error', () => {
+      if (socket.value !== ws && socket.value !== null) {
+        return
+      }
+
       connectionStatus.value = 'error'
+      wsConnected.value = false
     })
   }
 
   function scheduleReconnect() {
-    if (reconnectTimer.value) {
-      window.clearTimeout(reconnectTimer.value)
+    if (manualDisconnect.value || reconnectTimer.value) {
+      return
     }
 
     reconnectAttempt.value += 1
-    const delay = Math.min(1000 * 2 ** reconnectAttempt.value, 15000)
+    reconnectDelayMs.value = Math.min(
+      RECONNECT_BASE_DELAY_MS * 2 ** (reconnectAttempt.value - 1),
+      RECONNECT_MAX_DELAY_MS,
+    )
+    connectionStatus.value = 'reconnecting'
     reconnectTimer.value = window.setTimeout(() => {
+      reconnectTimer.value = null
+      reconnectDelayMs.value = 0
       connectRealtime()
-    }, delay)
+    }, reconnectDelayMs.value)
   }
 
   function disconnectRealtime() {
@@ -632,6 +770,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       window.clearTimeout(reconnectTimer.value)
       reconnectTimer.value = null
     }
+    reconnectAttempt.value = 0
+    reconnectDelayMs.value = 0
+    wsConnected.value = false
 
     if (spatialRefreshTimer.value) {
       window.clearTimeout(spatialRefreshTimer.value)
@@ -654,6 +795,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       socket.value.close()
       socket.value = null
     }
+
+    connectionStatus.value = 'idle'
   }
 
   function scheduleSpatialRefresh(delay = 240) {
@@ -744,7 +887,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }
 
     if (message.type === 'catalog_updated') {
-      // 目录结构变化时同时刷新主面板与空间图，避免前端手动推导布局。
+      // 鐩綍缁撴瀯鍙樺寲鏃跺悓鏃跺埛鏂颁富闈㈡澘涓庣┖闂村浘锛岄伩鍏嶅墠绔墜鍔ㄦ帹瀵煎竷灞€銆?
       scheduleCatalogRefresh()
       return
     }
@@ -1053,9 +1196,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       status: 'pending',
       source: 'control',
     })
-    setActionFeedback('pending', '指令发送中…', deviceId)
-    // 只在需要乐观更新时记录快照，失败后再回滚，避免无意义的数据复制。
+    setActionFeedback('pending', '指令下发中...', deviceId)
     const previousSnapshot = typeof optimisticUpdate === 'function' ? snapshotDevice(deviceId) : null
+    const commandToastId = notificationStore.pushToast({
+      type: 'loading',
+      message: '指令下发中...',
+      duration: 0,
+    })
 
     try {
       if (DEV_SHOWCASE_ENABLED && isDevShowcaseDeviceId(deviceId)) {
@@ -1069,6 +1216,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           source: 'dev-showcase',
         })
         setActionFeedback('success', `${device.name ?? '设备'} 已应用开发态默认场景`, deviceId)
+        notificationStore.updateToast(commandToastId, {
+          type: 'success',
+          message: '指令执行成功',
+          duration: 3000,
+        })
         return { ok: true, mock: true }
       }
 
@@ -1085,11 +1237,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           device_id: deviceId,
           ...payload,
         }),
-      })
+      }, '执行设备控制')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`设备控制失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '执行设备控制')
       }
 
       await wait(450)
@@ -1105,10 +1256,20 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         source: 'control',
       })
       setActionFeedback('success', `${device.name ?? '设备'} 已同步`, deviceId)
+      notificationStore.updateToast(commandToastId, {
+        type: 'success',
+        message: '指令执行成功',
+        duration: 3000,
+      })
       return await response.json()
     } catch (controlError) {
       restoreDeviceSnapshot(previousSnapshot)
       actionError.value = controlError instanceof Error ? controlError.message : '发送设备控制指令失败。'
+      notificationStore.updateToast(commandToastId, {
+        type: 'error',
+        message: buildRequestFailureMessage('执行设备控制', controlError),
+        duration: 4200,
+      })
       recordVisualActivity({
         deviceId,
         roomId: device.room_id,
@@ -1122,7 +1283,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       unmarkPending(deviceId)
     }
   }
-
   async function toggleDevice(deviceId) {
     return runDeviceControl(
       deviceId,
@@ -1200,11 +1360,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const response = await fetchWithControlSession('/api/spatial/floorplan', {
         method: 'POST',
         body: formData,
-      })
+      }, '上传户型图')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`上传户型图失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '上传户型图')
       }
 
       const payload = await response.json()
@@ -1212,6 +1371,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return payload
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '上传户型图失败。'
+      notifyRequestFailure(requestError, '上传户型图')
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -1232,11 +1392,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           zone_id: zoneId,
           preserve_existing: preserveExisting,
         }),
-      })
+      }, '自动布局')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`自动布局失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '自动布局')
       }
 
       const payload = await response.json()
@@ -1244,6 +1403,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return payload
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '自动布局失败。'
+      notifyRequestFailure(requestError, '自动布局')
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -1263,11 +1423,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const response = await fetchWithControlSession('/api/spatial/model', {
         method: 'POST',
         body: formData,
-      })
+      }, '上传 3D 模型')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`上传 3D 模型失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '上传 3D 模型')
       }
 
       const payload = await response.json()
@@ -1275,6 +1434,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return payload
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '上传 3D 模型失败。'
+      notifyRequestFailure(requestError, '上传 3D 模型')
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -1292,11 +1452,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-      })
+      }, '保存房间布局')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`保存房间布局失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '保存房间布局')
       }
 
       const updatedRoom = await response.json()
@@ -1307,6 +1466,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return updatedRoom
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '保存房间布局失败。'
+      notifyRequestFailure(requestError, '保存房间布局')
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -1324,11 +1484,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-      })
+      }, '保存设备点位')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`保存设备点位失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '保存设备点位')
       }
 
       const updatedDevice = await response.json()
@@ -1342,6 +1501,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return updatedDevice
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '保存设备点位失败。'
+      notifyRequestFailure(requestError, '保存设备点位')
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -1359,11 +1519,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify(payload),
-      })
+      }, '新增设备')
 
       if (!response.ok) {
-        const responseText = await response.text()
-        throw new Error(`新增设备失败：${response.status}${responseText ? ` ${responseText}` : ''}`)
+        throw await createHttpError(response, '新增设备')
       }
 
       const createdDevice = await response.json()
@@ -1374,6 +1533,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return createdDevice
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '新增设备失败。'
+      notifyRequestFailure(requestError, '新增设备')
       throw requestError
     } finally {
       spatialBusy.value = false
@@ -1426,6 +1586,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     spatialError,
     actionError,
     connectionStatus,
+    wsConnected,
+    isOffline,
+    reconnectDelayMs,
     lastMessageAt,
     selectedRoomId,
     pendingDeviceIds,
@@ -1462,3 +1625,5 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     initialize,
   }
 })
+
+

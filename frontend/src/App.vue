@@ -1,10 +1,11 @@
-<script setup>
+﻿<script setup>
 import { computed, onBeforeUnmount, onMounted, watch } from 'vue'
 import { storeToRefs } from 'pinia'
 
 import DashboardLayout from './components/DashboardLayout.vue'
 import FloorPlanStudio from './components/FloorPlanStudio.vue'
 import RoomView from './components/RoomView.vue'
+import ToastContainer from './components/ToastContainer.vue'
 import { useSmartHomeStore } from './stores/smartHome'
 
 const smartHomeStore = useSmartHomeStore()
@@ -18,6 +19,8 @@ const {
   spatialError,
   actionError,
   connectionStatus,
+  isOffline,
+  reconnectDelayMs,
   roomCount,
   deviceCount,
   lastMessageAt,
@@ -65,8 +68,21 @@ const formattedLastMessage = computed(() => {
   })}`
 })
 
+const offlineBannerMessage = computed(() => {
+  const retryInSeconds = reconnectDelayMs.value > 0
+    ? Math.ceil(reconnectDelayMs.value / 1000)
+    : null
+
+  if (connectionStatus.value === 'reconnecting' || connectionStatus.value === 'error') {
+    return retryInSeconds
+      ? `系统已离线，正在重连，预计 ${retryInSeconds} 秒后重试...`
+      : '系统已离线，正在重连...'
+  }
+
+  return '系统已离线，当前无法连接后端服务。'
+})
+
 onMounted(() => {
-  // 首次进入页面时同时拉首屏数据并建立实时连接。
   smartHomeStore.initialize().catch(() => {})
 })
 
@@ -77,7 +93,6 @@ watch(
       return
     }
 
-    // 房间切换后补拉一次该房间设备，保证 RoomView 以 detail 设备为主。
     smartHomeStore.fetchRoomDevices(roomId).catch(() => {})
   },
   { immediate: false },
@@ -89,63 +104,76 @@ onBeforeUnmount(() => {
 </script>
 
 <template>
-  <DashboardLayout
-    :rooms="rooms"
-    :selected-room-id="selectedRoomId"
-    :room-count="roomCount"
-    :device-count="deviceCount"
-    :connection-label="connectionLabel"
-    :connection-class="connectionClass"
-    :formatted-last-message="formattedLastMessage"
-    @select-room="smartHomeStore.setSelectedRoom"
-  >
+  <div class="relative">
     <div
-      v-if="error"
-      class="shell-state-surface shell-state-surface--error m-4 px-5 py-4 text-sm sm:m-6 xl:m-8"
+      v-if="isOffline"
+      class="sticky top-0 z-[60] px-3 pt-3 sm:px-4 lg:px-6 xl:px-8"
     >
-      {{ error }}
-    </div>
-
-    <div
-      v-else-if="isLoading"
-      class="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:p-8"
-    >
-      <div
-        v-for="placeholder in 5"
-        :key="placeholder"
-        class="shell-loading-block h-60 animate-pulse"
-      />
-    </div>
-
-    <div
-      v-else-if="rooms.length === 0"
-      class="flex min-h-[420px] items-center justify-center px-4 py-8 sm:px-6 xl:min-h-[520px] xl:px-8"
-    >
-      <div class="shell-empty-state max-w-2xl px-6 py-8 text-center sm:px-8">
-        <p class="shell-kicker">Curated Empty State</p>
-        <h2 class="shell-title-section mt-4 text-[2rem] sm:text-[2.5rem]">还没有可展示的房间</h2>
-        <p class="shell-copy mt-3 sm:text-base">
-          当前 Home Assistant 里还没有同步出适合主面板展示的设备。等设备分配到房间并拥有可控能力后，这里会自动出现。
-        </p>
+      <div class="mx-auto max-w-[1780px] rounded-[1.4rem] border border-[rgba(180,83,9,0.28)] bg-[linear-gradient(135deg,rgba(255,237,213,0.98),rgba(253,186,116,0.93))] px-4 py-3 text-sm font-semibold tracking-[0.02em] text-[#8a3b12] shadow-[0_18px_50px_rgba(154,52,18,0.18)]">
+        {{ offlineBannerMessage }}
       </div>
     </div>
 
-    <div v-else class="pb-4 sm:pb-5 xl:pb-8">
-      <FloorPlanStudio
-        :scene="spatialScene"
-        :selected-room-id="selectedRoomId"
-        :spatial-loading="spatialLoading"
-        :spatial-busy="spatialBusy"
-        :spatial-error="spatialError"
-        :action-error="actionError"
-        :connection-status="connectionStatus"
-        @select-room="smartHomeStore.setSelectedRoom"
-      />
+    <DashboardLayout
+      :rooms="rooms"
+      :selected-room-id="selectedRoomId"
+      :room-count="roomCount"
+      :device-count="deviceCount"
+      :connection-label="connectionLabel"
+      :connection-class="connectionClass"
+      :formatted-last-message="formattedLastMessage"
+      @select-room="smartHomeStore.setSelectedRoom"
+    >
+      <div
+        v-if="error"
+        class="shell-state-surface shell-state-surface--error m-4 px-5 py-4 text-sm sm:m-6 xl:m-8"
+      >
+        {{ error }}
+      </div>
 
-      <RoomView
-        :room="selectedMergedRoom"
-        :action-error="actionError"
-      />
-    </div>
-  </DashboardLayout>
+      <div
+        v-else-if="isLoading"
+        class="grid gap-4 p-4 sm:grid-cols-2 sm:p-6 xl:p-8"
+      >
+        <div
+          v-for="placeholder in 5"
+          :key="placeholder"
+          class="shell-loading-block h-60 animate-pulse"
+        />
+      </div>
+
+      <div
+        v-else-if="rooms.length === 0"
+        class="flex min-h-[420px] items-center justify-center px-4 py-8 sm:px-6 xl:min-h-[520px] xl:px-8"
+      >
+        <div class="shell-empty-state max-w-2xl px-6 py-8 text-center sm:px-8">
+          <p class="shell-kicker">空状态提示</p>
+          <h2 class="shell-title-section mt-4 text-[2rem] sm:text-[2.5rem]">还没有可展示的房间</h2>
+          <p class="shell-copy mt-3 sm:text-base">
+            当前 Home Assistant 中还没有同步出适合在主面板展示的房间与设备。等设备完成分配并具备可控能力后，这里会自动出现。
+          </p>
+        </div>
+      </div>
+
+      <div v-else class="pb-4 sm:pb-5 xl:pb-8">
+        <FloorPlanStudio
+          :scene="spatialScene"
+          :selected-room-id="selectedRoomId"
+          :spatial-loading="spatialLoading"
+          :spatial-busy="spatialBusy"
+          :spatial-error="spatialError"
+          :action-error="actionError"
+          :connection-status="connectionStatus"
+          @select-room="smartHomeStore.setSelectedRoom"
+        />
+
+        <RoomView
+          :room="selectedMergedRoom"
+          :action-error="actionError"
+        />
+      </div>
+    </DashboardLayout>
+
+    <ToastContainer />
+  </div>
 </template>
