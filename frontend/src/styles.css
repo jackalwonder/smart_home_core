@@ -11,6 +11,43 @@
     --shell-gold: #c99742;
     --shell-card: rgba(255, 251, 247, 0.82);
     --shell-line: rgba(39, 53, 76, 0.08);
+    --shell-surface-0: rgba(255, 252, 248, 0.96);
+    --shell-surface-1: rgba(255, 255, 255, 0.82);
+    --shell-surface-2: rgba(255, 250, 245, 0.68);
+    --shell-surface-3: rgba(248, 243, 236, 0.92);
+    --shell-text-primary: #15202f;
+    --shell-text-secondary: rgba(48, 61, 79, 0.74);
+    --shell-text-tertiary: rgba(87, 99, 117, 0.84);
+    --shell-border-soft: rgba(255, 255, 255, 0.74);
+    --shell-border-strong: rgba(39, 53, 76, 0.12);
+    --shell-radius-panel: 2rem;
+    --shell-radius-card: 1.45rem;
+    --shell-radius-chip: 999px;
+    --shell-shadow-soft: 0 18px 46px rgba(24, 31, 41, 0.08);
+    --shell-shadow-panel: 0 26px 70px rgba(24, 31, 41, 0.1);
+    --shell-shadow-float: 0 30px 90px rgba(20, 30, 48, 0.12);
+    --shell-duration-fast: 180ms;
+    --shell-duration-normal: 240ms;
+    --shell-duration-slow: 320ms;
+    --shell-ease-standard: cubic-bezier(0.2, 0.8, 0.24, 1);
+    --shell-ease-emphasized: cubic-bezier(0.2, 0.9, 0.24, 1);
+    --shell-status-idle-bg: rgba(241, 245, 249, 0.94);
+    --shell-status-idle-text: #5a6678;
+    --shell-status-active-bg: rgba(223, 242, 239, 0.94);
+    --shell-status-active-text: #2d6660;
+    --shell-status-pending-bg: rgba(255, 242, 223, 0.96);
+    --shell-status-pending-text: #9a651d;
+    --shell-status-success-bg: rgba(233, 247, 239, 0.96);
+    --shell-status-success-text: #2d7b52;
+    --shell-status-error-bg: rgba(252, 235, 234, 0.96);
+    --shell-status-error-text: #a14d46;
+    --shell-status-offline-bg: rgba(241, 245, 249, 0.94);
+    --shell-status-offline-text: #7a8797;
+    --shell-status-warning-bg: rgba(246, 238, 233, 0.96);
+    --shell-status-warning-text: #8f5e45;
+    --shell-status-loading-bg: rgba(238, 243, 247, 0.96);
+    --shell-status-loading-text: #607286;
+    --shell-focus-ring: rgba(45, 102, 96, 0.2);
     --font-ui: "Avenir Next", "SF Pro Display", "PingFang SC", "Hiragino Sans GB", "Segoe UI", sans-serif;
     --font-display: "Baskerville", "Iowan Old Style", "Palatino Linotype", Georgia, serif;
   }
@@ -51,7 +88,7 @@
   .glass-panel {
     background: linear-gradient(180deg, rgba(255, 252, 249, 0.78), rgba(255, 248, 242, 0.72));
     backdrop-filter: blur(24px);
-    box-shadow: 0 30px 90px rgba(20, 30, 48, 0.12);
+    box-shadow: var(--shell-shadow-float);
   }
 
   .glass-dark {
@@ -70,7 +107,7 @@
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(251, 247, 240, 0.78));
     border: 1px solid rgba(38, 51, 75, 0.08);
-    box-shadow: 0 18px 40px rgba(19, 28, 43, 0.08);
+    box-shadow: var(--shell-shadow-soft);
   }
 
   .hero-grid {
@@ -82,5 +119,244 @@
 
   .status-pill {
     @apply inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em];
+  }
+
+  .shell-surface {
+    background: linear-gradient(180deg, var(--shell-surface-0), rgba(247, 242, 235, 0.92));
+    border: 1px solid var(--shell-border-soft);
+    border-radius: var(--shell-radius-panel);
+    box-shadow: var(--shell-shadow-soft);
+  }
+
+  .shell-surface-muted {
+    background: linear-gradient(180deg, var(--shell-surface-1), rgba(250, 246, 240, 0.74));
+    border: 1px solid var(--shell-border-soft);
+    border-radius: var(--shell-radius-card);
+    box-shadow: var(--shell-shadow-soft);
+  }
+
+  .shell-surface-strong {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), var(--shell-surface-3));
+    border: 1px solid var(--shell-border-strong);
+    border-radius: var(--shell-radius-panel);
+    box-shadow: var(--shell-shadow-panel);
+  }
+
+  .shell-card {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.9), rgba(251, 247, 240, 0.8));
+    border: 1px solid var(--shell-border-soft);
+    border-radius: var(--shell-radius-card);
+    box-shadow: var(--shell-shadow-soft);
+  }
+
+  .shell-card-interactive {
+    transition:
+      transform var(--shell-duration-normal) var(--shell-ease-standard),
+      border-color var(--shell-duration-fast) ease,
+      background-color var(--shell-duration-fast) ease,
+      box-shadow var(--shell-duration-fast) ease;
+  }
+
+  .shell-card-interactive:hover {
+    transform: translateY(-1px);
+  }
+
+  .shell-kicker {
+    color: var(--shell-accent);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+  }
+
+  .shell-title-hero {
+    color: var(--shell-text-primary);
+    font-family: var(--font-display);
+    font-size: clamp(2.1rem, 4vw, 2.9rem);
+    letter-spacing: -0.03em;
+    line-height: 0.96;
+  }
+
+  .shell-title-section {
+    color: var(--shell-text-primary);
+    font-family: var(--font-display);
+    font-size: clamp(1.8rem, 2vw, 2.1rem);
+    letter-spacing: -0.03em;
+    line-height: 1;
+  }
+
+  .shell-heading {
+    color: var(--shell-text-primary);
+    font-size: 1rem;
+    font-weight: 600;
+    line-height: 1.4;
+  }
+
+  .shell-copy {
+    color: var(--shell-text-secondary);
+    font-size: 0.95rem;
+    line-height: 1.7;
+  }
+
+  .shell-meta {
+    color: var(--shell-text-tertiary);
+    font-size: 0.82rem;
+    letter-spacing: 0.02em;
+    line-height: 1.55;
+  }
+
+  .shell-chip {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--shell-radius-chip);
+    border: 1px solid var(--shell-border-soft);
+    background: rgba(255, 255, 255, 0.76);
+    color: var(--shell-text-tertiary);
+    font-size: 0.78rem;
+    line-height: 1;
+    padding: 0.55rem 0.85rem;
+    transition:
+      transform var(--shell-duration-normal) var(--shell-ease-standard),
+      opacity var(--shell-duration-fast) ease,
+      border-color var(--shell-duration-fast) ease,
+      background-color var(--shell-duration-fast) ease;
+  }
+
+  .shell-chip--interactive:hover {
+    transform: translateY(-1px);
+  }
+
+  .shell-status {
+    display: inline-flex;
+    align-items: center;
+    border-radius: var(--shell-radius-chip);
+    border: 1px solid transparent;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    padding: 0.5rem 0.8rem;
+    text-transform: uppercase;
+  }
+
+  .shell-status--idle {
+    background: var(--shell-status-idle-bg);
+    color: var(--shell-status-idle-text);
+    border-color: rgba(203, 213, 225, 0.55);
+  }
+
+  .shell-status--active {
+    background: var(--shell-status-active-bg);
+    color: var(--shell-status-active-text);
+    border-color: rgba(45, 102, 96, 0.2);
+  }
+
+  .shell-status--pending {
+    background: var(--shell-status-pending-bg);
+    color: var(--shell-status-pending-text);
+    border-color: rgba(240, 212, 168, 0.75);
+  }
+
+  .shell-status--success {
+    background: var(--shell-status-success-bg);
+    color: var(--shell-status-success-text);
+    border-color: rgba(201, 232, 213, 0.8);
+  }
+
+  .shell-status--error {
+    background: var(--shell-status-error-bg);
+    color: var(--shell-status-error-text);
+    border-color: rgba(239, 200, 195, 0.82);
+  }
+
+  .shell-status--offline {
+    background: var(--shell-status-offline-bg);
+    color: var(--shell-status-offline-text);
+    border-color: rgba(203, 213, 225, 0.62);
+  }
+
+  .shell-status--warning {
+    background: var(--shell-status-warning-bg);
+    color: var(--shell-status-warning-text);
+    border-color: rgba(230, 201, 183, 0.78);
+  }
+
+  .shell-status--loading {
+    background: var(--shell-status-loading-bg);
+    color: var(--shell-status-loading-text);
+    border-color: rgba(213, 224, 234, 0.82);
+  }
+
+  .shell-state-surface {
+    border-radius: var(--shell-radius-card);
+    border: 1px solid var(--shell-border-soft);
+    padding: 1rem 1rem;
+  }
+
+  .shell-state-surface--idle {
+    background: rgba(255, 255, 255, 0.82);
+    border-color: rgba(203, 213, 225, 0.5);
+    color: var(--shell-status-idle-text);
+  }
+
+  .shell-state-surface--active {
+    background: rgba(241, 247, 246, 0.92);
+    border-color: rgba(201, 223, 219, 0.85);
+    color: var(--shell-status-active-text);
+  }
+
+  .shell-state-surface--pending {
+    background: rgba(255, 246, 234, 0.96);
+    border-color: rgba(240, 212, 168, 0.82);
+    color: var(--shell-status-pending-text);
+  }
+
+  .shell-state-surface--success {
+    background: rgba(237, 249, 241, 0.96);
+    border-color: rgba(201, 232, 213, 0.82);
+    color: var(--shell-status-success-text);
+  }
+
+  .shell-state-surface--error {
+    background: rgba(251, 238, 238, 0.96);
+    border-color: rgba(239, 200, 195, 0.82);
+    color: var(--shell-status-error-text);
+  }
+
+  .shell-state-surface--offline {
+    background: rgba(248, 250, 252, 0.92);
+    border-color: rgba(203, 213, 225, 0.72);
+    color: var(--shell-status-offline-text);
+  }
+
+  .shell-state-surface--warning {
+    background: rgba(249, 240, 235, 0.96);
+    border-color: rgba(230, 201, 183, 0.82);
+    color: var(--shell-status-warning-text);
+  }
+
+  .shell-state-surface--loading {
+    background: rgba(238, 243, 247, 0.96);
+    border-color: rgba(213, 224, 234, 0.84);
+    color: var(--shell-status-loading-text);
+  }
+
+  .shell-empty-state {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.78), rgba(250, 246, 241, 0.72));
+    border: 1px dashed rgba(148, 163, 184, 0.32);
+    border-radius: var(--shell-radius-panel);
+    color: var(--shell-text-secondary);
+    box-shadow: var(--shell-shadow-soft);
+  }
+
+  .shell-loading-block {
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(246, 241, 234, 0.72));
+    border: 1px solid var(--shell-border-soft);
+    border-radius: var(--shell-radius-panel);
+    box-shadow: var(--shell-shadow-soft);
+  }
+
+  .shell-focus-outline {
+    box-shadow: 0 0 0 1px var(--shell-focus-ring), var(--shell-shadow-soft);
   }
 }

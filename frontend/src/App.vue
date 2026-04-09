@@ -4,7 +4,6 @@ import { storeToRefs } from 'pinia'
 
 import DashboardLayout from './components/DashboardLayout.vue'
 import FloorPlanStudio from './components/FloorPlanStudio.vue'
-import HomeSpatialOverview from './components/HomeSpatialOverview.vue'
 import RoomView from './components/RoomView.vue'
 import { useSmartHomeStore } from './stores/smartHome'
 
@@ -24,6 +23,8 @@ const {
   lastMessageAt,
   selectedRoomId,
   selectedRoom,
+  selectedSceneRoom,
+  selectedMergedRoom,
 } = storeToRefs(smartHomeStore)
 
 const connectionLabel = computed(() => {
@@ -41,12 +42,12 @@ const connectionLabel = computed(() => {
 
 const connectionClass = computed(() => {
   const classes = {
-    idle: 'bg-slate-200 text-slate-700',
-    connecting: 'bg-amber-100 text-amber-700',
-    connected: 'bg-emerald-100 text-emerald-700',
-    reconnecting: 'bg-sky-100 text-sky-700',
-    disconnected: 'bg-rose-100 text-rose-700',
-    error: 'bg-rose-100 text-rose-700',
+    idle: 'shell-status shell-status--idle',
+    connecting: 'shell-status shell-status--pending',
+    connected: 'shell-status shell-status--success',
+    reconnecting: 'shell-status shell-status--loading',
+    disconnected: 'shell-status shell-status--offline',
+    error: 'shell-status shell-status--error',
   }
 
   return classes[connectionStatus.value] ?? classes.idle
@@ -72,11 +73,11 @@ onMounted(() => {
 watch(
   selectedRoomId,
   (roomId) => {
-    if (!roomId) {
+    if (!roomId || (!selectedRoom.value && !selectedSceneRoom.value)) {
       return
     }
 
-    // 房间切换后补拉一次该房间设备，保证详情视图拿到最新控制项。
+    // 房间切换后补拉一次该房间设备，保证 RoomView 以 detail 设备为主。
     smartHomeStore.fetchRoomDevices(roomId).catch(() => {})
   },
   { immediate: false },
@@ -100,7 +101,7 @@ onBeforeUnmount(() => {
   >
     <div
       v-if="error"
-      class="m-4 rounded-[1.9rem] border border-rose-200 bg-rose-50/90 px-5 py-4 text-sm text-rose-700 shadow-sm sm:m-6 xl:m-8"
+      class="shell-state-surface shell-state-surface--error m-4 px-5 py-4 text-sm sm:m-6 xl:m-8"
     >
       {{ error }}
     </div>
@@ -112,7 +113,7 @@ onBeforeUnmount(() => {
       <div
         v-for="placeholder in 5"
         :key="placeholder"
-        class="h-60 animate-pulse rounded-[2rem] border border-white/80 bg-white/65 shadow-sm"
+        class="shell-loading-block h-60 animate-pulse"
       />
     </div>
 
@@ -120,24 +121,16 @@ onBeforeUnmount(() => {
       v-else-if="rooms.length === 0"
       class="flex min-h-[420px] items-center justify-center px-4 py-8 sm:px-6 xl:min-h-[520px] xl:px-8"
     >
-      <div class="max-w-2xl rounded-[2.2rem] border border-white/80 bg-gradient-to-br from-white via-white/85 to-amber-50/70 px-6 py-8 text-center shadow-sm sm:px-8">
-        <p class="text-[11px] uppercase tracking-[0.34em] text-lagoon">Curated Empty State</p>
-        <h2 class="font-display mt-4 text-[2rem] text-ink sm:text-[2.5rem]">还没有可展示的房间</h2>
-        <p class="mt-3 text-sm leading-6 text-slate-500 sm:text-base">
+      <div class="shell-empty-state max-w-2xl px-6 py-8 text-center sm:px-8">
+        <p class="shell-kicker">Curated Empty State</p>
+        <h2 class="shell-title-section mt-4 text-[2rem] sm:text-[2.5rem]">还没有可展示的房间</h2>
+        <p class="shell-copy mt-3 sm:text-base">
           当前 Home Assistant 里还没有同步出适合主面板展示的设备。等设备分配到房间并拥有可控能力后，这里会自动出现。
         </p>
       </div>
     </div>
 
     <div v-else class="pb-4 sm:pb-5 xl:pb-8">
-      <HomeSpatialOverview
-        :rooms="rooms"
-        :selected-room-id="selectedRoomId"
-        :connection-label="connectionLabel"
-        :formatted-last-message="formattedLastMessage"
-        @select-room="smartHomeStore.setSelectedRoom"
-      />
-
       <FloorPlanStudio
         :scene="spatialScene"
         :selected-room-id="selectedRoomId"
@@ -145,11 +138,12 @@ onBeforeUnmount(() => {
         :spatial-busy="spatialBusy"
         :spatial-error="spatialError"
         :action-error="actionError"
+        :connection-status="connectionStatus"
         @select-room="smartHomeStore.setSelectedRoom"
       />
 
       <RoomView
-        :room="selectedRoom"
+        :room="selectedMergedRoom"
         :action-error="actionError"
       />
     </div>

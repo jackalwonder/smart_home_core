@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import { useSmartHomeStore } from '../stores/smartHome'
+import { getControlFeedbackPresentation } from '../utils/controlFeedback'
 
 const props = defineProps({
   device: {
@@ -44,6 +45,7 @@ const isSelect = computed(() => controlKind.value === 'select')
 const isButton = computed(() => controlKind.value === 'button')
 const isInteractive = computed(() => props.device.can_control)
 const isActive = computed(() => ['on', 'online'].includes(props.device.current_status))
+const isOffline = computed(() => ['offline', 'unavailable'].includes(props.device.current_status))
 
 const deviceTypeLabels = {
   mijia_light: '米家灯具',
@@ -65,14 +67,33 @@ const statusLabels = {
   unknown: '未知',
 }
 
-const cardClass = computed(() =>
-  isActive.value
-    ? 'border-emerald-200/80 bg-gradient-to-br from-white via-emerald-50/82 to-teal-50/68 shadow-panel'
-    : 'border-white/80 bg-gradient-to-br from-white/90 via-white/82 to-stone-50/75 shadow-sm',
+const feedbackPresentation = computed(() =>
+  getControlFeedbackPresentation({
+    feedbackState: isPending.value ? 'pending' : 'idle',
+    offline: isOffline.value,
+    active: isActive.value,
+  }),
 )
-
-const glowClass = computed(() => (isActive.value ? 'from-emerald-400/25 via-amber-200/10 to-sky-400/10' : 'from-slate-200/0 to-slate-200/0'))
-const iconClass = computed(() => (isActive.value ? 'text-lagoon' : 'text-slate-500'))
+const cardClass = computed(() => {
+  if (isOffline.value) return 'border-slate-200/85 bg-[rgba(248,250,252,0.92)]'
+  if (isPending.value) return 'border-amber-200/85 bg-[rgba(255,247,235,0.96)]'
+  if (isActive.value) return 'border-[#cfe0dc] bg-[rgba(241,247,246,0.94)]'
+  return 'border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(251,247,240,0.82))]'
+})
+const iconClass = computed(() => {
+  if (isOffline.value) return 'border-slate-200 bg-slate-100 text-slate-400'
+  if (isPending.value) return 'border-amber-200 bg-amber-50 text-amber-700'
+  if (isActive.value) return 'border-[#c9dfdb] bg-[#f1f7f6] text-[#2d6660]'
+  return 'border-white/75 bg-white/88 text-slate-500'
+})
+const stateBadgeClass = computed(() => feedbackPresentation.value.badgeClass)
+const interactiveBadgeClass = computed(() => (isInteractive.value ? 'shell-status shell-status--active' : 'shell-status shell-status--idle'))
+const controlSurfaceClass = computed(() => {
+  if (isOffline.value) return 'shell-state-surface shell-state-surface--offline'
+  if (isPending.value) return 'shell-state-surface shell-state-surface--pending'
+  if (isActive.value) return 'shell-state-surface shell-state-surface--active'
+  return 'shell-card'
+})
 
 const deviceTypeLabel = computed(() => deviceTypeLabels[props.device.device_type] ?? props.device.entity_domain)
 
@@ -175,17 +196,16 @@ async function handleButtonPress() {
 
 <template>
   <article
-    class="group relative flex h-full min-h-[23rem] flex-col overflow-hidden rounded-[2.1rem] border p-5 transition duration-300 hover:-translate-y-1 hover:shadow-panel"
+    class="shell-card shell-card-interactive group relative flex h-full min-h-[23rem] flex-col overflow-hidden rounded-[2.1rem] border p-5"
     :class="cardClass"
   >
-    <div class="absolute inset-0 bg-gradient-to-br transition duration-500" :class="glowClass" />
     <div class="absolute inset-x-5 top-0 h-px bg-gradient-to-r from-transparent via-white to-transparent opacity-80" />
-    <div class="absolute right-[-2rem] top-[-2rem] h-28 w-28 rounded-full bg-white/35 blur-2xl" />
+    <div class="absolute right-[-2rem] top-[-2rem] h-28 w-28 rounded-full bg-white/55 opacity-80" />
 
     <div class="relative flex min-h-[6.75rem] items-start justify-between gap-4">
       <div class="flex items-center gap-4">
         <div
-          class="flex h-14 w-14 items-center justify-center rounded-[1.35rem] border border-white/70 bg-white/88 shadow-sm"
+          class="flex h-14 w-14 items-center justify-center rounded-[1.35rem] border shadow-sm transition-colors duration-200"
           :class="iconClass"
         >
           <svg
@@ -309,35 +329,32 @@ async function handleButtonPress() {
 
         <div class="min-w-0">
           <p class="truncate text-lg font-semibold text-ink">{{ device.name }}</p>
-          <p class="mt-1 text-sm text-slate-500">{{ deviceTypeLabel }}</p>
-          <p class="mt-2 truncate text-[11px] uppercase tracking-[0.24em] text-slate-400">{{ device.ha_entity_id }}</p>
+          <p class="shell-copy mt-1 text-sm">{{ deviceTypeLabel }}</p>
+          <p class="shell-meta mt-2 truncate text-[11px] uppercase tracking-[0.24em]">{{ device.ha_entity_id }}</p>
         </div>
       </div>
 
-      <div
-        class="shrink-0 rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]"
-        :class="isActive ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-100 text-slate-600'"
-      >
+      <div :class="stateBadgeClass">
         {{ displayState }}
       </div>
     </div>
 
-    <div class="relative mt-6 flex flex-1 flex-col rounded-[1.75rem] border border-white/70 bg-white/60 px-4 py-4">
+    <div class="relative mt-6 flex flex-1 flex-col px-4 py-4" :class="controlSurfaceClass">
       <div class="flex items-start justify-between gap-3">
         <div class="min-h-[4.75rem]">
-          <p class="text-sm font-medium text-ink">
+          <p class="shell-heading text-sm">
             {{ isInteractive ? '可执行控制' : '只读状态' }}
           </p>
-          <p class="mt-1 text-sm leading-6 text-slate-500">{{ helperText }}</p>
+          <p class="shell-copy mt-1 text-sm leading-6">{{ helperText }}</p>
         </div>
-        <div class="rounded-full bg-slate-100 px-3 py-1 text-[10px] uppercase tracking-[0.18em] text-slate-500">
+        <div :class="interactiveBadgeClass">
           {{ isInteractive ? 'Interactive' : 'Readonly' }}
         </div>
       </div>
 
       <div class="mt-auto pt-4">
         <div v-if="isToggle" class="flex items-center justify-between gap-4">
-          <div class="text-sm text-slate-500">
+          <div class="shell-copy text-sm">
             {{ isActive ? '当前处于开启状态' : '当前处于关闭状态' }}
           </div>
 
@@ -345,7 +362,7 @@ async function handleButtonPress() {
             type="button"
             class="relative inline-flex h-8 w-16 shrink-0 items-center rounded-full border transition duration-300"
             :class="[
-              isActive ? 'border-lagoon/40 bg-lagoon' : 'border-slate-300 bg-slate-300',
+              isActive ? 'border-[#2d6660]/30 bg-[#2d6660]' : 'border-slate-300 bg-slate-300',
               isInteractive ? 'cursor-pointer' : 'cursor-not-allowed opacity-60',
               isPending ? 'animate-pulse' : '',
             ]"
@@ -361,7 +378,7 @@ async function handleButtonPress() {
         </div>
 
         <div v-else-if="isNumber">
-          <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+          <div class="mb-2 flex items-center justify-between text-sm">
             <span>当前值</span>
             <span class="font-medium text-ink">{{ numberLabel }}</span>
           </div>
@@ -376,7 +393,7 @@ async function handleButtonPress() {
             @input="numberDraft = Number($event.target.value)"
             @change="handleNumberChange"
           >
-          <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+          <div class="shell-meta mt-2 flex items-center justify-between text-xs">
             <span>{{ device.min_value ?? 0 }}</span>
             <span>{{ device.max_value ?? 100 }}</span>
           </div>
@@ -385,7 +402,7 @@ async function handleButtonPress() {
         <div v-else-if="isSelect">
           <select
             v-model="selectedOption"
-            class="w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition focus:border-lagoon"
+            class="w-full rounded-2xl border border-slate-200 bg-white/90 px-4 py-3 text-sm text-ink outline-none transition focus:border-[#2d6660]"
             :disabled="!isInteractive || isPending"
             @change="handleSelectChange"
           >
@@ -402,7 +419,7 @@ async function handleButtonPress() {
         <div v-else-if="isButton">
           <button
             type="button"
-            class="inline-flex items-center justify-center rounded-2xl bg-amber-500 px-4 py-3 text-sm font-semibold text-white transition hover:bg-amber-600 disabled:cursor-not-allowed disabled:opacity-60"
+            class="inline-flex items-center justify-center rounded-2xl bg-[#2d6660] px-4 py-3 text-sm font-semibold text-white transition hover:bg-[#255650] disabled:cursor-not-allowed disabled:opacity-60"
             :disabled="!isInteractive || isPending"
             @click="handleButtonPress"
           >

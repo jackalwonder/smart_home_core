@@ -2,6 +2,7 @@
 import { computed, ref, watch } from 'vue'
 
 import { useSmartHomeStore } from '../stores/smartHome'
+import { getControlFeedbackPresentation } from '../utils/controlFeedback'
 
 const props = defineProps({
   title: {
@@ -268,109 +269,73 @@ const applianceMeta = computed(() => {
     fridge: {
       eyebrow: '冰箱控制面板',
       badge: '温控设备',
-      cardClass: 'border-sky-200/60 bg-gradient-to-br from-white via-sky-50/82 to-cyan-50/60 shadow-panel',
       iconWrapperClass: 'bg-sky-600 text-white',
-      sectionClass: 'border-sky-100 bg-white/76',
-      chipClass: 'bg-sky-100 text-sky-700',
       accentColor: '#0ea5e9',
     },
     air_conditioner: {
       eyebrow: '空调控制面板',
       badge: '环境设备',
-      cardClass: 'border-teal-200/70 bg-gradient-to-br from-white via-teal-50/85 to-cyan-50/70 shadow-panel',
       iconWrapperClass: 'bg-teal-500 text-white',
-      sectionClass: 'border-teal-100 bg-white/82',
-      chipClass: 'bg-teal-100 text-teal-700',
       accentColor: '#14b8a6',
     },
     tv: {
       eyebrow: '电视控制面板',
       badge: '影音设备',
-      cardClass: 'border-indigo-200/70 bg-gradient-to-br from-white via-indigo-50/88 to-slate-50/72 shadow-panel',
       iconWrapperClass: 'bg-indigo-500 text-white',
-      sectionClass: 'border-indigo-100 bg-white/82',
-      chipClass: 'bg-indigo-100 text-indigo-700',
       accentColor: '#6366f1',
     },
     media: {
       eyebrow: '影音设备面板',
       badge: '媒体设备',
-      cardClass: 'border-violet-200/70 bg-gradient-to-br from-white via-violet-50/88 to-slate-50/72 shadow-panel',
       iconWrapperClass: 'bg-violet-500 text-white',
-      sectionClass: 'border-violet-100 bg-white/82',
-      chipClass: 'bg-violet-100 text-violet-700',
       accentColor: '#8b5cf6',
     },
     purifier: {
       eyebrow: '净化设备面板',
       badge: '空气设备',
-      cardClass: 'border-emerald-200/70 bg-gradient-to-br from-white via-emerald-50/88 to-teal-50/70 shadow-panel',
       iconWrapperClass: 'bg-emerald-500 text-white',
-      sectionClass: 'border-emerald-100 bg-white/82',
-      chipClass: 'bg-emerald-100 text-emerald-700',
       accentColor: '#10b981',
     },
     washer: {
       eyebrow: '洗护设备面板',
       badge: '家务设备',
-      cardClass: 'border-blue-200/70 bg-gradient-to-br from-white via-blue-50/85 to-cyan-50/70 shadow-panel',
       iconWrapperClass: 'bg-blue-500 text-white',
-      sectionClass: 'border-blue-100 bg-white/82',
-      chipClass: 'bg-blue-100 text-blue-700',
       accentColor: '#3b82f6',
     },
     speaker: {
       eyebrow: '音箱控制面板',
       badge: '声音设备',
-      cardClass: 'border-fuchsia-200/70 bg-gradient-to-br from-white via-fuchsia-50/85 to-pink-50/70 shadow-panel',
       iconWrapperClass: 'bg-fuchsia-500 text-white',
-      sectionClass: 'border-fuchsia-100 bg-white/82',
-      chipClass: 'bg-fuchsia-100 text-fuchsia-700',
       accentColor: '#d946ef',
     },
     router: {
       eyebrow: '网络设备面板',
       badge: '连接设备',
-      cardClass: 'border-slate-200/70 bg-gradient-to-br from-white via-slate-50/88 to-zinc-50/72 shadow-panel',
       iconWrapperClass: 'bg-slate-700 text-white',
-      sectionClass: 'border-slate-200 bg-white/82',
-      chipClass: 'bg-slate-100 text-slate-700',
       accentColor: '#475569',
     },
     nas: {
       eyebrow: 'NAS 设备面板',
       badge: '存储设备',
-      cardClass: 'border-cyan-200/70 bg-gradient-to-br from-white via-cyan-50/88 to-sky-50/72 shadow-panel',
       iconWrapperClass: 'bg-cyan-600 text-white',
-      sectionClass: 'border-cyan-100 bg-white/82',
-      chipClass: 'bg-cyan-100 text-cyan-700',
       accentColor: '#0891b2',
     },
     computer: {
       eyebrow: '电脑设备面板',
       badge: '计算设备',
-      cardClass: 'border-blue-200/70 bg-gradient-to-br from-white via-blue-50/88 to-indigo-50/72 shadow-panel',
       iconWrapperClass: 'bg-blue-600 text-white',
-      sectionClass: 'border-blue-100 bg-white/82',
-      chipClass: 'bg-blue-100 text-blue-700',
       accentColor: '#2563eb',
     },
     camera: {
       eyebrow: '安防设备面板',
       badge: '监控设备',
-      cardClass: 'border-rose-200/70 bg-gradient-to-br from-white via-rose-50/88 to-orange-50/72 shadow-panel',
       iconWrapperClass: 'bg-rose-500 text-white',
-      sectionClass: 'border-rose-100 bg-white/82',
-      chipClass: 'bg-rose-100 text-rose-700',
       accentColor: '#f43f5e',
     },
     generic: {
       eyebrow: '设备聚合视图',
       badge: '家庭设备',
-      cardClass: 'border-amber-200/70 bg-gradient-to-br from-white via-amber-50/78 to-orange-50/68 shadow-panel',
       iconWrapperClass: 'bg-amber-500 text-white',
-      sectionClass: 'border-amber-100 bg-white/76',
-      chipClass: 'bg-amber-100 text-amber-700',
       accentColor: '#f59e0b',
     },
   }
@@ -406,6 +371,10 @@ function isPending(deviceId) {
 
 function isPoweredOn(device) {
   return ['on', 'playing', 'heat', 'cool', 'heat_cool', 'dry', 'fan_only', 'auto'].includes(device.raw_state ?? device.current_status)
+}
+
+function isOffline(device) {
+  return ['offline', 'unavailable'].includes(device.raw_state ?? device.current_status)
 }
 
 function formatNumber(value) {
@@ -463,14 +432,33 @@ async function handleButtonPress(deviceId) {
     console.error('Failed to press grouped action button.', error)
   }
 }
+
+const aggregateFeedback = computed(() => {
+  const pending = props.devices.some((device) => isPending(device.id))
+  const offline = props.devices.some((device) => isOffline(device))
+  const active = props.devices.some((device) => isPoweredOn(device))
+
+  return getControlFeedbackPresentation({
+    feedbackState: pending ? 'pending' : 'idle',
+    offline,
+    active,
+  })
+})
+
+const articleClass = computed(() => {
+  if (aggregateFeedback.value.tone === 'offline') return 'border-slate-200/85 bg-[rgba(248,250,252,0.94)]'
+  if (aggregateFeedback.value.tone === 'pending') return 'border-amber-200/85 bg-[rgba(255,247,235,0.96)]'
+  if (aggregateFeedback.value.tone === 'active') return 'border-[#cfe0dc] bg-[rgba(241,247,246,0.94)]'
+  return 'border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.9),rgba(251,247,240,0.82))]'
+})
 </script>
 
 <template>
   <article
-    class="relative flex h-full min-h-[23rem] flex-col overflow-hidden rounded-[2rem] border p-4 sm:p-5"
-    :class="applianceMeta.cardClass"
+    class="shell-card relative flex h-full min-h-[23rem] flex-col overflow-hidden rounded-[2rem] border p-4 sm:p-5"
+    :class="articleClass"
   >
-    <div class="absolute right-[-3rem] top-[-3rem] h-36 w-36 rounded-full bg-white/35 blur-3xl" />
+    <div class="absolute right-[-3rem] top-[-3rem] h-36 w-36 rounded-full bg-white/50 opacity-80" />
 
     <div class="relative flex items-start justify-between gap-3">
       <div class="flex min-w-0 items-start gap-3">
@@ -526,13 +514,13 @@ async function handleButtonPress(deviceId) {
         </div>
 
         <div class="min-w-0">
-          <p class="text-xs font-semibold uppercase tracking-[0.28em]" :class="applianceMeta.chipClass">{{ applianceMeta.eyebrow }}</p>
+          <p class="shell-kicker">{{ applianceMeta.eyebrow }}</p>
           <h3 class="font-display mt-2 truncate text-[1.6rem] leading-none text-ink sm:text-[1.85rem]">{{ title }}</h3>
-          <p class="mt-2 text-sm text-slate-500">{{ summaryLine }}</p>
+          <p class="shell-copy mt-2 text-sm">{{ summaryLine }}</p>
         </div>
       </div>
 
-      <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+      <div :class="aggregateFeedback.badgeClass">
         {{ applianceMeta.badge }}
       </div>
     </div>
@@ -541,10 +529,9 @@ async function handleButtonPress(deviceId) {
       <div
         v-for="stat in summaryStats"
         :key="stat.label"
-        class="rounded-[1.2rem] border px-3 py-3"
-        :class="applianceMeta.sectionClass"
+        class="shell-card px-3 py-3"
       >
-        <p class="text-[10px] uppercase tracking-[0.18em] text-slate-400">{{ stat.label }}</p>
+        <p class="shell-meta text-[10px] uppercase tracking-[0.18em]">{{ stat.label }}</p>
         <p class="mt-2 truncate text-lg font-semibold text-ink sm:text-xl">{{ stat.value }}</p>
       </div>
     </div>
@@ -553,32 +540,30 @@ async function handleButtonPress(deviceId) {
       <div
         v-for="snapshot in sensorSnapshots"
         :key="snapshot.label"
-        class="inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-sm"
-        :class="applianceMeta.sectionClass"
+        class="shell-chip gap-2 px-3 py-1.5 text-sm"
       >
-        <span class="text-slate-500">{{ snapshot.label }}</span>
+        <span class="shell-meta">{{ snapshot.label }}</span>
         <span class="font-semibold text-ink">{{ snapshot.value }}</span>
       </div>
     </div>
 
     <div class="mt-5 flex flex-1 flex-col">
       <div class="flex items-center justify-between gap-3">
-        <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">控制次级区域</p>
-        <p class="text-xs text-slate-400">按需展开，保持总览更整齐</p>
+        <p class="shell-kicker text-slate-500">控制次级区域</p>
+        <p class="shell-meta text-xs">按需展开，保持总览更整齐</p>
       </div>
 
       <div class="mt-3 space-y-3">
         <details
           v-if="climateDevices.length > 0"
-          class="rounded-[1.45rem] border"
-          :class="applianceMeta.sectionClass"
+          class="shell-card rounded-[1.45rem]"
         >
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
             <div class="min-w-0">
-              <p class="text-sm font-semibold text-ink">环境控制</p>
-              <p class="mt-1 truncate text-sm text-slate-500">{{ climateSummary }}</p>
+              <p class="shell-heading text-sm">环境控制</p>
+              <p class="shell-copy mt-1 truncate text-sm">{{ climateSummary }}</p>
             </div>
-            <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+            <div class="shell-status shell-status--idle">
               {{ climateDevices.length }} 项
             </div>
           </summary>
@@ -587,12 +572,12 @@ async function handleButtonPress(deviceId) {
             <div
               v-for="device in climateDevices"
               :key="`climate-${device.id}`"
-              class="rounded-[1.2rem] border border-white/60 bg-white/72 px-4 py-4"
+              class="shell-card px-4 py-4"
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
-                  <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
+                  <p class="shell-meta mt-1 text-xs uppercase tracking-[0.16em]">{{ device.ha_entity_id }}</p>
                 </div>
                 <button
                   type="button"
@@ -609,7 +594,7 @@ async function handleButtonPress(deviceId) {
               </div>
 
               <div v-if="device.target_temperature !== null && device.target_temperature !== undefined" class="mt-4">
-                <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+                <div class="shell-copy mb-2 flex items-center justify-between text-sm">
                   <span>目标温度</span>
                   <span class="font-medium text-ink">
                     {{ formatNumber(sliderDrafts[device.id]) }}
@@ -628,7 +613,7 @@ async function handleButtonPress(deviceId) {
                   @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
                   @change="handleNumberChange(device.id, $event)"
                 >
-                <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+                <div class="shell-meta mt-2 flex items-center justify-between text-xs">
                   <span>{{ device.min_value ?? 16 }}</span>
                   <span>当前室温 {{ formatNumber(device.current_temperature) }}{{ device.unit_of_measurement ?? '°C' }}</span>
                   <span>{{ device.max_value ?? 30 }}</span>
@@ -636,7 +621,7 @@ async function handleButtonPress(deviceId) {
               </div>
 
               <div v-if="device.hvac_modes?.length" class="mt-4">
-                <p class="mb-2 text-sm text-slate-500">运行模式</p>
+                <p class="shell-copy mb-2 text-sm">运行模式</p>
                 <select
                   :value="selectDrafts[device.id]"
                   class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
@@ -658,15 +643,14 @@ async function handleButtonPress(deviceId) {
 
         <details
           v-if="mediaDevices.length > 0"
-          class="rounded-[1.45rem] border"
-          :class="applianceMeta.sectionClass"
+          class="shell-card rounded-[1.45rem]"
         >
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
             <div class="min-w-0">
-              <p class="text-sm font-semibold text-ink">影音控制</p>
-              <p class="mt-1 truncate text-sm text-slate-500">{{ mediaSummary }}</p>
+              <p class="shell-heading text-sm">影音控制</p>
+              <p class="shell-copy mt-1 truncate text-sm">{{ mediaSummary }}</p>
             </div>
-            <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+            <div class="shell-status shell-status--idle">
               {{ mediaDevices.length }} 项
             </div>
           </summary>
@@ -675,12 +659,12 @@ async function handleButtonPress(deviceId) {
             <div
               v-for="device in mediaDevices"
               :key="`media-${device.id}`"
-              class="rounded-[1.2rem] border border-white/60 bg-white/72 px-4 py-4"
+              class="shell-card px-4 py-4"
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
-                  <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
+                  <p class="shell-meta mt-1 text-xs uppercase tracking-[0.16em]">{{ device.ha_entity_id }}</p>
                 </div>
                 <button
                   type="button"
@@ -697,7 +681,7 @@ async function handleButtonPress(deviceId) {
               </div>
 
               <div v-if="device.media_volume_level !== null && device.media_volume_level !== undefined" class="mt-4">
-                <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+                <div class="shell-copy mb-2 flex items-center justify-between text-sm">
                   <span>音量</span>
                   <span class="font-medium text-ink">{{ Math.round(sliderDrafts[device.id] ?? 0) }}%</span>
                 </div>
@@ -716,7 +700,7 @@ async function handleButtonPress(deviceId) {
               </div>
 
               <div v-if="device.media_source_options?.length" class="mt-4">
-                <p class="mb-2 text-sm text-slate-500">输入源</p>
+                <p class="shell-copy mb-2 text-sm">输入源</p>
                 <select
                   :value="selectDrafts[device.id]"
                   class="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm text-ink outline-none transition"
@@ -738,15 +722,14 @@ async function handleButtonPress(deviceId) {
 
         <details
           v-if="genericControlDevices.length > 0"
-          class="rounded-[1.45rem] border"
-          :class="applianceMeta.sectionClass"
+          class="shell-card rounded-[1.45rem]"
         >
           <summary class="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
             <div class="min-w-0">
-              <p class="text-sm font-semibold text-ink">设备控制</p>
-              <p class="mt-1 truncate text-sm text-slate-500">{{ genericSummary }}</p>
+              <p class="shell-heading text-sm">设备控制</p>
+              <p class="shell-copy mt-1 truncate text-sm">{{ genericSummary }}</p>
             </div>
-            <div class="shrink-0 rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+            <div class="shell-status shell-status--idle">
               {{ genericControlDevices.length }} 项
             </div>
           </summary>
@@ -755,20 +738,20 @@ async function handleButtonPress(deviceId) {
             <div
               v-for="device in genericControlDevices"
               :key="device.id"
-              class="rounded-[1.2rem] border border-white/60 bg-white/72 px-4 py-4"
+              class="shell-card px-4 py-4"
             >
               <div class="flex items-start justify-between gap-3">
                 <div>
                   <p class="text-sm font-semibold text-ink sm:text-base">{{ shortLabel(device) }}</p>
-                  <p class="mt-1 text-xs uppercase tracking-[0.16em] text-slate-400">{{ device.ha_entity_id }}</p>
+                  <p class="shell-meta mt-1 text-xs uppercase tracking-[0.16em]">{{ device.ha_entity_id }}</p>
                 </div>
-                <div class="rounded-full px-3 py-1 text-xs font-semibold" :class="applianceMeta.chipClass">
+                <div class="shell-status shell-status--idle">
                   {{ controlKindLabel(device.control_kind) }}
                 </div>
               </div>
 
               <div v-if="device.control_kind === 'toggle'" class="mt-4 flex items-center justify-between gap-4">
-                <p class="text-sm text-slate-500">{{ device.raw_state ?? device.current_status }}</p>
+                <p class="shell-copy text-sm">{{ device.raw_state ?? device.current_status }}</p>
                 <button
                   type="button"
                   class="relative inline-flex h-8 w-16 items-center rounded-full transition duration-300"
@@ -784,7 +767,7 @@ async function handleButtonPress(deviceId) {
               </div>
 
               <div v-else-if="device.control_kind === 'number'" class="mt-4">
-                <div class="mb-2 flex items-center justify-between text-sm text-slate-500">
+                <div class="shell-copy mb-2 flex items-center justify-between text-sm">
                   <span>{{ shortLabel(device) }}</span>
                   <span class="font-medium text-ink">
                     {{ sliderDrafts[device.id] }}
@@ -803,7 +786,7 @@ async function handleButtonPress(deviceId) {
                   @input="sliderDrafts = { ...sliderDrafts, [device.id]: Number($event.target.value) }"
                   @change="handleNumberChange(device.id, $event)"
                 >
-                <div class="mt-2 flex items-center justify-between text-xs text-slate-400">
+                <div class="shell-meta mt-2 flex items-center justify-between text-xs">
                   <span>{{ device.min_value ?? 0 }}</span>
                   <span>{{ device.max_value ?? 100 }}</span>
                 </div>

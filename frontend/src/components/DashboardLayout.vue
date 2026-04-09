@@ -7,7 +7,7 @@ const props = defineProps({
     required: true,
   },
   selectedRoomId: {
-    type: Number,
+    type: [Number, String],
     default: null,
   },
   roomCount: {
@@ -48,36 +48,36 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
 
     <div class="relative mx-auto grid max-w-[1780px] gap-5 xl:grid-cols-[350px_minmax(0,1fr)] 2xl:grid-cols-[370px_minmax(0,1fr)] xl:gap-7">
       <aside
-        class="glass-dark overflow-hidden rounded-[2rem] border border-white/10 text-white shadow-float xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)] xl:rounded-[2.8rem]"
+        class="shell-surface-strong overflow-hidden xl:sticky xl:top-6 xl:h-[calc(100vh-3rem)] xl:rounded-[2.8rem]"
       >
         <div class="flex h-full flex-col">
-          <div class="relative border-b border-white/10 px-5 py-5 sm:px-6 sm:py-6">
-            <div class="absolute right-0 top-0 h-32 w-32 rounded-full bg-auric/15 blur-3xl" />
-            <p class="text-[11px] font-semibold uppercase tracking-[0.42em] text-amber-200/80 sm:text-xs">
+          <div class="relative border-b border-[rgba(39,53,76,0.08)] px-5 py-5 sm:px-6 sm:py-6">
+            <div class="absolute right-0 top-0 h-32 w-32 rounded-full bg-auric/12 opacity-80" />
+            <p class="shell-kicker sm:text-xs">
               Domestic Atelier
             </p>
-            <h1 class="font-display mt-4 text-[2rem] leading-[0.95] text-white sm:text-[2.5rem]">
+            <h1 class="shell-title-hero mt-4 text-[2rem] sm:text-[2.5rem]">
               现代家庭
               <br>
               控制中枢
             </h1>
-            <p class="mt-3 max-w-md text-sm leading-6 text-slate-300">
+            <p class="shell-copy mt-3 max-w-md text-sm">
               让房间导航、实时状态和日常控制保持在一个更克制、更高密度的界面里。
             </p>
 
-            <div class="mt-5 grid grid-cols-3 gap-3 rounded-[1.8rem] border border-white/10 bg-white/5 p-3">
-              <div class="rounded-[1.15rem] border border-white/10 bg-white/6 px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Rooms</p>
-                <p class="mt-2 text-xl font-semibold text-white">{{ roomCount }}</p>
+            <div class="mt-5 grid grid-cols-3 gap-3">
+              <div class="shell-card px-3 py-3">
+                <p class="shell-meta text-[10px] uppercase tracking-[0.18em]">Rooms</p>
+                <p class="mt-2 text-xl font-semibold text-ink">{{ roomCount }}</p>
               </div>
-              <div class="rounded-[1.15rem] border border-emerald-300/15 bg-gradient-to-br from-lagoon/90 to-tide/70 px-3 py-3">
-                <p class="text-[10px] uppercase tracking-[0.18em] text-emerald-100/70">Devices</p>
-                <p class="mt-2 text-xl font-semibold text-white">{{ deviceCount }}</p>
+              <div class="shell-card px-3 py-3 border-[#cfe0dc] bg-[#f1f7f6]">
+                <p class="shell-meta text-[10px] uppercase tracking-[0.18em] text-[#2d6660]/70">Devices</p>
+                <p class="mt-2 text-xl font-semibold text-ink">{{ deviceCount }}</p>
               </div>
-              <div class="rounded-[1.15rem] border border-white/20 bg-white px-3 py-3 text-ink">
-                <p class="text-[10px] uppercase tracking-[0.18em] text-slate-500">Live</p>
+              <div class="shell-card px-3 py-3 text-ink">
+                <p class="shell-meta text-[10px] uppercase tracking-[0.18em]">Live</p>
                 <div class="mt-2">
-                  <span class="status-pill" :class="connectionClass">
+                  <span :class="connectionClass">
                     {{ connectionLabel }}
                   </span>
                 </div>
@@ -86,27 +86,27 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
           </div>
 
           <div class="flex min-h-0 flex-1 flex-col px-5 py-5 sm:px-6 sm:py-6">
-            <div class="rounded-[1.8rem] border border-white/10 bg-white/6 p-4">
+            <div class="shell-card p-4">
               <div class="flex items-start justify-between gap-4">
                 <div>
-                  <p class="text-[11px] uppercase tracking-[0.28em] text-slate-400">Current Room</p>
-                  <p class="font-display mt-3 text-[1.65rem] text-white sm:text-[1.95rem]">
+                  <p class="shell-kicker text-slate-500">Current Room</p>
+                  <p class="font-display mt-3 text-[1.65rem] text-ink sm:text-[1.95rem]">
                     {{ selectedRoom?.name ?? '未选择房间' }}
                   </p>
-                  <p class="mt-2 text-sm leading-6 text-slate-300">
+                  <p class="shell-copy mt-2 text-sm leading-6">
                     {{ selectedRoom?.description || '从左侧快速切换空间，把视线固定在真正常用的设备上。' }}
                   </p>
                 </div>
-                <div class="rounded-[1.4rem] border border-white/10 bg-black/15 px-3 py-3 text-right">
-                  <p class="text-[11px] uppercase tracking-[0.18em] text-slate-400">最近同步</p>
-                  <p class="mt-2 max-w-[8rem] text-sm font-medium leading-5 text-slate-100">{{ formattedLastMessage }}</p>
+                <div class="shell-card px-3 py-3 text-right">
+                  <p class="shell-meta text-[11px] uppercase tracking-[0.18em]">最近同步</p>
+                  <p class="mt-2 max-w-[8rem] text-sm font-medium leading-5 text-ink">{{ formattedLastMessage }}</p>
                 </div>
               </div>
             </div>
 
             <div class="mt-5 flex items-center justify-between">
-              <p class="text-xs uppercase tracking-[0.32em] text-slate-400">Room Navigator</p>
-              <span class="rounded-full border border-white/10 bg-white/6 px-3 py-1 text-[11px] tracking-[0.18em] text-slate-300">
+              <p class="shell-kicker text-slate-500">Room Navigator</p>
+              <span class="shell-status shell-status--idle">
                 {{ props.rooms.length }} Rooms
               </span>
             </div>
@@ -116,22 +116,22 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
                 v-for="room in props.rooms"
                 :key="room.id"
                 type="button"
-                class="min-w-[220px] snap-start rounded-[1.8rem] border px-4 py-4 text-left transition duration-300"
+                class="shell-card shell-card-interactive min-w-[220px] snap-start px-4 py-4 text-left"
                 :class="
                   room.id === props.selectedRoomId
-                    ? 'border-amber-300/40 bg-gradient-to-br from-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
-                    : 'border-white/10 bg-white/5 text-slate-200'
+                    ? 'shell-focus-outline border-[#c9dfdb] bg-[#f1f7f6] text-ink'
+                    : 'text-ink'
                 "
                 @click="$emit('select-room', room.id)"
               >
                 <p
-                  class="text-[11px] uppercase tracking-[0.24em]"
-                  :class="room.id === props.selectedRoomId ? 'text-lagoon' : 'text-slate-400'"
+                  class="shell-meta text-[11px] uppercase tracking-[0.24em]"
+                  :class="room.id === props.selectedRoomId ? 'text-lagoon' : ''"
                 >
-                  {{ room.zone.name }}
+                  {{ room.zone?.name ?? '开发态模板' }}
                 </p>
-                <p class="font-display mt-3 text-[1.35rem]">{{ room.name }}</p>
-                <p class="mt-3 text-sm" :class="room.id === props.selectedRoomId ? 'text-slate-500' : 'text-slate-400'">
+                <p class="font-display mt-3 text-[1.35rem] text-ink">{{ room.name }}</p>
+                <p class="shell-copy mt-3 text-sm">
                   {{ room.devices.length }} 个主设备项
                 </p>
               </button>
@@ -143,33 +143,33 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
                   v-for="room in props.rooms"
                   :key="room.id"
                   type="button"
-                  class="w-full rounded-[1.8rem] border px-4 py-4 text-left transition duration-300"
+                  class="shell-card shell-card-interactive w-full px-4 py-4 text-left"
                   :class="
                     room.id === props.selectedRoomId
-                      ? 'border-amber-300/40 bg-gradient-to-br from-white via-white to-amber-50 text-ink shadow-lg shadow-amber-950/10'
-                      : 'border-white/10 bg-white/5 text-slate-200 hover:border-white/20 hover:bg-white/10'
+                      ? 'shell-focus-outline border-[#c9dfdb] bg-[#f1f7f6] text-ink'
+                      : 'text-ink hover:border-slate-200 hover:bg-white/88'
                   "
                   @click="$emit('select-room', room.id)"
                 >
                   <div class="flex items-start justify-between gap-3">
                     <div>
                       <p
-                        class="text-[11px] uppercase tracking-[0.24em]"
-                        :class="room.id === props.selectedRoomId ? 'text-lagoon' : 'text-slate-400'"
+                        class="shell-meta text-[11px] uppercase tracking-[0.24em]"
+                        :class="room.id === props.selectedRoomId ? 'text-lagoon' : ''"
                       >
-                        {{ room.zone.name }}
+                        {{ room.zone?.name ?? '开发态模板' }}
                       </p>
-                      <p class="font-display mt-3 text-[1.35rem]">{{ room.name }}</p>
+                      <p class="font-display mt-3 text-[1.35rem] text-ink">{{ room.name }}</p>
                     </div>
                     <div
-                      class="rounded-full px-3 py-1 text-xs font-semibold"
-                      :class="room.id === props.selectedRoomId ? 'bg-slate-100 text-slate-700' : 'bg-white/10 text-slate-200'"
+                      class="shell-status"
+                      :class="room.id === props.selectedRoomId ? 'shell-status--active' : 'shell-status--idle'"
                     >
                       {{ room.devices.length }}
                     </div>
                   </div>
 
-                  <p class="mt-3 text-sm leading-6" :class="room.id === props.selectedRoomId ? 'text-slate-500' : 'text-slate-400'">
+                  <p class="shell-copy mt-3 text-sm leading-6">
                     {{ room.description || '按 Home Assistant 房间自动整理的家庭控制入口。' }}
                   </p>
                 </button>
@@ -179,7 +179,7 @@ const selectedRoom = computed(() => props.rooms.find((room) => room.id === props
         </div>
       </aside>
 
-      <section class="glass-panel overflow-hidden rounded-[2rem] border border-white/60 xl:rounded-[2.8rem]">
+      <section class="shell-surface overflow-hidden xl:rounded-[2.8rem]">
         <slot />
       </section>
     </div>

@@ -52,36 +52,36 @@ const telemetryCount = computed(() =>
 <template>
   <section class="h-full px-4 py-4 sm:px-5 sm:py-5 xl:px-8 xl:py-8">
     <template v-if="room">
-      <header class="hero-grid relative overflow-hidden rounded-[2rem] border border-white/70 bg-gradient-to-br from-white/92 via-white/84 to-amber-50/58 px-5 py-5 shadow-sm sm:px-6 sm:py-6">
+      <header class="hero-grid shell-surface relative overflow-hidden px-5 py-5 sm:px-6 sm:py-6">
         <div class="pointer-events-none absolute inset-0">
           <div class="absolute right-[-3rem] top-[-2rem] h-40 w-40 rounded-full bg-auric/20 blur-3xl" />
           <div class="absolute bottom-[-3rem] left-[20%] h-36 w-36 rounded-full bg-lagoon/10 blur-3xl" />
         </div>
 
         <div class="relative">
-          <p class="text-xs font-semibold uppercase tracking-[0.34em] text-lagoon sm:text-sm">{{ room.zone.name }}</p>
+          <p class="shell-kicker sm:text-sm">{{ room.zone?.name ?? '开发态模板' }}</p>
           <div class="mt-3 flex flex-col gap-5 xl:flex-row xl:items-center xl:justify-between">
             <div>
-              <h2 class="font-display text-[2.3rem] leading-[0.95] text-ink sm:text-[2.8rem] xl:text-[3.1rem]">{{ room.name }}</h2>
-              <p v-if="room.description" class="mt-3 max-w-3xl text-sm leading-6 text-slate-500 sm:text-base">
+              <h2 class="shell-title-hero text-[2.3rem] sm:text-[2.8rem] xl:text-[3.1rem]">{{ room.name }}</h2>
+              <p v-if="room.description" class="shell-copy mt-3 max-w-3xl text-sm sm:text-base">
                 {{ room.description }}
               </p>
-              <p class="mt-3 max-w-2xl text-sm leading-6 text-slate-500">
+              <p class="shell-copy mt-3 max-w-2xl text-sm">
                 这个房间页优先展示真正会被频繁查看和控制的实体，保证多设备情况下也能快速扫视与操作。
               </p>
             </div>
 
             <div class="grid gap-3 sm:grid-cols-3 xl:min-w-[480px]">
-              <div class="control-surface rounded-[1.4rem] px-4 py-4">
-                <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">实体总数</p>
+              <div class="shell-card px-4 py-4">
+                <p class="shell-meta uppercase tracking-[0.24em]">实体总数</p>
                 <p class="mt-2 text-2xl font-semibold text-ink">{{ room.devices.length }}</p>
               </div>
-              <div class="control-surface rounded-[1.4rem] px-4 py-4">
-                <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">可控项目</p>
+              <div class="shell-card px-4 py-4">
+                <p class="shell-meta uppercase tracking-[0.24em]">可控项目</p>
                 <p class="mt-2 text-2xl font-semibold text-ink">{{ controllableCount }}</p>
               </div>
-              <div class="control-surface rounded-[1.4rem] px-4 py-4">
-                <p class="text-[11px] uppercase tracking-[0.24em] text-slate-500">监测项目</p>
+              <div class="shell-card px-4 py-4">
+                <p class="shell-meta uppercase tracking-[0.24em]">监测项目</p>
                 <p class="mt-2 text-2xl font-semibold text-ink">{{ telemetryCount }}</p>
               </div>
             </div>
@@ -90,20 +90,20 @@ const telemetryCount = computed(() =>
       </header>
 
       <div class="mt-4 flex flex-wrap items-center gap-3">
-        <div class="glass-soft rounded-full px-4 py-2 text-sm text-slate-600">
+        <div class="shell-chip">
           面板卡片 {{ cardCount }}
         </div>
-        <div class="glass-soft rounded-full px-4 py-2 text-sm text-slate-600">
+        <div class="shell-chip">
           已做设备聚合
         </div>
-        <div class="glass-soft rounded-full px-4 py-2 text-sm text-slate-600">
+        <div class="shell-chip">
           适合多设备浏览
         </div>
       </div>
 
       <div
         v-if="actionError"
-        class="mt-5 rounded-[1.6rem] border border-rose-200 bg-rose-50/90 px-4 py-3 text-sm text-rose-700 shadow-sm"
+        class="shell-state-surface shell-state-surface--error mt-5 text-sm"
       >
         {{ actionError }}
       </div>
@@ -129,7 +129,7 @@ const telemetryCount = computed(() =>
 
       <div
         v-else
-        class="mt-6 rounded-[2rem] border border-dashed border-slate-200 bg-white/75 px-6 py-10 text-sm leading-6 text-slate-500 shadow-sm sm:text-base"
+        class="shell-empty-state mt-6 px-6 py-10 text-sm leading-6 sm:text-base"
       >
         当前房间还没有适合主面板展示的设备。你可以继续在 Home Assistant 里给设备分配房间，或启用具有控制能力的实体。
       </div>
@@ -137,7 +137,7 @@ const telemetryCount = computed(() =>
 
     <div
       v-else
-      class="flex min-h-[420px] items-center justify-center rounded-[2rem] border border-dashed border-slate-200 bg-white/75 px-6 py-10 text-center text-sm leading-6 text-slate-500 shadow-sm sm:text-base"
+      class="shell-empty-state flex min-h-[420px] items-center justify-center px-6 py-10 text-center text-sm leading-6 sm:text-base"
     >
       先从上方房间导航里选择一个房间，这里就会展示该房间的主设备和可控项。
     </div>
