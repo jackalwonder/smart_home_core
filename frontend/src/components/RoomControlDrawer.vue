@@ -57,6 +57,50 @@ const feedbackPresentation = computed(() =>
   }),
 )
 const feedbackClass = computed(() => feedbackPresentation.value.badgeClass)
+const deviceSourcePresentation = computed(() => {
+  if (!currentDevice.value) {
+    return {
+      key: 'unknown',
+      label: '来源未知',
+      badgeClass: 'shell-status shell-status--idle',
+      description: '当前设备来源信息暂不可用。',
+    }
+  }
+
+  const device = currentDevice.value
+  const source = device.source
+    ?? (device.isDetailBacked && device.isSceneBacked
+      ? 'merged'
+      : device.isDetailBacked
+        ? 'detail'
+        : 'scene')
+
+  if (source === 'merged') {
+    return {
+      key: 'merged',
+      label: 'merged',
+      badgeClass: 'shell-status shell-status--success',
+      description: '设备详情与空间场景都已同步，当前显示的是合并结果。',
+    }
+  }
+
+  if (source === 'detail') {
+    return {
+      key: 'detail',
+      label: 'detail-only',
+      badgeClass: 'shell-status shell-status--idle',
+      description: '当前设备主要来自详情链，空间位置信息可能稍后补齐。',
+    }
+  }
+
+  return {
+    key: 'scene',
+    label: 'scene-only',
+    badgeClass: 'shell-status shell-status--warning',
+    description: '当前设备仅由空间场景数据支撑，部分详情字段可能仍在同步中。',
+  }
+})
+const shouldShowSceneOnlyNotice = computed(() => deviceSourcePresentation.value.key === 'scene')
 const drawerSurfaceClass = computed(() => {
   const classMap = {
     offline: 'border-slate-200/85',
@@ -217,6 +261,14 @@ function controlLabel(device) {
             <p class="shell-kicker">Secondary Control</p>
             <h3 class="shell-title-section mt-3">{{ currentDevice.name }}</h3>
             <p class="shell-copy mt-2 text-sm">{{ room.name }} · {{ controlLabel(currentDevice) }}</p>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <span :class="deviceSourcePresentation.badgeClass">
+                {{ deviceSourcePresentation.label }}
+              </span>
+              <span class="shell-chip">
+                {{ deviceSourcePresentation.description }}
+              </span>
+            </div>
           </div>
           <div class="flex items-center gap-2">
             <span :class="feedbackClass">
@@ -254,6 +306,13 @@ function controlLabel(device) {
         class="shell-state-surface shell-state-surface--error mt-4 text-sm"
       >
         {{ actionError }}
+      </div>
+
+      <div
+        v-if="shouldShowSceneOnlyNotice"
+        class="shell-state-surface shell-state-surface--warning mt-4 text-sm"
+      >
+        当前设备仍处于 `scene-only` 状态，控制可继续执行，但详情字段可能会在后续同步中补全。
       </div>
 
       <div class="mt-5 p-4" :class="actionSurfaceClass">

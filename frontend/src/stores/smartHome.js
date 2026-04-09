@@ -92,11 +92,30 @@ function hasValue(value) {
   return value !== null && value !== undefined
 }
 
+function decorateDeviceSource(device, { detail = false, scene = false } = {}) {
+  const normalizedDevice = normalizeDeviceRead(device)
+  const source = detail && scene
+    ? 'merged'
+    : detail
+      ? 'detail'
+      : 'scene'
+
+  return {
+    ...normalizedDevice,
+    source,
+    isDetailBacked: detail,
+    isSceneBacked: scene,
+  }
+}
+
 function normalizeRoom(room) {
   const normalizedRoom = normalizeRoomStateRead(room)
   return {
     ...normalizedRoom,
-    devices: sortDevices(filterDisplayDevices(normalizedRoom.devices ?? [])),
+    devices: sortDevices(
+      filterDisplayDevices(normalizedRoom.devices ?? [])
+        .map((device) => decorateDeviceSource(device, { detail: true })),
+    ),
   }
 }
 
@@ -104,7 +123,10 @@ function normalizeSpatialRoom(room) {
   const normalizedRoom = normalizeRoomStateRead(room)
   return {
     ...normalizedRoom,
-    devices: sortDevices(filterDisplayDevices(normalizedRoom.devices ?? [])),
+    devices: sortDevices(
+      filterDisplayDevices(normalizedRoom.devices ?? [])
+        .map((device) => decorateDeviceSource(device, { scene: true })),
+    ),
   }
 }
 
@@ -142,11 +164,11 @@ function mergeRoomDevices(detailDevices = [], sceneDevices = []) {
     const detailDevice = detailDevicesById.get(deviceId) ?? null
 
     if (!detailDevice) {
-      return normalizeDeviceRead(sceneDevice)
+      return decorateDeviceSource(sceneDevice, { scene: true })
     }
 
     if (!sceneDevice) {
-      return normalizeDeviceRead(detailDevice)
+      return decorateDeviceSource(detailDevice, { detail: true })
     }
 
     const mergedDevice = {
@@ -162,7 +184,7 @@ function mergeRoomDevices(detailDevices = [], sceneDevices = []) {
       media_source_options: detailDevice.media_source_options ?? sceneDevice.media_source_options ?? [],
     }
 
-    return normalizeDeviceRead(mergedDevice)
+    return decorateDeviceSource(mergedDevice, { detail: true, scene: true })
   })
 }
 
@@ -274,6 +296,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const selectedRoomId = ref(null)
   const pendingDeviceIds = ref([])
   const spatialRefreshTimer = ref(null)
+  const catalogRefreshTimer = ref(null)
+  const catalogRefreshPromise = ref(null)
+  const catalogRefreshQueued = ref(false)
   const actionFeedback = ref({ status: 'idle', message: '', deviceId: null, updatedAt: '' })
   const feedbackTimer = ref(null)
   const visualActivity = ref([])
@@ -545,13 +570,20 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     manualDisconnect.value = false
     connectionStatus.value = reconnectAttempt.value > 0 ? 'reconnecting' : 'connecting'
+    const shouldRefreshAfterOpen = reconnectAttempt.value > 0
 
     const ws = new WebSocket(resolveWebSocketUrl())
     socket.value = ws
 
     ws.addEventListener('open', () => {
+      reconnectTimer.value = null
       connectionStatus.value = 'connected'
       reconnectAttempt.value = 0
+
+      // 仅在重连成功后补拉一次，弥补断线期间可能漏掉的 patch。
+      if (shouldRefreshAfterOpen) {
+        scheduleCatalogRefresh(60)
+      }
     })
 
     ws.addEventListener('message', (event) => {
@@ -606,6 +638,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       spatialRefreshTimer.value = null
     }
 
+    if (catalogRefreshTimer.value) {
+      window.clearTimeout(catalogRefreshTimer.value)
+      catalogRefreshTimer.value = null
+    }
+
+    catalogRefreshQueued.value = false
+
     if (feedbackTimer.value) {
       window.clearTimeout(feedbackTimer.value)
       feedbackTimer.value = null
@@ -627,6 +666,78 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }, delay)
   }
 
+  function runCatalogRefresh() {
+    if (catalogRefreshPromise.value) {
+      catalogRefreshQueued.value = true
+      return catalogRefreshPromise.value
+    }
+
+    const refreshPromise = (async () => {
+      await Promise.allSettled([fetchInitialState()])
+      await Promise.allSettled([fetchSpatialScene(activeZoneId.value, { silent: true })])
+    })()
+
+    catalogRefreshPromise.value = refreshPromise.finally(() => {
+      catalogRefreshPromise.value = null
+
+      if (catalogRefreshQueued.value) {
+        catalogRefreshQueued.value = false
+        scheduleCatalogRefresh(180)
+      }
+    })
+
+    return catalogRefreshPromise.value
+  }
+
+  function scheduleCatalogRefresh(delay = 180) {
+    if (catalogRefreshPromise.value) {
+      catalogRefreshQueued.value = true
+      return catalogRefreshPromise.value
+    }
+
+    if (catalogRefreshTimer.value) {
+      window.clearTimeout(catalogRefreshTimer.value)
+    }
+
+    catalogRefreshTimer.value = window.setTimeout(() => {
+      catalogRefreshTimer.value = null
+      runCatalogRefresh().catch(() => {})
+    }, delay)
+
+    return null
+  }
+
+  function findDeviceRoomsById(deviceId) {
+    if (deviceId === null || deviceId === undefined) {
+      return { detailRoom: null, sceneRoom: null }
+    }
+
+    return {
+      detailRoom: rooms.value.find((room) => room.devices.some((device) => device.id === deviceId)) ?? null,
+      sceneRoom: spatialScene.value.rooms.find((room) => room.devices.some((device) => device.id === deviceId)) ?? null,
+    }
+  }
+
+  function prepareRealtimeDevicePatch(devicePatch) {
+    const { detailRoom, sceneRoom } = findDeviceRoomsById(devicePatch.id)
+    const previousRoomId = detailRoom?.id ?? sceneRoom?.id ?? null
+    const resolvedDevicePatch = (!hasValue(devicePatch.room_id) && hasValue(previousRoomId))
+      ? { ...devicePatch, room_id: previousRoomId }
+      : devicePatch
+
+    const movedToUnknownDetailRoom = (
+      hasValue(resolvedDevicePatch.room_id)
+      && hasValue(previousRoomId)
+      && resolvedDevicePatch.room_id !== previousRoomId
+      && !rooms.value.some((room) => room.id === resolvedDevicePatch.room_id)
+    )
+
+    return {
+      devicePatch: resolvedDevicePatch,
+      movedToUnknownDetailRoom,
+    }
+  }
+
   function handleRealtimeMessage(message) {
     if (message.type === 'connection_established' || message.type === 'pong') {
       return
@@ -634,22 +745,29 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     if (message.type === 'catalog_updated') {
       // 目录结构变化时同时刷新主面板与空间图，避免前端手动推导布局。
-      fetchInitialState().catch(() => {})
-      fetchSpatialScene(activeZoneId.value, { silent: true }).catch(() => {})
+      scheduleCatalogRefresh()
       return
     }
 
     if (message.type === 'device_state_updated' && message.devicePatch) {
+      const realtimeUpdate = prepareRealtimeDevicePatch(message.devicePatch)
+      const devicePatch = realtimeUpdate.devicePatch
+
       recordVisualActivity({
-        deviceId: message.devicePatch.id,
-        roomId: message.devicePatch.room_id,
-        domain: message.devicePatch.entity_domain ?? message.devicePatch.type ?? 'generic',
+        deviceId: devicePatch.id,
+        roomId: devicePatch.room_id,
+        domain: devicePatch.entity_domain ?? devicePatch.type ?? 'generic',
         status: 'realtime',
         source: 'realtime',
       })
-      upsertDevice(message.devicePatch)
-      upsertSpatialDevice(message.devicePatch)
-      scheduleSpatialRefresh()
+      upsertDevice(devicePatch)
+      upsertSpatialDevice(devicePatch)
+
+      if (realtimeUpdate.movedToUnknownDetailRoom) {
+        scheduleCatalogRefresh(60)
+      } else {
+        scheduleSpatialRefresh()
+      }
     }
   }
 
