@@ -57,7 +57,7 @@ function resolveAssetUrl(path) {
 
 function resolveWebSocketUrl(path = '/ws/devices') {
   if (API_BASE_URL) {
-    // 璺ㄥ煙閮ㄧ讲鏃跺厑璁告樉寮忔寚瀹?API 鍩哄湴鍧€锛屽啀鎺ㄥ鍑哄搴旂殑 WebSocket 鍦板潃銆?
+    // 跨域部署时允许显式指定 API 基地址，再推导对应的 WebSocket 地址。
     const url = new URL(API_BASE_URL)
     url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:'
     url.pathname = path
@@ -887,7 +887,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }
 
     if (message.type === 'catalog_updated') {
-      // 鐩綍缁撴瀯鍙樺寲鏃跺悓鏃跺埛鏂颁富闈㈡澘涓庣┖闂村浘锛岄伩鍏嶅墠绔墜鍔ㄦ帹瀵煎竷灞€銆?
+      // 目录结构变更时同步刷新主面板和空间视图，避免前端手动推导布局。
       scheduleCatalogRefresh()
       return
     }
@@ -1625,5 +1625,4 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     initialize,
   }
 })
-
 
