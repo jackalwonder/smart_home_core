@@ -196,6 +196,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const devShowcaseSeeded = ref(false)
   const userSelectedRoom = ref(false)
   const isOffline = computed(() => ['disconnected', 'reconnecting', 'error'].includes(connectionStatus.value))
+  const realtimePatchQueue = new Map()
+  let realtimeFlushTimer = null
 
   function pushNotification(type, message, duration = 3200) {
     notificationStore.pushToast({
@@ -927,6 +929,12 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       feedbackTimer.value = null
     }
 
+    if (realtimeFlushTimer) {
+      window.clearTimeout(realtimeFlushTimer)
+      realtimeFlushTimer = null
+      realtimePatchQueue.clear()
+    }
+
     if (socket.value) {
       socket.value.close()
       socket.value = null
@@ -1123,7 +1131,55 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       && Boolean(message?.device)
   }
 
-  function applyRealtimeDevicePatch(devicePatch, options = {}) {
+  function resolveRealtimePatchIdentity(devicePatch) {
+    if (hasValue(devicePatch?.id)) {
+      return { key: `id:${devicePatch.id}`, patch: devicePatch }
+    }
+
+    const entityId = `${devicePatch?.ha_entity_id ?? devicePatch?.entity_id ?? ''}`.trim()
+    if (!entityId) {
+      return { key: null, patch: devicePatch }
+    }
+
+    const matchedDevice = Object.values(devicesById.value)
+      .find((device) => `${device?.ha_entity_id ?? device?.entity_id ?? ''}`.trim() === entityId)
+
+    return {
+      key: `entity:${entityId}`,
+      patch: hasValue(matchedDevice?.id)
+        ? { ...devicePatch, id: matchedDevice.id }
+        : devicePatch,
+    }
+  }
+
+  function flushRealtimePatchQueue() {
+    realtimeFlushTimer = null
+    const batch = [...realtimePatchQueue.values()]
+    realtimePatchQueue.clear()
+
+    batch.forEach((queuedPatch) => {
+      const realtimeUpdate = prepareRealtimeDevicePatch(queuedPatch)
+      const nextDevice = applyDeviceEntityPatch(realtimeUpdate.devicePatch)
+      if (!nextDevice) {
+        scheduleCompensationRefresh(60)
+        return
+      }
+
+      recordVisualActivity({
+        deviceId: nextDevice.id,
+        roomId: nextDevice.room_id,
+        domain: nextDevice.entity_domain ?? nextDevice.type ?? 'generic',
+        status: 'realtime',
+        source: 'realtime',
+      })
+
+      if (realtimeUpdate.movedToUnknownDetailRoom || !hasValue(nextDevice.room_id) || !hasValue(roomsById.value[nextDevice.room_id])) {
+        scheduleCompensationRefresh(60)
+      }
+    })
+  }
+
+  function enqueueRealtimePatch(devicePatch, options = {}) {
     const { seq = null } = options
     if (seq !== null && shouldCompensateForSeq(seq)) {
       scheduleCompensationRefresh(60)
@@ -1132,28 +1188,33 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       rememberRealtimeSeq(seq)
     }
 
-    const realtimeUpdate = prepareRealtimeDevicePatch(devicePatch)
-    const nextDevice = applyDeviceEntityPatch(realtimeUpdate.devicePatch)
-    if (!nextDevice) {
+    const normalizedPatch = normalizeDevicePatchV2(devicePatch)
+    const { key, patch } = resolveRealtimePatchIdentity(normalizedPatch)
+    if (!key) {
       scheduleCompensationRefresh(60)
       return
     }
 
-    recordVisualActivity({
-      deviceId: nextDevice.id,
-      roomId: nextDevice.room_id,
-      domain: nextDevice.entity_domain ?? nextDevice.type ?? 'generic',
-      status: 'realtime',
-      source: 'realtime',
+    const previousQueuedPatch = realtimePatchQueue.get(key) ?? {}
+    realtimePatchQueue.set(key, {
+      ...previousQueuedPatch,
+      ...patch,
+      id: patch.id ?? previousQueuedPatch.id ?? null,
+      ha_entity_id: patch.ha_entity_id ?? previousQueuedPatch.ha_entity_id,
+      entity_id: patch.entity_id ?? previousQueuedPatch.entity_id,
     })
 
-    if (realtimeUpdate.movedToUnknownDetailRoom || !hasValue(nextDevice.room_id) || !hasValue(roomsById.value[nextDevice.room_id])) {
-      scheduleCompensationRefresh(60)
+    if (realtimeFlushTimer !== null) {
+      return
     }
+
+    realtimeFlushTimer = window.setTimeout(() => {
+      flushRealtimePatchQueue()
+    }, 40)
   }
 
   function handleRealtimePatchV2(message) {
-    applyRealtimeDevicePatch(normalizeDevicePatchV2(message.device ?? {}), {
+    enqueueRealtimePatch(message.device ?? {}, {
       seq: Number(message.seq),
     })
   }
@@ -1170,7 +1231,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }
 
     if (message.type === 'device_state_updated' && message.devicePatch) {
-      applyRealtimeDevicePatch(message.devicePatch)
+      enqueueRealtimePatch(message.devicePatch)
     }
   }
 
