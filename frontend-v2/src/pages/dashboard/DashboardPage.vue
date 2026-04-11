@@ -1,0 +1,58 @@
+﻿<script setup>
+import AppTopBar from '../../features/topbar/AppTopBar.vue'
+import BottomStatsBar from '../../features/bottom-stats/BottomStatsBar.vue'
+import ClimateCategoryModal from '../../features/category-modals/ClimateCategoryModal.vue'
+import DeviceCategoryModal from '../../features/category-modals/DeviceCategoryModal.vue'
+import EventConsole from '../../features/event-console/EventConsole.vue'
+import FloorplanStage from '../../features/floorplan-stage/FloorplanStage.vue'
+import RightSidebar from '../../features/right-sidebar/RightSidebar.vue'
+import { useDashboardStore } from '../../stores/dashboard'
+
+const dashboardStore = useDashboardStore()
+</script>
+
+<template>
+  <div class="dashboard-page">
+    <AppTopBar />
+
+    <main class="dashboard-main">
+      <section class="dashboard-stage-wrap">
+        <FloorplanStage />
+      </section>
+
+      <aside class="dashboard-sidebar">
+        <RightSidebar />
+      </aside>
+    </main>
+
+    <div class="dashboard-bottom-shell">
+      <BottomStatsBar />
+      <EventConsole />
+    </div>
+
+    <DeviceCategoryModal
+      :open="dashboardStore.activeCategory === 'lights'"
+      :title="`${dashboardStore.highlightedRoomLabel}灯光`"
+      icon="light"
+      :count="dashboardStore.filteredLightDevices.length"
+      :devices="dashboardStore.filteredLightDevices"
+      :selected-device-id="dashboardStore.selectedStageDeviceId"
+      @close="dashboardStore.closeCategoryModal()"
+      @focus="dashboardStore.focusDevice($event, 'lights')"
+      @toggle="dashboardStore.toggleLightDevice"
+    />
+
+    <ClimateCategoryModal
+      :open="dashboardStore.activeCategory === 'climate'"
+      :title="`${dashboardStore.highlightedRoomLabel}温控`"
+      :count="dashboardStore.filteredClimateDevices.length"
+      :devices="dashboardStore.filteredClimateDevices"
+      :selected-device-id="dashboardStore.selectedStageDeviceId"
+      @close="dashboardStore.closeCategoryModal()"
+      @focus="dashboardStore.focusDevice($event, 'climate')"
+      @toggle-power="dashboardStore.toggleClimatePower"
+      @adjust-temp="dashboardStore.adjustClimateTemp"
+      @set-mode="dashboardStore.setClimateMode"
+    />
+  </div>
+</template>
