@@ -1,326 +1,389 @@
-# 智能家居管理系统 - 完整 Code Review
+# Code Review
 
-**审查日期**：2024-04-07
-**项目**：Smart Home Management System
-**总体评分**：6.4/10 (需要系统性改进)
+## �ܹ����� (Executive Summary)
 
----
+��ǰ�ܹ��ڡ���Ƶ״̬ͬ���������´���һ��������ȫջ������·��
 
-## 📋 执行总结
+`Home Assistant WS ��Ƶ�¼�/��ѹ -> ��˴����������󲹳� -> ǰ������д Pinia -> deep watch ȫ��д localStorage -> 3D ���������ؽ����� -> WebGL ��Դ�ͷŲ�����`
 
-### 主要发现
+������ǵ����˻������Ǽ���������״̬Խ��Խ�ɣ����߳�ԽдԽ����Three.js Խ��Խ�أ��Դ����й©����ǰϵͳȱ�١��¼��ϲ����������ֲ����¡��ϸ���Լ�������ͷš���������ߡ�
 
-| 类别 | 级别 | 数量 | 影响 |
-|------|------|------|------|
-| 性能问题 | 🔴 HIGH | 5 | 严重：N+1查询、内存泄漏 |
-| 代码质量 | 🟠 MEDIUM | 12 | 中等：类型缺失、重复代码 |
-| 架构设计 | 🟡 LOW | 4 | 轻微：模块分离不足 |
-| 安全性 | 🟢 OK | 2 | 轻微：日志泄露、配置硬编码 |
+## ��Σ����������嵥 (Action Items)
 
-### 快速数据
+### P0
 
-- **后端代码行数**：~15,000 LOC
-- **前端组件最大体积**：2,574 行 (ImmersiveFloorPlan3D.vue)
-- **测试覆盖率**：~0% (建议目标: 80%+)
-- **Type覆盖率**：~35% (建议目标: 95%+)
-- **技术债务评分**：7/10 (中等偏高)
+1. `backend/app/services/home_assistant_ws.py`
+   �������ݿ�дʧ�ܡ��͡�δ֪ʵ�巢�֡���ͬһ `False` ��֧�𿪡���ǰʵ�ֻ�� DB �������г���ʵ�壬�����Զ�����籩��
 
----
+2. `backend/app/services/spatial_service.py`
+   ֹͣ������·����ֱ����˲ʱ `get_states()` �����տռ��ٲá���ǰ�㷨�Բ����������󲻰�ȫ���������з��䡢����豸���ա�
 
-## 🔴 优先级 1: 关键问题
+3. `frontend/src/stores/smartHome.js`
+   �� `device_state_updated` ���밴 `entity_id/device_id` �ϲ������������У���ֹ��������д Pinia�������� WS ��ѹһ��׷ƽ��ǰ�˱�Ȼ���� re-render �籩��
 
-### 1.1 N+1 查询问题
+### P1
 
-**位置**：
-- `backend/app/services/catalog_service.py:142-148`
-- `backend/app/services/llm_service.py:86-98`
+1. `backend/app/services/home_assistant_ws.py`
+   �� WS reader �� DB д�����ĳɡ����� -> �н���� -> worker �ϲ����¡�����ǰ�������ѻᵼ��״̬ͬ����ѹ��
 
-**问题描述**：
-```python
-# ❌ 错误做法 - 导致N+1查询
-def list_room_snapshots():
-    rooms = session.query(Room).all()  # 1个查询
-    for room in rooms:
-        snapshots.append({
-            'zone': room.zone.name,  # N个额外查询！
-            'devices': room.devices,  # 又是N个查询
-        })
+2. `backend/app/main.py`
+   �Ƴ������� `create_all()` ������ʱ schema �޲���Schema �������Ǩ�Ƶ���ʽ migration ���̣�����ั������������
+
+3. `backend/app/models.py`
+   Ϊ `PendingIntent` ���ӡ����û�Ψһ��Ծ��¼��Լ�������ѡ���ȡ��ʧ�����������ԭ�Ӳ�����������ȫ��·��̬��
+
+4. `frontend/src/stores/smartHome.js`
+   ������ `deep watch` �ĳɽ�����Ŀ��ճ־û�����ֹ��ÿ��ϸ���� patch ������ `JSON.stringify` д `localStorage`��
+
+5. `frontend/src/components/ImmersiveFloorPlan3D.vue`
+   ���豸״̬�仯�������� `rebuildScene()` �����Ƶ״̬����ֻ���� marker/material �ֲ����£������ؽ����� scene graph��
+
+6. `frontend/src/components/ImmersiveFloorPlan3D.vue`
+   �����ͷ� `geometry/material/texture/renderLists`����Ϊģ��/�����������Ӱ汾���ƣ���ֹ����Դ������ GPU й©��
+
+7. `frontend/src/adapters/*.js`
+   �����ӡ��̴���һ��������Ϊ����ʽУ�� + �������� + ������־����ȱ�ֶ�ʱ���ܾ�Ĭα��Ϸ�����
+
+## �����޸����� (Critical Patches)
+
+### 1. Frontend: �ϲ� WS patch������д Pinia
+
+```js
+// frontend/src/stores/smartHome.js
+
+const realtimePatchQueue = new Map()
+let realtimeFlushTimer = null
+
+function enqueueRealtimePatch(devicePatch, options = {}) {
+  const normalized = normalizeDevicePatchV2(devicePatch)
+  if (!hasValue(normalized.id)) {
+    scheduleCompensationRefresh(60)
+    return
+  }
+
+  const previous = realtimePatchQueue.get(normalized.id) ?? {}
+  realtimePatchQueue.set(normalized.id, {
+    ...previous,
+    ...normalized,
+    id: normalized.id,
+  })
+
+  if (options.seq !== null && options.seq !== undefined) {
+    if (shouldCompensateForSeq(Number(options.seq))) {
+      scheduleCompensationRefresh(60)
+    }
+    rememberRealtimeSeq(Number(options.seq))
+  }
+
+  if (realtimeFlushTimer !== null) {
+    return
+  }
+
+  realtimeFlushTimer = window.setTimeout(() => {
+    realtimeFlushTimer = null
+    const batch = [...realtimePatchQueue.values()]
+    realtimePatchQueue.clear()
+
+    batch.forEach((patch) => {
+      const realtimeUpdate = prepareRealtimeDevicePatch(patch)
+      const nextDevice = applyDeviceEntityPatch(realtimeUpdate.devicePatch)
+      if (!nextDevice) {
+        scheduleCompensationRefresh(60)
+        return
+      }
+
+      if (
+        realtimeUpdate.movedToUnknownDetailRoom
+        || !hasValue(nextDevice.room_id)
+        || !hasValue(roomsById.value[nextDevice.room_id])
+      ) {
+        scheduleCompensationRefresh(60)
+      }
+    })
+  }, 40)
+}
+
+function handleRealtimePatchV2(message) {
+  enqueueRealtimePatch(message.device ?? {}, { seq: Number(message.seq) })
+}
+
+function handleRealtimeMessage(message) {
+  if (message.type === 'catalog_updated') {
+    scheduleCatalogRefresh()
+    return
+  }
+
+  if (message.type === 'device_state_updated' && message.devicePatch) {
+    enqueueRealtimePatch(message.devicePatch)
+  }
+}
 ```
 
-**影响**：
-- 100个房间 = 201个数据库查询（预期: 1个）
-- 响应时间从 50ms 增加到 500ms+
+### 2. Frontend: ���� localStorage �־û�
 
-**修复方案**：
-```python
-# ✅ 正确做法 - 使用joinedload
-rooms = session.query(Room).options(
-    joinedload(Room.zone),
-    joinedload(Room.devices),
-).all()
+```js
+// frontend/src/stores/smartHome.js
+
+function throttle(fn, wait = 300) {
+  let timer = null
+  let pendingArgs = null
+
+  return (...args) => {
+    pendingArgs = args
+    if (timer) return
+
+    timer = window.setTimeout(() => {
+      timer = null
+      fn(...pendingArgs)
+      pendingArgs = null
+    }, wait)
+  }
+}
+
+const persistCatalogCache = throttle(() => {
+  const cache = buildCatalogEntityCache()
+  if (hasCatalogEntityCache(cache)) {
+    writeCache(CACHE_KEYS.catalogEntities, cache)
+  } else {
+    removeCache(CACHE_KEYS.catalogEntities)
+  }
+}, 400)
+
+const persistSceneCache = throttle(() => {
+  const cache = buildSceneEntityCache()
+  if (hasSceneEntityCache(cache)) {
+    writeCache(CACHE_KEYS.sceneEntities, cache)
+  } else {
+    removeCache(CACHE_KEYS.sceneEntities)
+  }
+}, 400)
+
+watch([roomsById, devicesById, roomDeviceIdsByRoomId], persistCatalogCache, { deep: true })
+watch([sceneMeta, sceneLayoutByRoomId, sceneDeviceLayoutByDeviceId], persistSceneCache, { deep: true })
 ```
 
-**预期收益**：性能提升 80-90%, 响应时间减少 400ms+
+### 3. Frontend: �����ͷ� Three.js ��������Ⱦ����Դ
 
----
+```js
+// frontend/src/components/ImmersiveFloorPlan3D.vue
 
-### 1.2 WebSocket 内存泄漏
+const MATERIAL_MAP_KEYS = [
+  'map',
+  'alphaMap',
+  'aoMap',
+  'bumpMap',
+  'displacementMap',
+  'emissiveMap',
+  'envMap',
+  'lightMap',
+  'metalnessMap',
+  'normalMap',
+  'roughnessMap',
+  'specularMap',
+  'clearcoatMap',
+  'clearcoatNormalMap',
+  'clearcoatRoughnessMap',
+  'sheenColorMap',
+  'sheenRoughnessMap',
+  'transmissionMap',
+  'thicknessMap',
+]
 
-**位置**：`backend/app/services/realtime.py:59-76`
+function disposeMaterial(material) {
+  MATERIAL_MAP_KEYS.forEach((key) => {
+    const texture = material?.[key]
+    if (texture?.dispose) {
+      texture.dispose()
+      material[key] = null
+    }
+  })
+  material?.dispose?.()
+}
 
-**问题描述**：
-- WebSocket 连接断开时，可能因异常导致未被清理
-- 长连接无超时检查，可能积累僵尸连接
-- 无定期心跳验证
+function teardownScene() {
+  clearLongPressTimer()
+  window.removeEventListener('resize', handleResize)
+  window.removeEventListener('keydown', handleKeyDown)
+  window.removeEventListener('keyup', handleKeyUp)
+  cancelAnimationFrame(sceneRefs.animationFrame)
 
-**修复方案**：
-```python
-# 实现心跳超时管理
-async def _heartbeat_monitor(self, ws_id: str, timeout: int = 30):
-    last_heartbeat = time.time()
-    while ws_id in self.connections:
-        if time.time() - last_heartbeat > timeout:
-            await self._cleanup_connection(ws_id)
-        await asyncio.sleep(10)
+  const renderer = sceneRefs.renderer
+  if (renderer) {
+    renderer.domElement.removeEventListener('pointerdown', handlePointerDown)
+    renderer.domElement.removeEventListener('pointermove', handlePointerMove)
+    renderer.domElement.removeEventListener('pointerup', handlePointerUp)
+    renderer.domElement.removeEventListener('pointerleave', handlePointerCancel)
+    renderer.domElement.removeEventListener('pointercancel', handlePointerCancel)
+  }
 
-# 在异常处理中确保清理
-async def broadcast(self, message):
-    disconnected = set()
-    for ws_id, ws in self.connections.items():
-        try:
-            await ws.send_json(message)
-        except Exception as e:
-            logger.error(f"WebSocket {ws_id} 发送失败: {e}")
-            disconnected.add(ws_id)
+  sceneRefs.controls?.dispose()
+  clearImportedModel()
+  disposeDynamicScene()
 
-    # 确保清理断开连接
-    for ws_id in disconnected:
-        await self._cleanup_connection(ws_id)
+  renderer?.renderLists?.dispose?.()
+  renderer?.dispose()
+  renderer?.forceContextLoss?.()
+
+  if (renderer?.domElement?.parentNode) {
+    renderer.domElement.parentNode.removeChild(renderer.domElement)
+  }
+}
 ```
 
----
+### 4. Frontend: ������/ģ�ͼ��ؼӰ汾����
 
-### 1.3 异步事件循环冲突
+```js
+// frontend/src/components/ImmersiveFloorPlan3D.vue
 
-**位置**：`backend/app/services/home_assistant_ws.py:228`
+sceneRefs.planTextureToken = 0
 
-**问题**：
-```python
-# ❌ 在线程上下文中调用 asyncio.run() = RuntimeError
-def _on_connection_ready(self):
-    asyncio.run(home_assistant_import_service.import_home_assistant_entities())
+function loadPlanTexture(url, onApply) {
+  const loader = new THREE.TextureLoader()
+  sceneRefs.planTextureToken += 1
+  const token = sceneRefs.planTextureToken
+
+  loader.load(url, (texture) => {
+    if (token !== sceneRefs.planTextureToken) {
+      texture.dispose()
+      return
+    }
+    onApply(texture)
+  })
+}
+
+function clearImportedModel() {
+  sceneRefs.modelLoadToken += 1
+  sceneRefs.planTextureToken += 1
+
+  const root = sceneRefs.modelRoot
+  if (!root) return
+
+  for (const child of [...root.children]) {
+    root.remove(child)
+    disposeObject(child)
+  }
+}
 ```
 
-**修复**：
-```python
-# ✅ 使用正确的异步模式
-async def _on_connection_ready(self):
-    await home_assistant_import_service.import_home_assistant_entities()
+### 5. Backend: ���� `missing` �� `failed`����ϴ����Զ�����
 
-# 或在线程中使用
-def _on_connection_ready(self):
-    asyncio.run_coroutine_threadsafe(
-        home_assistant_import_service.import_home_assistant_entities(),
-        self.loop
+```python
+# backend/app/services/home_assistant_ws.py
+
+from enum import Enum
+
+
+class DeviceUpdateResult(str, Enum):
+    UPDATED = "updated"
+    MISSING = "missing"
+    FAILED = "failed"
+
+
+def _update_device_state(self, entity_id: str, status: DeviceStatus, raw_state: str) -> DeviceUpdateResult:
+    session = SessionLocal()
+    try:
+        device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
+        if device is None:
+            return DeviceUpdateResult.MISSING
+
+        device.current_status = status
+        session.commit()
+        session.refresh(device)
+        device_realtime_hub.publish_threadsafe(build_device_update_event(device, raw_state=raw_state))
+        return DeviceUpdateResult.UPDATED
+    except Exception:
+        session.rollback()
+        logger.exception("Failed to update device state for entity %s.", entity_id)
+        return DeviceUpdateResult.FAILED
+    finally:
+        session.close()
+
+
+async def _handle_state_changed(self, data: dict[str, Any]) -> None:
+    entity_id = data.get("entity_id")
+    new_state = data.get("new_state") or {}
+    raw_state = new_state.get("state")
+    if not entity_id or raw_state is None:
+        return
+
+    mapped_status = self._map_home_assistant_state(raw_state)
+    result = await asyncio.to_thread(self._update_device_state, entity_id, mapped_status, raw_state)
+
+    if result is DeviceUpdateResult.UPDATED:
+        return
+    if result is DeviceUpdateResult.FAILED:
+        return
+
+    await self._attempt_auto_import(entity_id, mapped_status)
+```
+
+### 6. Backend: �� presence ���������ռ��ٲ�
+
+```python
+# backend/app/services/spatial_service.py
+
+import asyncio
+import time
+
+_presence_lock = asyncio.Lock()
+_presence_snapshot: dict[str, tuple[str, float]] = {}
+PRESENCE_TTL_SECONDS = 8.0
+
+
+async def remember_presence(entity_id: str, room_name: str) -> None:
+    async with _presence_lock:
+        _presence_snapshot[entity_id] = (room_name, time.monotonic())
+
+
+async def get_contextual_room(source_device: str) -> str:
+    source_device_name = source_device.strip()
+
+    mapped_room = STATIC_DEVICE_ROOM_MAP.get(source_device_name)
+    if mapped_room is not None:
+        return mapped_room
+
+    now = time.monotonic()
+    async with _presence_lock:
+        active_rooms = [
+            room_name
+            for room_name, seen_at in _presence_snapshot.values()
+            if now - seen_at <= PRESENCE_TTL_SECONDS
+        ]
+
+    distinct_rooms = sorted(set(active_rooms))
+    if len(distinct_rooms) != 1:
+        return AMBIGUOUS_ROOM
+
+    return distinct_rooms[0]
+```
+
+### 7. Backend: Ϊ `PendingIntent` ����Ψһ��ԾԼ��
+
+```python
+# backend/app/models.py
+
+from sqlalchemy import Index
+from sqlalchemy.sql import expression
+
+
+class PendingIntent(Base):
+    __tablename__ = "pending_intents"
+    __table_args__ = (
+        Index(
+            "uq_pending_intents_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=expression.column("is_active").is_(True),
+        ),
     )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    user_id: Mapped[str] = mapped_column(String(255), index=True)
+    original_command: Mapped[str] = mapped_column(Text())
+    is_active: Mapped[bool] = mapped_column(Boolean(), default=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=False), default=func.now())
 ```
 
----
+## ����
 
-### 1.4 前端性能瓶颈 - 组件过大
-
-**位置**：`frontend/src/components/ImmersiveFloorPlan3D.vue` (2,574 行)
-
-**问题**：
-- 单个组件处理所有3D逻辑
-- 过度的watch依赖（9个依赖项）导致频繁完全场景重建
-- Three.js 资源未正确清理
-
-**修复方案**：
-
-```
-重构前：
-ImmersiveFloorPlan3D.vue (2574行) - 包含所有逻辑
-
-重构后：
-├── ImmersiveFloorPlan3D.vue (500行) - UI容器
-├── useScene3D.js (Hook - 300行) - 场景初始化
-├── useCamera.js (Hook - 250行) - 相机控制
-├── useInteraction.js (Hook - 280行) - 交互处理
-├── useWalkMode.js (Hook - 200行) - 漫游模式
-└── useMarkerGroups.js (Hook - 150行) - 标记管理
-```
-
-**预期收益**：
-- 包大小减少 30%
-- 首屏加载时间减少 40%
-- 内存占用减少 20%
-
----
-
-### 1.5 缺失类型注解
-
-**后端**：
-- ~400+ 个函数缺少类型注解
-- `Any` 类型过度使用 (建议 < 5%)
-- 当前 Type 覆盖率: ~35%
-
-**前端**：
-- 完全无 TypeScript（建议迁移）
-- 动态类型导致运行时错误
-
-**修复**：逐步添加 mypy / Pylance 检查
-
----
-
-## 🟠 优先级 2: 重要问题
-
-### 2.1 代码重复 - 状态映射
-
-**问题**：同一逻辑在多处实现
-
-| 模块 | 函数 | 代码量 |
-|------|------|-------|
-| home_assistant_ws.py | _map_home_assistant_state | 24行 |
-| home_assistant_import_service.py | _map_device_status | 32行 |
-| **重复百分比** | - | **~80%** |
-
-**修复**：提取到共享模块
-
-```python
-# backend/app/services/ha_state_mapper.py
-class HAStateMapper:
-    @staticmethod
-    def map_device_status(ha_state: str, device_type: DeviceType) -> DeviceStatus:
-        """统一的状态映射逻辑"""
-        # 实现一次，在两处调用
-```
-
----
-
-### 2.2 Complex Watch 导致性能下降
-
-**位置**：`frontend/src/components/ImmersiveFloorPlan3D.vue:202-246`
-
-```javascript
-// ❌ 问题：9个依赖项 + deep:true = 每次都完全重建场景
-watch(
-  () => [markers, analysis, modelUrl, show1, show2, show3, show4, show5, show6],
-  () => rebuildScene(),  // 这是个 ~500ms 的操作！
-  { deep: true }
-)
-```
-
-**费用**：每个依赖变化都重建整个Three.js场景
-
-**修复**：智能增量更新
-
-```javascript
-// ✅ 高效：只真正变化时更新
-const shouldRebuild = computed(() => ({
-  markers: JSON.stringify(groupedMarkers.value.map(m => m.id)),
-  showFlags: [show1, show2, show3, show4, show5, show6].join(','),
-}))
-
-watch(shouldRebuild, (newVal, oldVal) => {
-  if (newVal.markers !== oldVal.markers) rebuildMarkers()  // 增量更新
-  if (newVal.showFlags !== oldVal.showFlags) updateVisibility()
-}, { deep: false })
-```
-
----
-
-### 2.3 函数过大
-
-| 文件 | 函数 | 行数 | 复杂度 |
-|------|------|------|--------|
-| spatial_scene_service.py | _auto_layout_zone | 100+ | 🔴 极高 |
-| catalog_service.py | _serialize_device | 50+ | 🟠 高 |
-| ImmersiveFloorPlan3D.vue | rebuildScene | ~400 | 🔴 极高 |
-
-**建议**：拆分为 < 30 行的小函数
-
----
-
-## 🟡 优先级 3: 改进建议
-
-### 3.1 缺少深色模式
-
-**当前**：
-- ❌ 所有 UI 都是浅色
-- ❌ 无 `prefers-color-scheme` 支持
-- ❌ 长期使用造成眼睛疲劳
-
-**实现计划**：
-```
-1周内：基础深色主题
-2周内：动态切换控制
-3周内：3D场景适配
-```
-
----
-
-### 3.2 可访问性缺失
-
-```html
-<!-- ❌ 无屏幕阅读器标签 -->
-<button class="device-node">
-
-<!-- ✅ 正确做法 -->
-<button
-  aria-label="设备: 客厅灯, 状态: 已开启"
-  aria-pressed="true"
->
-```
-
----
-
-## 📊 评分细节
-
-| 维度 | 评分 | 备注 |
-|------|------|------|
-| **架构设计** | 7/10 | 关注点分离良好，缺少Repository Pattern |
-| **代码质量** | 6/10 | 大量类型注解缺失，函数过大 |
-| **异常处理** | 6.5/10 | 框架存在但边界情况未处理 |
-| **性能** | 5.5/10 | N+1查询、无缓存、组件过大 |
-| **安全性** | 7.5/10 | 认证授权良好，日志泄露风险 |
-| **可维护性** | 6/10 | 代码重复多，缺少文档 |
-| **3D设计** | 7.5/10 | 美观，但有优化空间 |
-| **测试覆盖** | 2/10 | 几乎无测试 |
-
----
-
-## ✅ 推荐行动计划
-
-### 第1周 - 关键修复
-- [ ] 修复 N+1 查询
-- [ ] 解决内存泄漏
-- [ ] 添加 WebSocket 心跳
-
-### 第2周 - 性能优化
-- [ ] 拆分前端大组件
-- [ ] 优化 watch 性能
-- [ ] 实现资源缓存
-
-### 第3周 - 代码质量
-- [ ] 添加类型注解
-- [ ] 提取重复代码
-- [ ] 编写单元测试
-
-### 第4周 - UI增强
-- [ ] 实现深色模式
-- [ ] 改进3D美观性
-- [ ] 添加无障碍支持
-
----
-
-## 📚 相关文档
-
-- [后端改进方案](./docs/backend-improvements.md) - 详细实施步骤
-- [前端优化指南](./docs/frontend-optimization.md) - 性能优化建议
-- [3D设计升级](./docs/3d-design-upgrade.md) - 美观性改进
-
----
-
-**审查员**：Claude Code
-**建议优先完成**：N+1 查询修复、内存泄漏修复、组件拆分
+��ǰϵͳ��Σ�յĲ��ǵ��� bug�����ǡ���˲���ʧ�� + ǰ��������Ӧ + ��Ⱦ��ȫ���ؽ�����ͬ��ɵķŴ������޸�˳��������ж� P0 ��·�������� P1 �ĳ־û�����Ⱦ����Լ���⡣
