@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 
 from loguru import logger
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 
 from app.database import run_in_threadpool_session
@@ -35,12 +35,12 @@ async def get_and_clear_active_intent(user_id: str) -> str | None:
     normalized_user_id = user_id.strip()
 
     def _get_and_clear(db: Session) -> str | None:
-        pending_intent = db.scalar(
-            select(PendingIntent)
+        pending_intent = db.execute(
+            update(PendingIntent)
             .where(PendingIntent.user_id == normalized_user_id, PendingIntent.is_active.is_(True))
-            .order_by(PendingIntent.created_at.desc(), PendingIntent.id.desc())
-            .limit(1)
-        )
+            .values(is_active=False)
+            .returning(PendingIntent)
+        ).scalars().one_or_none()
 
         if pending_intent is None:
             logger.info("No active pending intent found for user_id={}", normalized_user_id)
@@ -52,12 +52,10 @@ async def get_and_clear_active_intent(user_id: str) -> str | None:
                 pending_intent.id,
                 normalized_user_id,
             )
-            pending_intent.is_active = False
             db.commit()
             return None
 
         logger.info("Consuming active pending intent {} for user_id={}", pending_intent.id, normalized_user_id)
-        pending_intent.is_active = False
         db.commit()
         return pending_intent.original_command
 
