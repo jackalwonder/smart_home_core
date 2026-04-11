@@ -142,23 +142,23 @@ body {
 .dashboard-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--side-width);
-  align-items: start;
+  align-items: stretch;
   flex: 0 0 auto;
   min-height: 0;
 }
 
 .dashboard-stage-wrap {
   position: relative;
-  padding: 18px 18px 0;
+  padding: 18px;
+  min-width: 0;
 }
 
 .dashboard-sidebar {
   border-left: 1px solid var(--line-soft);
   background: rgba(21, 28, 45, 0.65);
   backdrop-filter: blur(14px);
-  align-self: start;
-  max-height: calc(100vh - var(--topbar-height));
-  overflow: auto;
+  min-width: 0;
+  padding: 18px 18px 18px 16px;
 }
 
 .stage {
@@ -408,6 +408,14 @@ body {
   padding: 16px;
 }
 
+.sidebar-stack--dashboard {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto auto;
+  gap: 14px;
+  height: 100%;
+  padding: 0;
+}
+
 .sidebar-panel,
 .quick-categories {
   border: 1px solid var(--line-soft);
@@ -418,6 +426,22 @@ body {
 
 .sidebar-panel {
   padding: 18px;
+}
+
+.sidebar-panel--clock {
+  padding-block: 20px 14px;
+}
+
+.sidebar-panel--weather {
+  padding-block: 18px 16px;
+}
+
+.sidebar-panel--carousel {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  min-height: 0;
+  overflow: hidden;
+  padding: 18px 18px 14px;
 }
 
 .clock-panel {
@@ -611,6 +635,67 @@ body {
   border-radius: 999px 999px 0 0;
   background: linear-gradient(180deg, rgba(130, 210, 255, 0.95), rgba(66, 120, 255, 0.48));
   box-shadow: 0 0 10px rgba(87, 148, 255, 0.18);
+}
+
+.room-environment-card--embedded {
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.notification-list--embedded {
+  gap: 10px;
+}
+
+.sidebar-carousel__track {
+  display: flex;
+  width: 100%;
+  min-height: 0;
+  transition: transform 240ms ease;
+  will-change: transform;
+}
+
+.sidebar-carousel__slide {
+  flex: 0 0 100%;
+  min-width: 0;
+}
+
+.sidebar-carousel__nav {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.sidebar-carousel__arrow {
+  width: 34px;
+  height: 34px;
+  border: 1px solid rgba(125, 190, 255, 0.16);
+  border-radius: 999px;
+  background: rgba(30, 39, 63, 0.92);
+  color: var(--text-primary);
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.sidebar-carousel__dots {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-carousel__dot {
+  width: 8px;
+  height: 8px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(152, 170, 220, 0.3);
+}
+
+.sidebar-carousel__dot.is-active {
+  width: 22px;
+  background: linear-gradient(90deg, #4d86ff, #6ba9ff);
 }
 
 .room-region-list {
@@ -919,6 +1004,10 @@ body {
   padding: 10px;
 }
 
+.quick-categories--compact {
+  padding: 8px;
+}
+
 .quick-category {
   min-height: 102px;
   border: 1px solid var(--line-soft);
@@ -951,12 +1040,13 @@ body {
 }
 
 .dashboard-bottom-shell {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) var(--side-width);
-  align-items: stretch;
   min-height: 118px;
   border-top: 1px solid var(--line-soft);
   background: rgba(17, 23, 38, 0.78);
+}
+
+.dashboard-bottom-shell--stats-only {
+  display: block;
 }
 
 .stats-bar {
@@ -981,16 +1071,37 @@ body {
   font-size: 2rem;
 }
 
+.dashboard-stage-console {
+  position: absolute;
+  right: 36px;
+  bottom: 26px;
+  z-index: 4;
+  width: min(26vw, 320px);
+  pointer-events: none;
+}
+
 .event-console {
-  padding: 16px 18px;
-  border-left: 1px solid var(--line-soft);
-  background: rgba(14, 19, 31, 0.86);
+  max-height: 214px;
+  padding: 14px 16px;
+  border: 1px solid rgba(112, 132, 188, 0.16);
+  border-radius: 18px;
+  background: rgba(10, 14, 24, 0.76);
+  box-shadow: 0 18px 42px rgba(3, 7, 18, 0.32);
+  backdrop-filter: blur(14px);
+  overflow: hidden;
   color: #f0b45b;
   font-family: "Consolas", "SFMono-Regular", monospace;
+  pointer-events: auto;
 }
 
 .event-console__item + .event-console__item {
-  margin-top: 8px;
+  margin-top: 6px;
+}
+
+.event-console__item {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .category-modal {
@@ -1018,6 +1129,10 @@ body {
   border-radius: 30px;
   background: linear-gradient(180deg, rgba(29, 35, 52, 0.98), rgba(22, 27, 41, 0.98));
   box-shadow: 0 40px 100px rgba(0, 0, 0, 0.45);
+}
+
+.category-modal__panel--single-climate {
+  width: min(92vw, 680px);
 }
 
 .category-modal__header {
@@ -1972,6 +2087,11 @@ body {
   padding: 1.6rem;
 }
 
+.climate-grid--single {
+  grid-template-columns: minmax(320px, 360px);
+  justify-content: center;
+}
+
 .climate-card {
   padding: 1rem;
   border: 1px solid rgba(103, 122, 177, 0.12);
@@ -2322,10 +2442,10 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-sidebar,
-  .event-console {
+  .dashboard-sidebar {
     border-left: 0;
     border-top: 1px solid var(--line-soft);
+    padding-top: 16px;
   }
 
   .quick-categories {
@@ -2338,6 +2458,20 @@ body {
 
   .category-modal__panel {
     width: min(94vw, 920px);
+  }
+
+  .sidebar-stack--dashboard {
+    grid-template-rows: repeat(5, auto);
+  }
+
+  .dashboard-stage-console {
+    position: static;
+    width: auto;
+    margin-top: 14px;
+  }
+
+  .event-console {
+    max-height: none;
   }
 
   .category-modal__grid {

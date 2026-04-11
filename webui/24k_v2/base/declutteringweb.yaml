@@ -1,0 +1,249 @@
+
+mini_graph_card_template:
+  card:
+    type: custom:mini-graph-card
+    name: '[[name1]]'
+    icon: '[[icon]]'
+    entities:
+      - entity: '[[entity1]]'
+        name: '[[name2]]'
+        show_state: true
+        color_thresholds:
+          - color: '#4dd2ff'
+            value: 17
+          - color: '#01a4db'
+            value: 20
+          - color: '#fccd68'
+            value: 26
+          - color: '#ff1a1a'
+            value: 30
+      - entity: '[[entity2]]'
+        name: '[[name3]]'
+        show_state: true
+        color_thresholds:
+          - color: '#4dd2ff'
+            value: 35
+          - color: '#01a4db'
+            value: 50
+          - color: '#fccd68'
+            value: 70
+          - color: '#ff1a1a'
+            value: 80
+    update_interval: 100
+    show:
+      icon: true
+      legend: true
+      name: true
+flex_horseshoe_card_template:
+  card:
+    type: custom:flex-horseshoe-card
+    entities:
+      - entity: '[[entity1]]'
+        name: 设备信息
+        decimals: 0
+        unit: °C
+      - entity: '[[entity2]]'
+        decimals: 0
+        unit: '%'
+      - entity: '[[entity3]]'
+        decimals: 0
+        unit: '%'
+    show:
+      horseshoe_style: colorstop
+    layout:
+      hlines:
+        - id: 0
+          xpos: 50
+          ypos: 42
+          length: 40
+          styles:
+            - stroke: var(--primary-text-color);
+            - stroke-width: 5;
+            - stroke-linecap: round;
+            - opacity: 0.7;
+            - background-color: rgb(35,35,42)
+      states:
+        - id: 0
+          entity_index: 0
+          xpos: 50
+          ypos: 34
+          styles:
+            - font-size: 3em;
+        - id: 1
+          entity_index: 1
+          xpos: 28
+          ypos: 57
+          styles:
+            - text-anchor: start;
+            - font-size: 1.3em;
+        - id: 2
+          entity_index: 2
+          xpos: 28
+          ypos: 72
+          styles:
+            - text-anchor: start;
+            - font-size: 1.3em;
+      names:
+        - id: 0
+          entity_index: 0
+          xpos: 50
+          ypos: 95
+    horseshoe_scale:
+      min: 0
+      max: 100
+      width: 10
+    color_stops:
+      '0': green
+      '60': orange
+      '80': red
+
+
+# sensor_card_template:
+#   default:
+#     - entity: sensor.example
+#     - name: 温度示例
+#   card:
+#     type: sensor
+#     entity: '[[entity]]'
+#     name: '[[name]]'
+#     icon: mdi:temperature-celsius
+#     graph: line
+#     detail: 2
+#     card_mod:
+#       style: |
+#         ha-card {
+#           background: rgba(0, 0, 0, 0.2);
+#           border-radius: 12px;
+#           padding: 2px;
+#           box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+#         }
+#         .name {
+#           font-weight: bold;
+#           font-size: 14px;
+#         }
+#         .states {
+#           font-size: 12px;
+#           color: var(--primary-text-color);
+#         }
+#         .graph {
+#           padding-top: 8px;
+#         }
+
+
+gauge_card_template_needle:
+  default:
+    - entity: sensor.example
+    - name: 示例仪表
+    - min: 0
+    - max: 100
+    - severity: 
+        green: 60
+        yellow: 80
+        red: 100
+  card:
+    type: gauge
+    entity: '[[entity]]'
+    name: '[[name]]'
+    min: '[[min]]'
+    max: '[[max]]'
+    severity: '[[severity]]'
+    needle: true
+    tap_action:
+      action: none
+    card_mod:
+      style: |
+        ha-card {
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 12px;
+          padding: 2px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .name {
+          font-weight: bold;
+          font-size: 14px;
+        }
+        .states {
+          font-size: 12px;
+          color: var(--primary-text-color);
+        }
+        .graph {
+          padding-top: 8px;
+        }
+
+gauge_card_template:
+  default:
+    - entity: sensor.example
+    - name: 示例仪表
+    - min: 0
+    - max: 100
+    - severity: 
+        green: 60
+        yellow: 80
+        red: 100
+  card:
+    type: gauge
+    entity: '[[entity]]'
+    name: '[[name]]'
+    min: '[[min]]'
+    max: '[[max]]'
+    severity: '[[severity]]'
+    needle: false
+    tap_action:
+      action: none
+    card_mod:
+      style: |
+        ha-card {
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 12px;
+          padding: 2px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .name {
+          font-weight: bold;
+          font-size: 14px;
+        }
+        .states {
+          font-size: 12px;
+          color: var(--primary-text-color);
+        }
+        .graph {
+          padding-top: 8px;
+        }
+
+
+sensor_card_template_line:
+  default:
+    - entity: sensor.example
+    - hours_to_show: 72
+    - limits:
+        min: 0
+        max: 100
+  card:
+    type: sensor
+    entity: '[[entity]]'
+    detail: 2
+    graph: line
+    hours_to_show: '[[hours_to_show]]'
+    limits: '[[limits]]'
+    card_mod:
+      style: |
+        ha-card {
+          background: rgba(0, 0, 0, 0.2);
+          border-radius: 12px;
+          padding: 2px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .name {
+          font-weight: bold;
+          font-size: 14px;
+        }
+        .states {
+          font-size: 12px;
+          color: var(--primary-text-color);
+        }
+        .graph {
+          padding-top: 8px;
+        }
+
+# button_card_sensor:
+  

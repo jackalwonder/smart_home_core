@@ -5,10 +5,6 @@ import { useDashboardStore } from '../../stores/dashboard'
 
 const dashboardStore = useDashboardStore()
 const activeLightCount = computed(() => dashboardStore.visibleStageHotspots.filter((item) => item.active).length)
-
-function getRoomAnchor(roomKey, axis) {
-  return dashboardStore.roomAnchors.find((anchor) => anchor.key === roomKey)?.[axis] ?? 50
-}
 </script>
 
 <template>
@@ -29,25 +25,6 @@ function getRoomAnchor(roomKey, axis) {
       <div class="stage__edge-shadow stage__edge-shadow--left" />
       <div class="stage__edge-shadow stage__edge-shadow--right" />
       <div class="stage__edge-shadow stage__edge-shadow--bottom" />
-
-      <button
-        v-for="room in dashboardStore.roomLayers"
-        :key="room.key"
-        type="button"
-        class="stage-room-layer"
-        :class="{ 'is-active': (dashboardStore.previewRoomKey || dashboardStore.activeRoomKey) === room.key }"
-        :style="{ clipPath: `polygon(${room.polygon})` }"
-        @mouseenter="dashboardStore.previewRoom(room.key)"
-        @mouseleave="dashboardStore.clearPreviewRoom()"
-        @click="dashboardStore.selectRoom(room.key)"
-      >
-        <span
-          class="stage-room-layer__label"
-          :style="{ left: `${getRoomAnchor(room.key, 'x')}%`, top: `${getRoomAnchor(room.key, 'y')}%` }"
-        >
-          {{ room.label }}
-        </span>
-      </button>
 
       <div
         v-for="glow in dashboardStore.roomGlows"
@@ -93,15 +70,6 @@ function getRoomAnchor(roomKey, axis) {
     </div>
 
     <div class="stage__summary">
-      <button
-        v-if="dashboardStore.activeRoomKey"
-        type="button"
-        class="stage-chip stage-chip--interactive"
-        @click="dashboardStore.clearRoomFilter()"
-      >
-        <span class="stage-chip__label">当前房间</span>
-        <strong>{{ dashboardStore.highlightedRoomLabel }}</strong>
-      </button>
       <div class="stage-chip">
         <span class="stage-chip__label">热点</span>
         <strong>{{ dashboardStore.visibleStageHotspots.length }}</strong>

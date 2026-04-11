@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 const props = defineProps({
   open: {
     type: Boolean,
@@ -37,9 +37,14 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
   <Teleport to="body">
     <transition name="modal-fade">
       <div v-if="props.open" class="category-modal">
-        <div class="category-modal__scrim" @click="$emit('close')" />
+        <div class="category-modal__scrim" @pointerdown.stop.prevent @click.stop="$emit('close')" />
 
-        <section class="category-modal__panel">
+        <section
+          class="category-modal__panel"
+          :class="{ 'category-modal__panel--single-climate': props.devices.length === 1 }"
+          @pointerdown.stop
+          @click.stop
+        >
           <header class="category-modal__header">
             <div class="category-modal__title-wrap">
               <div class="category-modal__icon is-climate" />
@@ -47,12 +52,12 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
               <span class="category-modal__count">{{ props.count }}</span>
             </div>
 
-            <button type="button" class="category-modal__close" @click="$emit('close')">
+            <button type="button" class="category-modal__close" @pointerdown.stop @click.stop="$emit('close')">
               ×
             </button>
           </header>
 
-          <div class="climate-grid">
+          <div class="climate-grid" :class="{ 'climate-grid--single': props.devices.length === 1 }">
             <article
               v-for="device in props.devices"
               :key="device.id"
@@ -64,16 +69,16 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
                 <div class="climate-card__badge" />
                 <div class="climate-card__header-actions">
                   <span class="climate-card__pill">{{ device.power ? 'ON' : 'OFF' }}</span>
-                  <button type="button" class="climate-card__power" @click="$emit('toggle-power', device.id)">⏻</button>
+                  <button type="button" class="climate-card__power" @click.stop="$emit('toggle-power', device.id)">⏻</button>
                 </div>
               </header>
 
               <h3>{{ device.name }}</h3>
 
               <div class="climate-card__temp">
-                <button type="button" @click="$emit('adjust-temp', device.id, -1)">−</button>
+                <button type="button" @click.stop="$emit('adjust-temp', device.id, -1)">−</button>
                 <strong>{{ device.targetTemp }}°</strong>
-                <button type="button" @click="$emit('adjust-temp', device.id, 1)">+</button>
+                <button type="button" @click.stop="$emit('adjust-temp', device.id, 1)">+</button>
               </div>
 
               <div class="climate-card__modes">
@@ -83,7 +88,7 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
                   type="button"
                   class="climate-mode"
                   :class="{ 'is-active': device.mode === mode.key }"
-                  @click="$emit('set-mode', device.id, mode.key)"
+                  @click.stop="$emit('set-mode', device.id, mode.key)"
                 >
                   {{ mode.label }}
                 </button>
@@ -95,3 +100,4 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
     </transition>
   </Teleport>
 </template>
+

@@ -18,6 +18,10 @@ const dashboardStore = useDashboardStore()
     <main class="dashboard-main">
       <section class="dashboard-stage-wrap">
         <FloorplanStage />
+
+        <div class="dashboard-stage-console">
+          <EventConsole />
+        </div>
       </section>
 
       <aside class="dashboard-sidebar">
@@ -25,31 +29,30 @@ const dashboardStore = useDashboardStore()
       </aside>
     </main>
 
-    <div class="dashboard-bottom-shell">
+    <div class="dashboard-bottom-shell dashboard-bottom-shell--stats-only">
       <BottomStatsBar />
-      <EventConsole />
     </div>
 
     <DeviceCategoryModal
       :open="dashboardStore.activeCategory === 'lights'"
-      :title="`${dashboardStore.highlightedRoomLabel}灯光`"
+      :title="dashboardStore.activeLightModalTitle"
       icon="light"
-      :count="dashboardStore.filteredLightDevices.length"
-      :devices="dashboardStore.filteredLightDevices"
+      :count="dashboardStore.activeLightModalDevices.length"
+      :devices="dashboardStore.activeLightModalDevices"
       :selected-device-id="dashboardStore.selectedStageDeviceId"
       @close="dashboardStore.closeCategoryModal()"
-      @focus="dashboardStore.focusDevice($event, 'lights')"
+      @focus="dashboardStore.focusDevice($event)"
       @toggle="dashboardStore.toggleLightDevice"
     />
 
     <ClimateCategoryModal
       :open="dashboardStore.activeCategory === 'climate'"
-      :title="`${dashboardStore.highlightedRoomLabel}温控`"
-      :count="dashboardStore.filteredClimateDevices.length"
-      :devices="dashboardStore.filteredClimateDevices"
+      :title="dashboardStore.activeClimateModalTitle"
+      :count="dashboardStore.activeClimateModalDevices.length"
+      :devices="dashboardStore.activeClimateModalDevices"
       :selected-device-id="dashboardStore.selectedStageDeviceId"
       @close="dashboardStore.closeCategoryModal()"
-      @focus="dashboardStore.focusDevice($event, 'climate')"
+      @focus="dashboardStore.focusDevice($event)"
       @toggle-power="dashboardStore.toggleClimatePower"
       @adjust-temp="dashboardStore.adjustClimateTemp"
       @set-mode="dashboardStore.setClimateMode"

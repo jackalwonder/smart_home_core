@@ -1,0 +1,763 @@
+- type: picture-elements
+  image: /local/ui/SVG/trans.svg?v={{now()}}
+  card_mod:
+    style: |
+      :host {
+        --ha-card-background: none;
+      }
+  elements:
+    - type: image
+      entity: sensor.shufang_temperature
+      name: 书房温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/shufang/0.svg
+        '2': /local/ui/temperature/shufang/2.svg
+        '4': /local/ui/temperature/shufang/4.svg
+        '6': /local/ui/temperature/shufang/6.svg
+        '8': /local/ui/temperature/shufang/8.svg
+        '10': /local/ui/temperature/shufang/10.svg
+        '11': /local/ui/temperature/shufang/11.svg
+        '12': /local/ui/temperature/shufang/12.svg
+        '13': /local/ui/temperature/shufang/13.svg
+        '14': /local/ui/temperature/shufang/14.svg
+        '15': /local/ui/temperature/shufang/15.svg
+        '16': /local/ui/temperature/shufang/16.svg
+        '17': /local/ui/temperature/shufang/17.svg
+        '18': /local/ui/temperature/shufang/18.svg
+        '19': /local/ui/temperature/shufang/19.svg
+        '20': /local/ui/temperature/shufang/20.svg
+        '21': /local/ui/temperature/shufang/21.svg
+        '22': /local/ui/temperature/shufang/22.svg
+        '23': /local/ui/temperature/shufang/23.svg
+        '24': /local/ui/temperature/shufang/24.svg
+        '25': /local/ui/temperature/shufang/25.svg
+        '26': /local/ui/temperature/shufang/26.svg
+        '27': /local/ui/temperature/shufang/27.svg
+        '28': /local/ui/temperature/shufang/28.svg
+        '29': /local/ui/temperature/shufang/29.svg
+        '30': /local/ui/temperature/shufang/30.svg
+        '31': /local/ui/temperature/shufang/31.svg
+        '32': /local/ui/temperature/shufang/32.svg
+        '33': /local/ui/temperature/shufang/33.svg
+        '34': /local/ui/temperature/shufang/34.svg
+        '35': /local/ui/temperature/shufang/35.svg
+        '36': /local/ui/temperature/shufang/36.svg
+        '37': /local/ui/temperature/shufang/37.svg
+        '38': /local/ui/temperature/shufang/38.svg
+        '39': /local/ui/temperature/shufang/39.svg
+        '40': /local/ui/temperature/shufang/40.svg
+        '41': /local/ui/temperature/shufang/40plus.svg
+    - type: image
+      entity: sensor.keting_temperature
+      name: 阳台温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/yangtai/0.svg
+        '2': /local/ui/temperature/yangtai/2.svg
+        '4': /local/ui/temperature/yangtai/4.svg
+        '6': /local/ui/temperature/yangtai/6.svg
+        '8': /local/ui/temperature/yangtai/8.svg
+        '10': /local/ui/temperature/yangtai/10.svg
+        '11': /local/ui/temperature/yangtai/11.svg
+        '12': /local/ui/temperature/yangtai/12.svg
+        '13': /local/ui/temperature/yangtai/13.svg
+        '14': /local/ui/temperature/yangtai/14.svg
+        '15': /local/ui/temperature/yangtai/15.svg
+        '16': /local/ui/temperature/yangtai/16.svg
+        '17': /local/ui/temperature/yangtai/17.svg
+        '18': /local/ui/temperature/yangtai/18.svg
+        '19': /local/ui/temperature/yangtai/19.svg
+        '20': /local/ui/temperature/yangtai/20.svg
+        '21': /local/ui/temperature/yangtai/21.svg
+        '22': /local/ui/temperature/yangtai/22.svg
+        '23': /local/ui/temperature/yangtai/23.svg
+        '24': /local/ui/temperature/yangtai/24.svg
+        '25': /local/ui/temperature/yangtai/25.svg
+        '26': /local/ui/temperature/yangtai/26.svg
+        '27': /local/ui/temperature/yangtai/27.svg
+        '28': /local/ui/temperature/yangtai/28.svg
+        '29': /local/ui/temperature/yangtai/29.svg
+        '30': /local/ui/temperature/yangtai/30.svg
+        '31': /local/ui/temperature/yangtai/31.svg
+        '32': /local/ui/temperature/yangtai/32.svg
+        '33': /local/ui/temperature/yangtai/33.svg
+        '34': /local/ui/temperature/yangtai/34.svg
+        '35': /local/ui/temperature/yangtai/35.svg
+        '36': /local/ui/temperature/yangtai/36.svg
+        '37': /local/ui/temperature/yangtai/37.svg
+        '38': /local/ui/temperature/yangtai/38.svg
+        '39': /local/ui/temperature/yangtai/39.svg
+        '40': /local/ui/temperature/yangtai/40.svg
+        '41': /local/ui/temperature/yangtai/40plus.svg
+    - type: image
+      entity: sensor.keting_temperature
+      name: 小阳台温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/xiaoyangtai/0.svg
+        '2': /local/ui/temperature/xiaoyangtai/2.svg
+        '4': /local/ui/temperature/xiaoyangtai/4.svg
+        '6': /local/ui/temperature/xiaoyangtai/6.svg
+        '8': /local/ui/temperature/xiaoyangtai/8.svg
+        '10': /local/ui/temperature/xiaoyangtai/10.svg
+        '11': /local/ui/temperature/xiaoyangtai/11.svg
+        '12': /local/ui/temperature/xiaoyangtai/12.svg
+        '13': /local/ui/temperature/xiaoyangtai/13.svg
+        '14': /local/ui/temperature/xiaoyangtai/14.svg
+        '15': /local/ui/temperature/xiaoyangtai/15.svg
+        '16': /local/ui/temperature/xiaoyangtai/16.svg
+        '17': /local/ui/temperature/xiaoyangtai/17.svg
+        '18': /local/ui/temperature/xiaoyangtai/18.svg
+        '19': /local/ui/temperature/xiaoyangtai/19.svg
+        '20': /local/ui/temperature/xiaoyangtai/20.svg
+        '21': /local/ui/temperature/xiaoyangtai/21.svg
+        '22': /local/ui/temperature/xiaoyangtai/22.svg
+        '23': /local/ui/temperature/xiaoyangtai/23.svg
+        '24': /local/ui/temperature/xiaoyangtai/24.svg
+        '25': /local/ui/temperature/xiaoyangtai/25.svg
+        '26': /local/ui/temperature/xiaoyangtai/26.svg
+        '27': /local/ui/temperature/xiaoyangtai/27.svg
+        '28': /local/ui/temperature/xiaoyangtai/28.svg
+        '29': /local/ui/temperature/xiaoyangtai/29.svg
+        '30': /local/ui/temperature/xiaoyangtai/30.svg
+        '31': /local/ui/temperature/xiaoyangtai/31.svg
+        '32': /local/ui/temperature/xiaoyangtai/32.svg
+        '33': /local/ui/temperature/xiaoyangtai/33.svg
+        '34': /local/ui/temperature/xiaoyangtai/34.svg
+        '35': /local/ui/temperature/xiaoyangtai/35.svg
+        '36': /local/ui/temperature/xiaoyangtai/36.svg
+        '37': /local/ui/temperature/xiaoyangtai/37.svg
+        '38': /local/ui/temperature/xiaoyangtai/38.svg
+        '39': /local/ui/temperature/xiaoyangtai/39.svg
+        '40': /local/ui/temperature/xiaoyangtai/40.svg
+        '41': /local/ui/temperature/xiaoyangtai/40plus.svg
+    - type: image
+      entity: sensor.keting_temperature
+      name: 次卫温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/ciwei/0.svg
+        '2': /local/ui/temperature/ciwei/2.svg
+        '4': /local/ui/temperature/ciwei/4.svg
+        '6': /local/ui/temperature/ciwei/6.svg
+        '8': /local/ui/temperature/ciwei/8.svg
+        '10': /local/ui/temperature/ciwei/10.svg
+        '11': /local/ui/temperature/ciwei/11.svg
+        '12': /local/ui/temperature/ciwei/12.svg
+        '13': /local/ui/temperature/ciwei/13.svg
+        '14': /local/ui/temperature/ciwei/14.svg
+        '15': /local/ui/temperature/ciwei/15.svg
+        '16': /local/ui/temperature/ciwei/16.svg
+        '17': /local/ui/temperature/ciwei/17.svg
+        '18': /local/ui/temperature/ciwei/18.svg
+        '19': /local/ui/temperature/ciwei/19.svg
+        '20': /local/ui/temperature/ciwei/20.svg
+        '21': /local/ui/temperature/ciwei/21.svg
+        '22': /local/ui/temperature/ciwei/22.svg
+        '23': /local/ui/temperature/ciwei/23.svg
+        '24': /local/ui/temperature/ciwei/24.svg
+        '25': /local/ui/temperature/ciwei/25.svg
+        '26': /local/ui/temperature/ciwei/26.svg
+        '27': /local/ui/temperature/ciwei/27.svg
+        '28': /local/ui/temperature/ciwei/28.svg
+        '29': /local/ui/temperature/ciwei/29.svg
+        '30': /local/ui/temperature/ciwei/30.svg
+        '31': /local/ui/temperature/ciwei/31.svg
+        '32': /local/ui/temperature/ciwei/32.svg
+        '33': /local/ui/temperature/ciwei/33.svg
+        '34': /local/ui/temperature/ciwei/34.svg
+        '35': /local/ui/temperature/ciwei/35.svg
+        '36': /local/ui/temperature/ciwei/36.svg
+        '37': /local/ui/temperature/ciwei/37.svg
+        '38': /local/ui/temperature/ciwei/38.svg
+        '39': /local/ui/temperature/ciwei/39.svg
+        '40': /local/ui/temperature/ciwei/40.svg
+        '41': /local/ui/temperature/ciwei/40plus.svg
+    - type: image
+      entity: sensor.zhuwo_temperature
+      name: 主卫温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/zhuwei/0.svg
+        '2': /local/ui/temperature/zhuwei/2.svg
+        '4': /local/ui/temperature/zhuwei/4.svg
+        '6': /local/ui/temperature/zhuwei/6.svg
+        '8': /local/ui/temperature/zhuwei/8.svg
+        '10': /local/ui/temperature/zhuwei/10.svg
+        '11': /local/ui/temperature/zhuwei/11.svg
+        '12': /local/ui/temperature/zhuwei/12.svg
+        '13': /local/ui/temperature/zhuwei/13.svg
+        '14': /local/ui/temperature/zhuwei/14.svg
+        '15': /local/ui/temperature/zhuwei/15.svg
+        '16': /local/ui/temperature/zhuwei/16.svg
+        '17': /local/ui/temperature/zhuwei/17.svg
+        '18': /local/ui/temperature/zhuwei/18.svg
+        '19': /local/ui/temperature/zhuwei/19.svg
+        '20': /local/ui/temperature/zhuwei/20.svg
+        '21': /local/ui/temperature/zhuwei/21.svg
+        '22': /local/ui/temperature/zhuwei/22.svg
+        '23': /local/ui/temperature/zhuwei/23.svg
+        '24': /local/ui/temperature/zhuwei/24.svg
+        '25': /local/ui/temperature/zhuwei/25.svg
+        '26': /local/ui/temperature/zhuwei/26.svg
+        '27': /local/ui/temperature/zhuwei/27.svg
+        '28': /local/ui/temperature/zhuwei/28.svg
+        '29': /local/ui/temperature/zhuwei/29.svg
+        '30': /local/ui/temperature/zhuwei/30.svg
+        '31': /local/ui/temperature/zhuwei/31.svg
+        '32': /local/ui/temperature/zhuwei/32.svg
+        '33': /local/ui/temperature/zhuwei/33.svg
+        '34': /local/ui/temperature/zhuwei/34.svg
+        '35': /local/ui/temperature/zhuwei/35.svg
+        '36': /local/ui/temperature/zhuwei/36.svg
+        '37': /local/ui/temperature/zhuwei/37.svg
+        '38': /local/ui/temperature/zhuwei/38.svg
+        '39': /local/ui/temperature/zhuwei/39.svg
+        '40': /local/ui/temperature/zhuwei/40.svg
+        '41': /local/ui/temperature/zhuwei/40plus.svg
+    - type: image
+      entity: sensor.zhuwo_temperature
+      name: 主卧温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/zhuwo/0.svg
+        '2': /local/ui/temperature/zhuwo/2.svg
+        '4': /local/ui/temperature/zhuwo/4.svg
+        '6': /local/ui/temperature/zhuwo/6.svg
+        '8': /local/ui/temperature/zhuwo/8.svg
+        '10': /local/ui/temperature/zhuwo/10.svg
+        '11': /local/ui/temperature/zhuwo/11.svg
+        '12': /local/ui/temperature/zhuwo/12.svg
+        '13': /local/ui/temperature/zhuwo/13.svg
+        '14': /local/ui/temperature/zhuwo/14.svg
+        '15': /local/ui/temperature/zhuwo/15.svg
+        '16': /local/ui/temperature/zhuwo/16.svg
+        '17': /local/ui/temperature/zhuwo/17.svg
+        '18': /local/ui/temperature/zhuwo/18.svg
+        '19': /local/ui/temperature/zhuwo/19.svg
+        '20': /local/ui/temperature/zhuwo/20.svg
+        '21': /local/ui/temperature/zhuwo/21.svg
+        '22': /local/ui/temperature/zhuwo/22.svg
+        '23': /local/ui/temperature/zhuwo/23.svg
+        '24': /local/ui/temperature/zhuwo/24.svg
+        '25': /local/ui/temperature/zhuwo/25.svg
+        '26': /local/ui/temperature/zhuwo/26.svg
+        '27': /local/ui/temperature/zhuwo/27.svg
+        '28': /local/ui/temperature/zhuwo/28.svg
+        '29': /local/ui/temperature/zhuwo/29.svg
+        '30': /local/ui/temperature/zhuwo/30.svg
+        '31': /local/ui/temperature/zhuwo/31.svg
+        '32': /local/ui/temperature/zhuwo/32.svg
+        '33': /local/ui/temperature/zhuwo/33.svg
+        '34': /local/ui/temperature/zhuwo/34.svg
+        '35': /local/ui/temperature/zhuwo/35.svg
+        '36': /local/ui/temperature/zhuwo/36.svg
+        '37': /local/ui/temperature/zhuwo/37.svg
+        '38': /local/ui/temperature/zhuwo/38.svg
+        '39': /local/ui/temperature/zhuwo/39.svg
+        '40': /local/ui/temperature/zhuwo/40.svg
+        '41': /local/ui/temperature/zhuwo/40plus.svg
+    - type: image
+      entity: sensor.ciwo_temperature
+      name: 儿童房温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/ciwo/0.svg
+        '2': /local/ui/temperature/ciwo/2.svg
+        '4': /local/ui/temperature/ciwo/4.svg
+        '6': /local/ui/temperature/ciwo/6.svg
+        '8': /local/ui/temperature/ciwo/8.svg
+        '10': /local/ui/temperature/ciwo/10.svg
+        '11': /local/ui/temperature/ciwo/11.svg
+        '12': /local/ui/temperature/ciwo/12.svg
+        '13': /local/ui/temperature/ciwo/13.svg
+        '14': /local/ui/temperature/ciwo/14.svg
+        '15': /local/ui/temperature/ciwo/15.svg
+        '16': /local/ui/temperature/ciwo/16.svg
+        '17': /local/ui/temperature/ciwo/17.svg
+        '18': /local/ui/temperature/ciwo/18.svg
+        '19': /local/ui/temperature/ciwo/19.svg
+        '20': /local/ui/temperature/ciwo/20.svg
+        '21': /local/ui/temperature/ciwo/21.svg
+        '22': /local/ui/temperature/ciwo/22.svg
+        '23': /local/ui/temperature/ciwo/23.svg
+        '24': /local/ui/temperature/ciwo/24.svg
+        '25': /local/ui/temperature/ciwo/25.svg
+        '26': /local/ui/temperature/ciwo/26.svg
+        '27': /local/ui/temperature/ciwo/27.svg
+        '28': /local/ui/temperature/ciwo/28.svg
+        '29': /local/ui/temperature/ciwo/29.svg
+        '30': /local/ui/temperature/ciwo/30.svg
+        '31': /local/ui/temperature/ciwo/31.svg
+        '32': /local/ui/temperature/ciwo/32.svg
+        '33': /local/ui/temperature/ciwo/33.svg
+        '34': /local/ui/temperature/ciwo/34.svg
+        '35': /local/ui/temperature/ciwo/35.svg
+        '36': /local/ui/temperature/ciwo/36.svg
+        '37': /local/ui/temperature/ciwo/37.svg
+        '38': /local/ui/temperature/ciwo/38.svg
+        '39': /local/ui/temperature/ciwo/39.svg
+        '40': /local/ui/temperature/ciwo/40.svg
+        '41': /local/ui/temperature/ciwo/40plus.svg
+    - type: image
+      entity: sensor.kewo_temperature
+      name: 老人房温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/kewo/0.svg
+        '2': /local/ui/temperature/kewo/2.svg
+        '4': /local/ui/temperature/kewo/4.svg
+        '6': /local/ui/temperature/kewo/6.svg
+        '8': /local/ui/temperature/kewo/8.svg
+        '10': /local/ui/temperature/kewo/10.svg
+        '11': /local/ui/temperature/kewo/11.svg
+        '12': /local/ui/temperature/kewo/12.svg
+        '13': /local/ui/temperature/kewo/13.svg
+        '14': /local/ui/temperature/kewo/14.svg
+        '15': /local/ui/temperature/kewo/15.svg
+        '16': /local/ui/temperature/kewo/16.svg
+        '17': /local/ui/temperature/kewo/17.svg
+        '18': /local/ui/temperature/kewo/18.svg
+        '19': /local/ui/temperature/kewo/19.svg
+        '20': /local/ui/temperature/kewo/20.svg
+        '21': /local/ui/temperature/kewo/21.svg
+        '22': /local/ui/temperature/kewo/22.svg
+        '23': /local/ui/temperature/kewo/23.svg
+        '24': /local/ui/temperature/kewo/24.svg
+        '25': /local/ui/temperature/kewo/25.svg
+        '26': /local/ui/temperature/kewo/26.svg
+        '27': /local/ui/temperature/kewo/27.svg
+        '28': /local/ui/temperature/kewo/28.svg
+        '29': /local/ui/temperature/kewo/29.svg
+        '30': /local/ui/temperature/kewo/30.svg
+        '31': /local/ui/temperature/kewo/31.svg
+        '32': /local/ui/temperature/kewo/32.svg
+        '33': /local/ui/temperature/kewo/33.svg
+        '34': /local/ui/temperature/kewo/34.svg
+        '35': /local/ui/temperature/kewo/35.svg
+        '36': /local/ui/temperature/kewo/36.svg
+        '37': /local/ui/temperature/kewo/37.svg
+        '38': /local/ui/temperature/kewo/38.svg
+        '39': /local/ui/temperature/kewo/39.svg
+        '40': /local/ui/temperature/kewo/40.svg
+        '41': /local/ui/temperature/kewo/40plus.svg
+    - type: image
+      entity: sensor.keting_temperature
+      name: 客厅温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/keting/0.svg
+        '2': /local/ui/temperature/keting/2.svg
+        '4': /local/ui/temperature/keting/4.svg
+        '6': /local/ui/temperature/keting/6.svg
+        '8': /local/ui/temperature/keting/8.svg
+        '10': /local/ui/temperature/keting/10.svg
+        '11': /local/ui/temperature/keting/11.svg
+        '12': /local/ui/temperature/keting/12.svg
+        '13': /local/ui/temperature/keting/13.svg
+        '14': /local/ui/temperature/keting/14.svg
+        '15': /local/ui/temperature/keting/15.svg
+        '16': /local/ui/temperature/keting/16.svg
+        '17': /local/ui/temperature/keting/17.svg
+        '18': /local/ui/temperature/keting/18.svg
+        '19': /local/ui/temperature/keting/19.svg
+        '20': /local/ui/temperature/keting/20.svg
+        '21': /local/ui/temperature/keting/21.svg
+        '22': /local/ui/temperature/keting/22.svg
+        '23': /local/ui/temperature/keting/23.svg
+        '24': /local/ui/temperature/keting/24.svg
+        '25': /local/ui/temperature/keting/25.svg
+        '26': /local/ui/temperature/keting/26.svg
+        '27': /local/ui/temperature/keting/27.svg
+        '28': /local/ui/temperature/keting/28.svg
+        '29': /local/ui/temperature/keting/29.svg
+        '30': /local/ui/temperature/keting/30.svg
+        '31': /local/ui/temperature/keting/31.svg
+        '32': /local/ui/temperature/keting/32.svg
+        '33': /local/ui/temperature/keting/33.svg
+        '34': /local/ui/temperature/keting/34.svg
+        '35': /local/ui/temperature/keting/35.svg
+        '36': /local/ui/temperature/keting/36.svg
+        '37': /local/ui/temperature/keting/37.svg
+        '38': /local/ui/temperature/keting/38.svg
+        '39': /local/ui/temperature/keting/39.svg
+        '40': /local/ui/temperature/keting/40.svg
+        '41': /local/ui/temperature/keting/40plus.svg
+    - type: image
+      entity: sensor.keting_temperature
+      name: 厨房温度动态卡片
+      show_name: false
+      tap_action:
+        action: toggle
+        hold_action: none
+      style:
+        pointer-events: none
+        top: 50%
+        left: 50%
+        width: 100%
+        mix-blend-mode: lighten
+        transform: translate(-50%, -50%)
+        z-index: 2
+      state_image:
+        '0': /local/ui/temperature/chufang/0.svg
+        '2': /local/ui/temperature/chufang/2.svg
+        '4': /local/ui/temperature/chufang/4.svg
+        '6': /local/ui/temperature/chufang/6.svg
+        '8': /local/ui/temperature/chufang/8.svg
+        '10': /local/ui/temperature/chufang/10.svg
+        '11': /local/ui/temperature/chufang/11.svg
+        '12': /local/ui/temperature/chufang/12.svg
+        '13': /local/ui/temperature/chufang/13.svg
+        '14': /local/ui/temperature/chufang/14.svg
+        '15': /local/ui/temperature/chufang/15.svg
+        '16': /local/ui/temperature/chufang/16.svg
+        '17': /local/ui/temperature/chufang/17.svg
+        '18': /local/ui/temperature/chufang/18.svg
+        '19': /local/ui/temperature/chufang/19.svg
+        '20': /local/ui/temperature/chufang/20.svg
+        '21': /local/ui/temperature/chufang/21.svg
+        '22': /local/ui/temperature/chufang/22.svg
+        '23': /local/ui/temperature/chufang/23.svg
+        '24': /local/ui/temperature/chufang/24.svg
+        '25': /local/ui/temperature/chufang/25.svg
+        '26': /local/ui/temperature/chufang/26.svg
+        '27': /local/ui/temperature/chufang/27.svg
+        '28': /local/ui/temperature/chufang/28.svg
+        '29': /local/ui/temperature/chufang/29.svg
+        '30': /local/ui/temperature/chufang/30.svg
+        '31': /local/ui/temperature/chufang/31.svg
+        '32': /local/ui/temperature/chufang/32.svg
+        '33': /local/ui/temperature/chufang/33.svg
+        '34': /local/ui/temperature/chufang/34.svg
+        '35': /local/ui/temperature/chufang/35.svg
+        '36': /local/ui/temperature/chufang/36.svg
+        '37': /local/ui/temperature/chufang/37.svg
+        '38': /local/ui/temperature/chufang/38.svg
+        '39': /local/ui/temperature/chufang/39.svg
+        '40': /local/ui/temperature/chufang/40.svg
+        '41': /local/ui/temperature/chufang/40plus.svg
+    - type: custom:button-card
+      name: 客厅温度数值
+      entity: sensor.keting_temperature_full
+      style:
+        left: 30%
+        top: 50%
+        z-index: 4
+      styles:
+        card:
+          - background: transparent
+          - box-shadow: none
+          - border: none
+          - font-size: 14px
+          - color: black
+          - text-align: center
+        state:
+          - font-weight: bold
+      tap_action:
+        action: fire-dom-event
+        browser_mod:
+          service: browser_mod.popup
+          data:
+            timeout: 5000
+            content:
+              style:
+                width: 800px
+                max-width: 90%
+                border-radius: 10px
+              type: vertical-stack
+              cards:
+                - type: thermostat
+                  entity: climate.777ca934
+                  features:
+                    - type: climate-hvac-modes
+                    - type: climate-swing-modes
+                      style: dropdown
+                    - type: climate-fan-modes
+                      style: dropdown
+      hold_action:
+        action: none
+      double_tap_action:
+        action: none
+      show_name: false
+      show_icon: false
+      show_state: true
+    - type: custom:button-card
+      name: 书房温度数值
+      entity: sensor.shufang_temperature_full
+      style:
+        left: 53%
+        top: 38%
+        z-index: 4
+      styles:
+        card:
+          - background: transparent
+          - box-shadow: none
+          - border: none
+          - font-size: 14px
+          - color: black
+          - text-align: center
+        state:
+          - font-weight: bold
+      tap_action:
+        action: fire-dom-event
+        browser_mod:
+          service: browser_mod.popup
+          data:
+            timeout: 5000
+            content:
+              style:
+                width: 800px
+                max-width: 90%
+                border-radius: 10px
+              type: vertical-stack
+              cards:
+                - type: thermostat
+                  entity: climate.5667c6ca
+                  features:
+                    - type: climate-hvac-modes
+                    - type: climate-swing-modes
+                      style: dropdown
+                    - type: climate-fan-modes
+                      style: dropdown
+      hold_action:
+        action: none
+      double_tap_action:
+        action: none
+      show_name: false
+      show_icon: false
+      show_state: true
+    - type: custom:button-card
+      name: 老人房温度数值
+      entity: sensor.kewo_temperature_full
+      style:
+        left: 45%
+        top: 59%
+        z-index: 4
+      styles:
+        card:
+          - background: transparent
+          - box-shadow: none
+          - border: none
+          - font-size: 14px
+          - color: black
+          - text-align: center
+        state:
+          - font-weight: bold
+      tap_action:
+        action: fire-dom-event
+        browser_mod:
+          service: browser_mod.popup
+          data:
+            timeout: 5000
+            content:
+              style:
+                width: 800px
+                max-width: 90%
+                border-radius: 10px
+              type: vertical-stack
+              cards:
+                - type: thermostat
+                  entity: climate.9424b8522029
+                  features:
+                    - type: climate-hvac-modes
+                    - type: climate-swing-modes
+                      style: dropdown
+                    - type: climate-fan-modes
+                      style: dropdown
+      hold_action:
+        action: none
+      double_tap_action:
+        action: none
+      show_name: false
+      show_icon: false
+      show_state: true
+    - type: custom:button-card
+      name: 次卧温度数值
+      entity: sensor.ciwo_temperature_full
+      style:
+        left: 58%
+        top: 59%
+        z-index: 4
+      styles:
+        card:
+          - background: transparent
+          - box-shadow: none
+          - border: none
+          - font-size: 14px
+          - color: black
+          - text-align: center
+        state:
+          - font-weight: bold
+      tap_action:
+        action: fire-dom-event
+        browser_mod:
+          service: browser_mod.popup
+          data:
+            timeout: 5000
+            content:
+              style:
+                width: 800px
+                max-width: 90%
+                border-radius: 10px
+              type: vertical-stack
+              cards:
+                - type: thermostat
+                  entity: climate.24dfa7ad914a
+                  features:
+                    - type: climate-hvac-modes
+                    - type: climate-swing-modes
+                      style: dropdown
+                    - type: climate-fan-modes
+                      style: dropdown
+      hold_action:
+        action: none
+      double_tap_action:
+        action: none
+      show_name: false
+      show_icon: false
+      show_state: true
+    - type: custom:button-card
+      name: 主卧温度数值
+      entity: sensor.zhuwo_temperature_full
+      style:
+        left: 70%
+        top: 59%
+        z-index: 4
+      styles:
+        card:
+          - background: transparent
+          - box-shadow: none
+          - border: none
+          - font-size: 10px
+          - color: black
+          - text-align: center
+        state:
+          - font-weight: bold
+      tap_action:
+        action: fire-dom-event
+        browser_mod:
+          service: browser_mod.popup
+          data:
+            timeout: 5000
+            content:
+              style:
+                width: 800px
+                max-width: 90%
+                border-radius: 10px
+              type: vertical-stack
+              cards:
+                - type: thermostat
+                  entity: climate.e816563b729f
+                  features:
+                    - type: climate-hvac-modes
+                    - type: climate-swing-modes
+                      style: dropdown
+                    - type: climate-fan-modes
+                      style: dropdown
+      hold_action:
+        action: none
+      double_tap_action:
+        action: none
+      show_name: false
+      show_icon: false
+      show_state: true

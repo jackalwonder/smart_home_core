@@ -1,0 +1,246 @@
+botton_style1:
+  show_entity_picture: true
+
+  styles:
+    card:
+      
+      - border-radius: 10px        
+      - aspect-ratio: 16/9
+      - background-color: var(--name-background-color, rgba(255, 255, 255, 0.1))
+  
+    grid:
+      - grid-template-rows: minmax(100px, 1fr) auto
+      # - grid-template-columns: 1fr
+      # - grid-template-rows: 80% 20%
+
+    entity_picture:
+      - width: 25%
+      - position: absolute
+      - top: 1%
+      - left: 50%
+      - transform: translateX(-50%)
+    name:
+      - position: absolute
+      - bottom: 0
+      - left: 0
+      - width: 100%
+      - font-weight: bold
+      - background-color: var(--name-background-color, rgba(34, 34, 34, 0.8))
+      - font-size: var(--name-font-size, 15px)
+      - text-align: center
+  size: 50%
+  
+  card_mod:
+    style: |
+      ha-card {
+        background: rgba(0, 0, 0, 0.5);
+        font-size: 10px; /* 设置默认字体大小 */
+      }
+      
+
+      
+
+
+
+botton_style2:
+  color_type: icon
+  color: rgb(255, 174, 38)
+  styles:
+    card:
+      - border-radius: 5px        
+      - aspect-ratio: 16/9
+      - background-color: var(--name-background-color, rgba(255, 255, 255, 0.2))
+  
+    grid:
+
+      - grid-template-columns: 1fr
+      - grid-template-rows: 80% 20%
+
+
+    name:
+      - position: absolute
+      - bottom: 0
+      - left: 0
+      - width: 100%
+      - font-weight: bold
+      - background-color: var(--name-background-color, rgba(34, 34, 34, 0.8))
+      - font-size: var(--name-font-size, 10px)
+      - text-align: center
+  size: 50%
+  
+  card_mod:
+    style: |
+      ha-card {
+        background: rgba(0, 0, 0, 0.5);
+        font-size: 10px; /* 设置默认字体大小 */
+      }
+      
+
+
+
+botton_style3:
+  show_entity_picture: true
+
+  styles:
+    card:
+      - border-radius: 5px        
+      - aspect-ratio: 16/9
+      - background-color: var(--name-background-color, rgba(255, 255, 255, 0.1))
+  
+    grid:
+      - grid-template-rows: minmax(100px, 1fr) auto
+      
+      # - grid-template-columns: 1fr
+      # - grid-template-rows: 80% 20%
+
+    entity_picture:
+      - width: 60%
+      - position: absolute
+      - top: 0%
+      - left: 50%
+      - transform: translateX(-50%)
+    name:
+      - position: absolute
+      - bottom: 0
+      - left: 0
+      - width: 100%
+      - font-weight: bold
+      - background-color: var(--name-background-color, rgba(34, 34, 34, 0.8))
+      - font-size: var(--name-font-size, 15px)
+      - text-align: center
+  size: 50%
+  
+  card_mod:
+    style: |
+      ha-card {
+        background: rgba(0, 0, 0, 0.5);
+        font-size: 10px; /* 设置默认字体大小 */
+      }
+      
+
+      
+ 
+
+button_card_templates:
+more_info:
+  tap_action:
+    action: none
+  hold_action:
+    action: none
+  double_tap_action:
+    action: none
+disk_templates:
+  template: more_info
+  icon: mdi:harddisk
+  size: 60%
+  aspect_ratio: 4/3
+  styles:
+    card:
+
+      - padding: 5% 10%
+      - font-size: 12px
+      - line-height: 1.2em
+      - text-transform: capitalize
+      - text-shadow: 0 0 1px white
+      - '--icon-color-sensor': gray
+      - background-color: rgb(35,35,42)
+      - color: white
+    grid:
+      - grid-template-areas: '"i disktemp" "n n" "diskhealh diskhealh"'
+      - grid-template-columns: 1fr 1fr
+      - grid-template-rows: 1fr min-content min-content min-content min-content
+    name:
+      - color: white
+      - font-size: 1.1em
+      - font-weight: bold
+      - align-self: middle
+      - justify-self: start
+      - padding-bottom: 2%
+    img_cell:
+      - min-width: 100%
+      - justify-content: start
+      - align-items: start
+    icon:
+      - color: '#ff9f09'
+      - margin: '-20% 0 0 0'
+    custom_fields:
+      disktemp:
+        - align-self: start
+        - justify-self: end
+        - '--icon-color-sensor': ''
+      diskhealh:
+        - padding-bottom: 1%
+        - align-self: middle
+        - justify-self: start
+        - '--text-color-sensor': ''
+  custom_fields:
+    disktemp: |
+      [[[
+        var val = variables.devicetype ? states[variables.devicetype].state : null
+        if (val == 'disk')          
+          var val = variables.disktemp ? states[variables.disktemp].state : null
+          if (val <= 45)
+            return !val ? '' : `<ha-icon
+              icon="mdi:thermometer"
+              style="width: 16px; color: green;"
+              ></ha-icon><span>${val}˚C</span>`
+          if (val > 45 && val <=55)
+            return !val ? '' : `<ha-icon
+              icon="mdi:thermometer"
+              style="width: 16px; color: orange;"
+              ></ha-icon><span>${val}˚C</span>`
+          if (val > 55)
+            return !val ? '' : `<ha-icon
+              icon="mdi:thermometer"
+              style="width: 16px; color: red;"
+              ></ha-icon><span>${val}˚C</span>`
+        if (val == 'gpu')
+          var val = variables.disktemp ? states[variables.disktemp].state : null
+          if (val <= 45)
+            return !val ? '' : `<ha-icon
+              icon="mdi:thermometer"
+              style="width: 16px; color: green;"
+              ></ha-icon><span>${val}˚C</span>`
+          if (val > 45 && val <=70)
+            return !val ? '' : `<ha-icon
+              icon="mdi:thermometer"
+              style="width: 16px; color: orange;"
+              ></ha-icon><span>${val}˚C</span>`
+          if (val > 70)
+            return !val ? '' : `<ha-icon
+              icon="mdi:thermometer"
+              style="width: 16px; color: red;"
+              ></ha-icon><span>${val}˚C</span>`
+      ]]]
+    diskhealh: |
+      [[[
+        var val = variables.diskhealh ? states[variables.diskhealh].state : null
+        val = {on: '异常', off: '正常'}[val] || val
+        if (val == '正常')
+          return !val ? '' : `<span style="color: var(--text-color-sensor);">${val}</span><ha-icon
+            icon="mdi:check-circle"
+            style="width: 14px; color: green;"
+            ></ha-icon>`
+        if (val == '异常')
+          return !val ? '' : `<span style="color: var(--text-color-sensor);">${val}</span><ha-icon
+            icon="mdi:alert-circle"
+            style="width: 14px; color: orange;"
+            ></ha-icon>`
+        if (val <= 60)
+          return !val ? '' : `<span>${val}%</span><ha-icon
+            icon="mdi:check-circle"
+            style="width: 14px; color: green;"
+            ></ha-icon>`
+        if (val > 60 && val <=80)
+          return !val ? '' : `<span>${val}%</span><ha-icon
+            icon="mdi:alert-circle"
+            style="width: 14px; color: orange;"
+            ></ha-icon>`
+        if (val > 80)
+          return !val ? '' : `<span>${val}%</span><ha-icon
+            icon="mdi:alert-circle"
+            style="width: 14px; color: red;"
+            ></ha-icon>`
+      ]]]      
+
+

@@ -1,0 +1,16 @@
+
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 1920 1080">
+  <defs>
+    <style>
+      rect {
+        fill: rgb(86,162,86);
+      }
+    </style>
+  </defs>
+  <g>
+
+<rect x="1003" y="832" class="st3" width="177" height="104"/>
+<rect x="979" y="566" class="st3" width="266" height="304"/>
+
+  </g>
+</svg>

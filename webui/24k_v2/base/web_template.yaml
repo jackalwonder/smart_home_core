@@ -1,0 +1,217 @@
+button_card_templates:
+  mobile_calendar_card:
+    variables:
+      jieqi_tiaozheng: 1
+    tap_action:
+      action: none
+    styles:
+      grid:
+        - grid-template-areas: |
+            "time time time time"
+            "date date week week"
+            "line line line line"
+            "year year day day"
+            "mon mon jieqi jieqi"
+            "jieri jieri jieri jieri"
+        - grid-template-columns: 1fr 1fr 1fr 1fr
+        - grid-template-rows: 50px 22px 15px 22px 20px 25px
+        - text-align: start
+        - font-weight: bold
+        - font-size: 15px
+        - color: rgb(226,232,240)
+        - justify-content: center
+        - border-radius: 8px
+        - padding: 0px
+        - box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5)
+      card:
+        - left: 3%
+        - width: 350px
+        - height: 200px
+        - background-color: transparent
+    custom_fields:
+      time: '[[[return states["sensor.time"].state]]]'
+      date: |
+        [[[ 
+          let date = new Date(), year = date.getFullYear(), month = date.getMonth()+1, day = date.getDate();
+          if (month < 10) month = "0" + month;
+          if (day   < 10) day   = "0" + day;
+          return `${year}年${month}月${day}日`;
+        ]]]
+      week: |
+        [[[ 
+          const day = new Date().getDay();
+          return ["星期日","星期一","星期二","星期三","星期四","星期五","星期六"][day];
+        ]]]
+      jieqi: |
+        [[[ 
+          var now = new Date();
+          var year = now.getFullYear(), mon = now.getMonth(), day = now.getDate() + variables.jieqi_tiaozheng;
+          var solarTerm = ["小寒", "大寒", "立春", "雨水", "惊蛰", "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露", "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至"];
+          var sTermInfo = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
+          var solarTerms = "", num1 = 1;
+          while (solarTerms === "") {
+            num1++;
+            var temp1 = new Date((31556925974.7 * (year - 1900) + sTermInfo[mon * 2 + 1] * 60000) + Date.UTC(1900, 0, 6, 2, 5));
+            var temp2 = temp1.getUTCDate();
+            if (temp2 == day) solarTerms = solarTerm[mon * 2 + 1];
+            temp1 = new Date((31556925974.7 * (year - 1900) + sTermInfo[mon * 2] * 60000) + Date.UTC(1900, 0, 6, 2, 5));
+            temp2 = temp1.getUTCDate();
+            if (temp2 == day) solarTerms = solarTerm[mon * 2];
+            if (day > 1) { day -= 1; } else { mon -= 1; if (mon < 0) { year -= 1; mon = 11; } day = 31; }
+          }
+          return `${solarTerms} 第${num1 - 1}天`;
+        ]]]
+      year: '[[[ return states["sensor.holiday"].attributes.农历.slice(0,4) ]]]'
+      mon: '[[[ return states["sensor.holiday"].attributes.农历.slice(5,10) ]]]'
+      day: |
+        [[[ 
+          const tzArr = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+          const skArr = ['一','二','三','四','五','六','七','八'];
+          let h = new Date().getHours();
+          let m = new Date().getMinutes();
+          let shike = h % 2 === 0 ? skArr[Math.floor(m / 15)] : skArr[Math.floor(m / 15) + 4];
+          return tzArr[Math.floor(h / 2)] + '时' + shike + '刻';
+        ]]]
+      line:
+        card:
+          type: custom:button-card
+          styles:
+            card:
+              - border-top: 1px solid white
+              - margin-top: 18px
+              - background-color: transparent
+              - border-radius: 0
+      jieri: |
+        [[[ 
+          let jieri1 = states["sensor.holiday"].attributes.节日;
+          let jieri2 = states["sensor.holiday"].attributes.最近的节日;
+          let jieri3 = states["sensor.holiday"].attributes.最近的节日还有;
+          if (jieri1 !== undefined) return jieri1;
+          return `${jieri2} ${jieri3}`;
+        ]]]
+    custom_fields:
+      time: "[[[ return states['sensor.time'].state ]]]"
+
+
+  panle_calendar_card_template:
+    variables:
+      jieqi_tiaozheng: 1
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          title: 我的日历
+          card_mod:
+            style: |
+              ha-dialog {
+                --mdc-dialog-min-width: 700px !important;
+                --mdc-dialog-max-width: 90% !important;
+              }
+          content:
+            type: calendar
+            entities:
+              - calendar.zhong_guo_jie_jia_ri
+    styles:
+      grid:
+        - grid-template-areas: |
+            "time time time time"
+            "date date week week"
+            "line line line line"
+            "year year day day"
+            "mon mon jieqi jieqi"
+            "jieri jieri jieri jieri"
+        - grid-template-columns: 140px 50px 16px 72px
+        - grid-template-rows: 50px 22px 15px 22px 20px 25px
+        - text-align: start
+        - font-weight: bold
+        - font-size: 15px
+        - color: rgb(226,232,240)
+        - justify-content: center
+        - border-radius: 8px
+        - padding: 0px
+        - box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5)
+      card:
+        - width: 295px
+        - height: 200px
+        - background-color: transparent
+      custom_fields:
+        week:
+          - font-size: 16px
+          - font-weight: 430
+          - text-align: right
+        time:
+          - font-size: 50px
+          - font-weight: 430
+          - text-align: center
+        jieqi:
+          - text-align: right
+          - font-size: 16px
+        jieri:
+          - text-align: center
+          - font-size: 20px
+        shengri:
+          - text-align: center
+          - font-size: 16px
+        day:
+          - text-align: right
+    custom_fields:
+      time: "[[[ return states['sensor.time'].state ]]]"
+      date: >
+        [[[ 
+          let date = new Date(), year = date.getFullYear(), month = date.getMonth()+1, day = date.getDate();
+          if (month < 10) month = `0${month}`;
+          if (day < 10) day = `0${day}`;
+          return `${year}年${month}月${day}日`;
+        ]]]
+      week: >
+        [[[ 
+          let day = new Date().getDay();
+          let week = ["星期日", "星期一", "星期二", "星期三", "星期四", "星期五", "星期六"][day];
+          return week;
+        ]]]
+      jieqi: >
+        [[[ 
+          var now = new Date();
+          var year = now.getYear(), mon = now.getMonth(), day = now.getDate() + variables.jieqi_tiaozheng;
+          var solarTerm = ["小寒", "大寒", "立春", "雨水", "惊蛰", "春分", "清明", "谷雨", "立夏", "小满", "芒种", "夏至", "小暑", "大暑", "立秋", "处暑", "白露", "秋分", "寒露", "霜降", "立冬", "小雪", "大雪", "冬至"];
+          var sTermInfo = [0, 21208, 42467, 63836, 85337, 107014, 128867, 150921, 173149, 195551, 218072, 240693, 263343, 285989, 308563, 331033, 353350, 375494, 397447, 419210, 440795, 462224, 483532, 504758];
+          var solarTerms = "", num1 = 1;
+          while (solarTerms == "") {
+            num1++;
+            var temp1 = new Date((31556925974.7 * (year - 1900) + sTermInfo[mon * 2 + 1] * 60000) + Date.UTC(1900, 0, 6, 2, 5));
+            if (temp1.getUTCDate() == day) solarTerms = solarTerm[mon * 2 + 1];
+            temp1 = new Date((31556925974.7 * (year - 1900) + sTermInfo[mon * 2] * 60000) + Date.UTC(1900, 0, 6, 2, 5));
+            if (temp1.getUTCDate() == day) solarTerms = solarTerm[mon * 2];
+            if (day > 1) { day--; } else { mon--; if (mon < 0) { year--; mon = 11; } day = 31; }
+          }
+          return `${solarTerms} 第${num1 - 1}天`;
+        ]]]
+      year: >
+        [[[ return states['sensor.holiday'].attributes.农历.slice(0, 4) ]]]
+      mon: >
+        [[[ return states['sensor.holiday'].attributes.农历.slice(5, 10) ]]]
+      day: >
+        [[[ 
+          let tzArr = ['子','丑','寅','卯','辰','巳','午','未','申','酉','戌','亥'];
+          let skArr = ['一','二','三','四','五','六','七','八'];
+          let h = new Date().getHours(), m = new Date().getMinutes();
+          let shike = (h % 2 == 0) ? skArr[Math.floor(m / 15)] : skArr[Math.floor(m / 15) + 4];
+          return `${tzArr[Math.floor(h / 2)]}时${shike}刻`;
+        ]]]
+      line:
+        card:
+          type: custom:button-card
+          styles:
+            card:
+              - width: 270px
+              - border-top: 1px solid white
+              - margin-top: 18px
+              - background-color: transparent
+              - border-radius: 0
+      jieri: >
+        [[[ 
+          let attr = states['sensor.holiday'].attributes;
+          if (attr.节日 !== undefined) return `${attr.节日}`;
+          return `${attr.最近的节日} ${attr.最近的节日还有}`;
+        ]]]

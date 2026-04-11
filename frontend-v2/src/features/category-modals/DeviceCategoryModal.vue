@@ -1,4 +1,4 @@
-<script setup>
+﻿<script setup>
 const props = defineProps({
   open: {
     type: Boolean,
@@ -33,9 +33,9 @@ defineEmits(['close', 'toggle', 'focus'])
   <Teleport to="body">
     <transition name="modal-fade">
       <div v-if="props.open" class="category-modal">
-        <div class="category-modal__scrim" @click="$emit('close')" />
+        <div class="category-modal__scrim" @pointerdown.stop.prevent @click.stop="$emit('close')" />
 
-        <section class="category-modal__panel">
+        <section class="category-modal__panel" @pointerdown.stop @click.stop>
           <header class="category-modal__header">
             <div class="category-modal__title-wrap">
               <div class="category-modal__icon" :class="`is-${props.icon}`" />
@@ -43,7 +43,7 @@ defineEmits(['close', 'toggle', 'focus'])
               <span class="category-modal__count">{{ props.count }}</span>
             </div>
 
-            <button type="button" class="category-modal__close" @click="$emit('close')">
+            <button type="button" class="category-modal__close" @pointerdown.stop @click.stop="$emit('close')">
               ×
             </button>
           </header>
@@ -57,7 +57,7 @@ defineEmits(['close', 'toggle', 'focus'])
               :class="{ 'is-active': device.active, 'is-selected': props.selectedDeviceId === device.id }"
               @mouseenter="$emit('focus', device.id)"
               @focus="$emit('focus', device.id)"
-              @click="$emit('toggle', device.id)"
+              @click.stop="$emit('toggle', device.id)"
             >
               <div class="light-device-card__icon" />
               <div class="light-device-card__meta">
@@ -71,3 +71,4 @@ defineEmits(['close', 'toggle', 'focus'])
     </transition>
   </Teleport>
 </template>
+

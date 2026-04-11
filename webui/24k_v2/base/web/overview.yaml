@@ -1,0 +1,2998 @@
+type: picture-elements
+image: local/ui/light_on_bg/lights_off.png?v={{now()}}
+card_mod:
+  style: |
+    :host {
+      --ha-card-background: none;
+      height: 100% !important;
+      max-height: 100% !important;
+      overflow: hidden !important;
+      position: relative !important;
+    }
+    ha-card {
+      height: 100% !important;
+      max-height: 100% !important;
+      overflow: hidden !important;
+    }
+elements:
+################################全屏按钮##################################
+  - type: custom:button-card
+    entity: input_boolean.full_screen
+    show_name: false
+    show_state: false
+    icon: >
+      [[[ return entity.state === "on" ? "mdi:fullscreen-exit" :
+      "mdi:fullscreen"; ]]]
+    tap_action:
+      action: toggle
+    styles:
+      card:
+        - width: 60px
+        - height: 60px
+        - background: transparent
+        - box-shadow: none
+      icon:
+        - color: var(--primary-color)
+      custom_fields:
+        icon:
+          - justify-self: center
+    style:
+      left: 5%
+      top: 95%
+  # - type: custom:button-card
+  #   style:
+  #     left: 75%
+  #     top: 95%
+  #   styles:
+  #     grid:
+  #       - grid-template-areas: |
+  #           "z1 bar1 bar2 bar3 bar4 bar5"
+  #       - grid-template-columns: 20px 80px 80px 80px 80px 80px
+  #       - grid-template-rows: 5px
+  #     card:
+  #       - '--mdc-ripple-press-opacity': 0
+  #       - width: 440px
+  #       - height: 40px
+  #       - background-color: rgba(0,0,0,0.3)
+  #       - border-radius: 20px
+  #       - box-shadow: 0px 0px 5px rgba(0, 0, 0, 0.5); /* 可选：阴影效果 */
+  #   custom_fields:
+  #     bar1:
+  #       card:
+  #         type: custom:button-card
+  #         entity: sensor.all_lights_num
+  #         layout: icon_name
+  #         show_icon: true
+  #         show_name: true
+  #         show_state: true
+  #         icon: mdi:lightbulb-group
+  #         name: 灯光
+  #         hold_action:
+  #           action: call-service
+  #           service: script.toggle_lights_unified
+  #           service_data:
+  #             lights:
+  #               - light.ke_wo_deng
+  #               - light.ftd_cn_1129333737_nomain_s_2
+  #               - light.yang_tai_diao_deng
+  #               - light.can_ting_tong_deng
+  #               - light.can_ting_xi_ding_deng
+  #               - light.chu_fang_xi_ding_deng
+  #               - light.ci_wo_deng
+  #               - light.ke_ting_deng_dai
+  #               - light.ke_ting_tong_deng_1
+  #               - light.ke_ting_tong_deng_2
+  #               - light.ke_ting_zhu_deng
+  #               - light.lang_deng
+  #               - light.shu_fang_deng
+  #               - light.zhu_wo_deng_dai
+  #               - light.ke_wei_ding_deng
+  #               - light.ke_wei_jing_deng
+  #               - light.zhu_wei_jing_deng
+  #               - light.xiao_yang_tai_deng
+  #               - light.zhu_wei_xi_ding_deng
+  #         double_tap_action:
+  #           action: call-service
+  #           service: button.press
+  #           target:
+  #             entity_id: button.yi_jian_guan_bi_suo_you_deng
+  #         tap_action:
+  #           action: fire-dom-event
+  #           browser_mod:
+  #             service: browser_mod.popup
+  #             data:
+  #               # timeout: 10000
+  #               card_mod:
+  #                 style: |
+  #                   ha-dialog {
+  #                     --mdc-dialog-min-width: 900px !important;
+  #                     --mdc-dialog-max-width: 800px !important;
+  #                     --dialog-surface-margin-top: 20px; !important;
+  #                   }
+  #               content:
+  #                 type: grid
+  #                 columns: 5
+  #                 square: false
+  #                 cards:
+  #                   - type: custom:button-card
+  #                     entity: light.ke_ting_zhu_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客厅主灯
+  #                     icon: mdi:chandelier
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ke_ting_tong_deng_1
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客厅筒灯1
+  #                     icon: mdi:light-flood-down
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ke_ting_tong_deng_2
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客厅筒灯2
+  #                     icon: mdi:light-flood-down
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ke_ting_deng_dai
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客厅灯带
+  #                     icon: mdi:led-strip-variant
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.can_ting_xi_ding_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 餐厅主灯
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.can_ting_tong_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 餐厅筒灯
+  #                     icon: mdi:light-flood-down
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.lang_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 廊灯
+  #                     icon: mdi:lightbulb-group
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ke_wei_ding_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客卫顶灯
+  #                     icon: mdi:wall-sconce-flat
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ke_wei_jing_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客卫镜灯
+  #                     icon: mdi:television-ambient-light
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.zhu_wo_deng_dai
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 主卧灯带
+  #                     icon: mdi:led-strip-variant
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.zhu_wei_xi_ding_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 主卫顶灯
+  #                     icon: mdi:wall-sconce-flat
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.zhu_wei_jing_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 主卫镜灯
+  #                     icon: mdi:television-ambient-light
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.shu_fang_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 书房灯
+  #                     icon: mdi:chandelier
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.chu_fang_xi_ding_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 厨房灯
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ci_wo_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 次卧灯
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ke_wo_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 客卧灯
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.ftd_cn_1129333737_nomain_s_2
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 阳台灯带
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.xiao_yang_tai_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 小阳台灯
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #                   - type: custom:button-card
+  #                     entity: light.yang_tai_diao_deng
+  #                     show_state: false
+  #                     show_name: true
+  #                     show_label: true
+  #                     name: 阳台吊灯
+  #                     icon: mdi:light-recessed
+  #                     styles:
+  #                       icon:
+  #                         - width: 50px
+  #                       img_cell:
+  #                         - width: 50px
+  #                         - justify-self: center
+  #                         - height: 80px
+  #                       name:
+  #                         - justify-self: center
+  #                         - font-weight: bold
+  #                       state:
+  #                         - justify-self: center
+  #                       label:
+  #                         - justify-self: center
+  #                       card:
+  #                         - padding: 15px
+  #                     state:
+  #                       - value: 'on'
+  #                         label: 'On'
+  #                         styles:
+  #                           card:
+  #                             - background: white
+  #                             - color: orange
+  #                           name:
+  #                             - color: black
+  #                       - value: 'off'
+  #                         label: 'Off'
+  #                         styles:
+  #                           card:
+  #                             - opacity: 0.5
+  #         styles:
+  #           icon:
+  #             - margin-top: '-2.7px'
+  #             - width: 18px
+  #             - color: white
+  #           name:
+  #             - margin-left: '-20px'
+  #             - font-size: 14px
+  #             - font-weight: bold
+  #             - color: white
+  #           state:
+  #             - margin-top: '-19.5px'
+  #             - margin-left: 63px
+  #             - font-size: 16px
+  #             - font-weight: bold
+  #           card:
+  #             - background-color: transparent
+  #         state:
+  #           - value: 0
+  #             operator: '=='
+  #             styles:
+  #               state:
+  #                 - color: transparent
+  #           - value: 0
+  #             operator: '>'
+  #             styles:
+  #               icon:
+  #                 - color: orange
+  #               state:
+  #                 - color: orange
+  #     bar2:
+  #       card:
+  #         type: custom:button-card
+  #         entity: sensor.all_fans_num
+  #         layout: icon_name
+  #         show_icon: true
+  #         show_name: true
+  #         show_state: true
+  #         icon: mdi:fan
+  #         name: 温控
+  #         hold_action:
+  #           action: call-service
+  #           service: button.press
+  #           target:
+  #             entity_id: button.yi_jian_guan_suo_you_kong_diao
+  #         double_tap_action:
+  #           action: call-service
+  #           service: script.toggle_climates_off
+  #           service_data:
+  #             climates:
+  #               - climate.777ca934
+  #               - climate.24dfa7ad914a
+  #               - climate.5667c6ca
+  #               - climate.e816563b729f
+  #               - climate.9424b8522029
+  #         tap_action:
+  #           action: fire-dom-event
+  #           browser_mod:
+  #             service: browser_mod.popup
+  #             data:
+  #               card_mod:
+  #                 style: |
+  #                   ha-dialog {
+  #                     --mdc-dialog-min-width: 800px !important;
+  #                     --mdc-dialog-max-width: 90% !important;
+  #                   }
+  #               content:
+  #                 type: vertical-stack
+  #                 cards:
+  #                   - type: horizontal-stack
+  #                     cards:
+  #                       - type: thermostat
+  #                         entity: climate.777ca934
+  #                         features:
+  #                           - type: climate-hvac-modes
+  #                           - type: climate-swing-modes
+  #                             style: dropdown
+  #                           - type: climate-fan-modes
+  #                             style: dropdown
+  #                       - type: thermostat
+  #                         entity: climate.e816563b729f
+  #                         features:
+  #                           - type: climate-hvac-modes
+  #                           - type: climate-swing-modes
+  #                             style: dropdown
+  #                           - type: climate-fan-modes
+  #                             style: dropdown
+  #                       - type: thermostat
+  #                         entity: climate.24dfa7ad914a
+  #                         features:
+  #                           - type: climate-hvac-modes
+  #                           - type: climate-swing-modes
+  #                             style: dropdown
+  #                           - type: climate-fan-modes
+  #                             style: dropdown
+  #                       - type: thermostat
+  #                         entity: climate.5667c6ca
+  #                         features:
+  #                           - type: climate-hvac-modes
+  #                           - type: climate-swing-modes
+  #                             style: dropdown
+  #                           - type: climate-fan-modes
+  #                             style: dropdown
+  #                       - type: thermostat
+  #                         entity: climate.9424b8522029
+  #                         features:
+  #                           - type: climate-hvac-modes
+  #                           - type: climate-swing-modes
+  #                             style: dropdown
+  #                           - type: climate-fan-modes
+  #                             style: dropdown
+  #                         name: 客卧空调
+  #                   - type: horizontal-stack
+  #                     cards:
+  #                       - type: custom:mushroom-chips-card
+  #                         chips:
+  #                           - type: entity
+  #                             entity: switch.777ca934_quiet
+  #                             tap_action:
+  #                               action: toggle
+  #                             hold_action:
+  #                               action: none
+  #                             double_tap_action:
+  #                               action: none
+  #                             name: 客厅静音模式
+  #                             icon: mdi:speedometer-slow
+  #                             icon_color: green
+  #                             content_info: name
+  #                           - type: conditional
+  #                             conditions:
+  #                               - condition: state
+  #                                 entity: climate.e816563b729f
+  #                                 state_not: 'off'
+  #                         alignment: center
+  #                       - type: custom:mushroom-chips-card
+  #                         chips:
+  #                           - type: entity
+  #                             entity: switch.e816563b729f_quiet
+  #                             tap_action:
+  #                               action: toggle
+  #                             hold_action:
+  #                               action: none
+  #                             double_tap_action:
+  #                               action: none
+  #                             name: 主卧静音模式
+  #                             icon: mdi:speedometer-slow
+  #                             icon_color: green
+  #                             content_info: name
+  #                           - type: conditional
+  #                             conditions:
+  #                               - condition: state
+  #                                 entity: climate.563b729f
+  #                                 state_not: 'off'
+  #                         alignment: center
+  #                       - type: custom:mushroom-chips-card
+  #                         chips:
+  #                           - type: entity
+  #                             entity: switch.24dfa7ad914a_quiet
+  #                             tap_action:
+  #                               action: toggle
+  #                             hold_action:
+  #                               action: none
+  #                             double_tap_action:
+  #                               action: none
+  #                             name: 次卧静音模式
+  #                             icon: mdi:speedometer-slow
+  #                             icon_color: green
+  #                             content_info: name
+  #                           - type: conditional
+  #                             conditions:
+  #                               - condition: state
+  #                                 entity: climate.24dfa7ad914a
+  #                                 state_not: 'off'
+  #                         alignment: center
+  #                       - type: custom:mushroom-chips-card
+  #                         chips:
+  #                           - type: entity
+  #                             entity: switch.5667c6ca_quiet
+  #                             tap_action:
+  #                               action: toggle
+  #                             hold_action:
+  #                               action: none
+  #                             double_tap_action:
+  #                               action: none
+  #                             name: 书房静音模式
+  #                             icon: mdi:speedometer-slow
+  #                             icon_color: green
+  #                             content_info: name
+  #                           - type: conditional
+  #                             conditions:
+  #                               - condition: state
+  #                                 entity: climate.e816563b729f
+  #                                 state_not: 'off'
+  #                         alignment: center
+  #                       - type: custom:mushroom-chips-card
+  #                         chips:
+  #                           - type: entity
+  #                             entity: switch.9424b8522029_quiet
+  #                             tap_action:
+  #                               action: toggle
+  #                             hold_action:
+  #                               action: none
+  #                             double_tap_action:
+  #                               action: none
+  #                             name: 客卧静音模式
+  #                             icon: mdi:speedometer-slow
+  #                             icon_color: green
+  #                             content_info: name
+  #                           - type: conditional
+  #                             conditions:
+  #                               - condition: state
+  #                                 entity: climate.e816563b729f
+  #                                 state_not: 'off'
+  #                         alignment: center      
+  #         styles:
+  #           icon:
+  #             - margin-top: '-2.7px'
+  #             - width: 18px
+  #             - color: white
+  #           name:
+  #             - margin-left: '-20px'
+  #             - font-size: 14px
+  #             - font-weight: bold
+  #             - color: white
+  #           state:
+  #             - margin-top: '-19.5px'
+  #             - margin-left: 63px
+  #             - font-size: 16px
+  #             - font-weight: bold
+  #           card:
+  #             - background-color: transparent
+  #         state:
+  #           - value: 0
+  #             operator: '=='
+  #             styles:
+  #               state:
+  #                 - color: transparent
+  #           - value: 0
+  #             operator: '>'
+  #             styles:
+  #               icon:
+  #                 - color: orange
+  #               state:
+  #                 - color: orange
+  #     bar3:
+  #       card:
+  #         type: custom:button-card
+  #         entity: camera.ke_ting_jian_kong
+  #         layout: icon_name
+  #         show_icon: true
+  #         show_name: true
+  #         show_state: false
+  #         icon: mdi:cctv
+  #         name: TV
+  #         tap_action:
+  #           action: fire-dom-event
+  #           browser_mod:
+  #             service: browser_mod.popup
+  #             data:
+  #               card_mod:
+  #                 style: |
+  #                   ha-dialog {
+                      
+  #                     --mdc-dialog-max-width: 70% !important;
+  #                   }
+  #               content:
+  #                 type: vertical-stack
+  #                 cards:
+  #                   - type: picture-entity
+  #                     entity: camera.ke_ting_jian_kong
+  #                     name: livingroom
+  #                     theme: ios-dark-mode-blue-red
+  #                     show_state: true
+  #                     show_name: true
+  #                     camera_view: live
+  #                     hold_action:
+  #                       action: none
+                  
+  #                   - type: picture-entity
+  #                     entity: camera.doorbell_repeater_b679
+  #                     name: doorbell
+  #                     theme: ios-dark-mode-blue-red
+  #                     show_state: true
+  #                     show_name: true
+  #                     camera_view: live
+  #                     hold_action:
+  #                       action: none
+
+  #         styles:
+  #           icon:
+  #             - margin-top: '-2.7px'
+  #             - width: 18px
+  #             - color: white
+  #           name:
+  #             - margin-left: '-20px'
+  #             - font-size: 14px
+  #             - font-weight: bold
+  #             - color: white
+  #           state:
+  #             - margin-top: '-19.5px'
+  #             - margin-left: 63px
+  #             - font-size: 16px
+  #             - font-weight: bold
+  #           card:
+  #             - background-color: transparent
+  #         state:
+  #           - value: 0
+  #             operator: '=='
+  #             styles:
+  #               state:
+  #                 - color: transparent
+  #           - value: 0
+  #             operator: '>'
+  #             styles:
+  #               icon:
+  #                 - color: orange
+  #               state:
+  #                 - color: orange
+  #     bar4:
+  #       card:
+  #         type: custom:button-card
+  #         entity: sensor.low_battery_num
+  #         layout: icon_name
+  #         show_icon: true
+  #         show_name: true
+  #         show_state: true
+  #         icon: mdi:battery-30
+  #         name: 电量
+  #         tap_action:
+  #           action: fire-dom-event
+  #           browser_mod:
+  #             service: browser_mod.popup
+  #             data:
+  #               title: 剩余电量
+  #               card_mod:
+  #                 style: |
+  #                   ha-dialog {
+  #                     --mdc-dialog-min-width: 400px !important;
+  #                     --mdc-dialog-max-width: 90% !important;
+  #                     --mdc-dialog-min-height: 200px !important;
+  #                     --mdc-dialog-max-height: 60vh !important;
+  #                   }
+  #               content:
+  #                 type: vertical-stack
+  #                 cards:
+  #                   - type: custom:battery-state-card
+  #         styles:
+  #           icon:
+  #             - margin-top: '-2.7px'
+  #             - width: 18px
+  #             - color: white
+  #           name:
+  #             - margin-left: '-20px'
+  #             - font-size: 14px
+  #             - font-weight: bold
+  #             - color: white
+  #           state:
+  #             - margin-top: '-19.5px'
+  #             - margin-left: 63px
+  #             - font-size: 16px
+  #             - font-weight: bold
+  #           card:
+  #             - background-color: transparent
+  #         state:
+  #           - value: 0
+  #             operator: '=='
+  #             styles:
+  #               state:
+  #                 - visibility: hidden
+  #           - value: 0
+  #             operator: '>'
+  #             styles:
+  #               icon:
+  #                 - color: red
+  #               state:
+  #                 - color: red
+  #     bar5:
+  #       card:
+  #         type: custom:button-card
+  #         entity: sensor.offline_devices_num
+  #         layout: icon_name
+  #         show_icon: true
+  #         show_name: true
+  #         show_state: true
+  #         icon: mdi:alert-circle-outline
+  #         name: 离线
+  #         tap_action:
+  #           action: fire-dom-event
+  #           browser_mod:
+  #             service: browser_mod.popup
+  #             data:
+  #               title: 请检查设备链接状态：
+  #               card_mod:
+  #                 style: |
+  #                   ha-dialog {
+  #                     --mdc-dialog-min-width: 400px !important;
+  #                     --mdc-dialog-max-width: 90% !important;
+  #                     --mdc-dialog-min-height: 200px !important;
+  #                     --mdc-dialog-max-height: 60vh !important;
+  #                   }
+  #               content:
+  #                 type: vertical-stack
+  #                 cards:
+  #                   - type: markdown
+  #                     content: >
+  #                       **离线的设备：**
+
+  #                       {% if states('sensor.offline_devices_list') ==
+  #                       '' %}
+  #                         N/A
+  #                       {% else %}
+  #                         {{ states('sensor.offline_devices_list') }}
+  #                       {% endif %}
+  #         styles:
+  #           icon:
+  #             - margin-top: '-2.7px'
+  #             - width: 18px
+  #             - color: white
+  #           name:
+  #             - margin-left: '-20px'
+  #             - font-size: 14px
+  #             - font-weight: bold
+  #             - color: white
+  #           state:
+  #             - margin-top: '-19.5px'
+  #             - margin-left: 63px
+  #             - font-size: 16px
+  #             - font-weight: bold
+  #           card:
+  #             - background-color: transparent
+  #         state:
+  #           - value: 0
+  #             operator: '=='
+  #             styles:
+  #               state:
+  #                 - color: transparent
+  #           - value: 0
+  #             operator: '>'
+  #             styles:
+  #               icon:
+  #                 - color: orange
+  #               state:
+  #                 - color: orange
+################################灯效/按钮##################################
+  - type: image
+    entity: light.zhu_wo_deng_dai
+    name: 主卧灯带
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/zhuwo.png?v={{now()}}
+  - type: image
+    entity: light.zhu_wo_deng_dai
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 63%
+      left: 82%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Strip_light_off.svg
+      'on': /local/ui/SVG/Strip_light_on.svg
+  
+  - type: image
+    entity: light.lang_deng
+    name: 走廊灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/zoulang.png?v={{now()}}
+  - type: image
+    entity: light.lang_deng
+    tap_action:
+      action: toggle
+    style:
+      top: 48%
+      left: 45%
+      width: 3%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Downlight_off.svg
+      'on': /local/ui/SVG/Downlight_on.svg
+
+  - type: image
+    entity: light.ke_wei_ding_deng
+    name: 次卫顶灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ciwei.png?v={{now()}}
+  - type: image
+    entity: light.ke_wei_ding_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 33%
+      left: 37%
+      width: 3%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights_off.svg
+      'on': /local/ui/SVG/ceiling_lights_on.svg
+  - type: image
+    entity: light.shu_fang_deng
+    name: 书房灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/shufang.png?v={{now()}}
+  - type: image
+    entity: light.shu_fang_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 30%
+      left: 55%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/chandelier2_off.svg
+      'on': /local/ui/SVG/chandelier2_on.svg
+  - type: image
+    entity: light.ci_wo_deng
+    name: 次卧灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ciwo.png?v={{now()}}
+  - type: image
+    entity: light.ci_wo_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 66%
+      left: 60%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights2_off.svg
+      'on': /local/ui/SVG/ceiling_lights2_on.svg
+  - type: image
+    entity: light.ke_ting_zhu_deng
+    name: 客厅主灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ketingzhudeng.png?v={{now()}}
+  - type: image
+    entity: light.ke_ting_zhu_deng
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.ke_ting_deng_dai
+          - light.ke_ting_zhu_deng
+          - light.ke_ting_tong_deng_1
+          - light.ke_ting_tong_deng_2
+    style:
+      top: 64%
+      left: 20%
+      width: 4%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/chandelier_off.svg
+      'on': /local/ui/SVG/chandelier_on.svg
+  - type: image
+    entity: light.ke_ting_deng_dai
+    name: 客厅灯带
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ketingdengdai.png?v={{now()}}
+  - type: image
+    entity: light.ke_ting_zhu_deng
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.ke_ting_deng_dai
+          - light.ke_ting_zhu_deng
+          - light.ke_ting_tong_deng_1
+          - light.ke_ting_tong_deng_2
+    style:
+      top: 64%
+      left: 20%
+      width: 4%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/chandelier_off.svg
+      'on': /local/ui/SVG/chandelier_on.svg
+  - type: image
+    entity: light.ke_ting_deng_dai
+    name: 客厅灯带
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ketingdengdai.png?v={{now()}}
+  - type: image
+    entity: light.ke_ting_deng_dai
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.ke_ting_deng_dai
+          - light.ke_ting_zhu_deng
+          - light.ke_ting_tong_deng_1
+          - light.ke_ting_tong_deng_2
+    hold_action: none
+    style:
+      top: 46%
+      left: 12%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Strip_light_off.svg
+      'on': /local/ui/SVG/Strip_light_on.svg
+  - type: image
+    entity: light.ftd_cn_1129333737_nomain_s_2
+    name: 阳台灯带
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/yangtai.png?v={{now()}}
+  - type: image
+    entity: light.ftd_cn_1129333737_nomain_s_2
+    tap_action:
+      action: toggle
+    style:
+      top: 88%
+      left: 30%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Strip_light_off.svg
+      'on': /local/ui/SVG/Strip_light_on.svg
+
+  - type: image
+    name: 阳台吊灯
+    entity: light.yang_tai_diao_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 88%
+      left: 20%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/chandelier2_off.svg
+      'on': /local/ui/SVG/chandelier2_on.svg
+  - type: image
+    entity: light.ke_ting_tong_deng_1
+    name: 客厅筒灯1
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ketingtongdeng1.png?v={{now()}}
+  - type: image
+    entity: light.ke_ting_tong_deng_1
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.ke_ting_deng_dai
+          - light.ke_ting_zhu_deng
+          - light.ke_ting_tong_deng_1
+          - light.ke_ting_tong_deng_2
+    hold_action: none
+    style:
+      top: 60%
+      left: 29%
+      width: 3%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Downlight_off.svg
+      'on': /local/ui/SVG/Downlight_on.svg
+  - type: image
+    entity: light.ke_ting_tong_deng_2
+    name: 客厅筒灯2
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/ketingtongdeng2.png?v={{now()}}
+  - type: image
+    entity: light.ke_ting_tong_deng_2
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.ke_ting_deng_dai
+          - light.ke_ting_zhu_deng
+          - light.ke_ting_tong_deng_1
+          - light.ke_ting_tong_deng_2
+    hold_action: none
+    style:
+      top: 60%
+      left: 8%
+      width: 3%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Downlight_off.svg
+      'on': /local/ui/SVG/Downlight_on.svg
+  - type: image
+    entity: light.can_ting_xi_ding_deng
+    name: 餐厅灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/canting.png?v={{now()}}
+  - type: image
+    entity: light.can_ting_xi_ding_deng
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.can_ting_tong_deng
+          - light.can_ting_xi_ding_deng
+    hold_action: none
+    style:
+      top: 35%
+      left: 24%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights2_off.svg
+      'on': /local/ui/SVG/ceiling_lights2_on.svg
+  - type: image
+    entity: light.can_ting_tong_deng
+    name: 餐厅筒灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/cantingtongdeng.png?v={{now()}}
+  - type: image
+    entity: light.can_ting_tong_deng
+    tap_action:
+      action: toggle
+    double_tap_action:
+      action: call-service
+      service: script.toggle_lights_unified
+      service_data:
+        lights:
+          - light.can_ting_tong_deng
+          - light.can_ting_xi_ding_deng
+    style:
+      top: 35%
+      left: 30%
+      width: 3%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Downlight_off.svg
+      'on': /local/ui/SVG/Downlight_on.svg
+  - type: image
+    entity: light.chu_fang_xi_ding_deng
+    name: 厨房灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/chufang.png?v={{now()}}
+  - type: image
+    entity: light.chu_fang_xi_ding_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 15%
+      left: 25%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights_off.svg
+      'on': /local/ui/SVG/ceiling_lights_on.svg
+  - type: image
+    entity: light.xiao_yang_tai_deng
+    name: 小阳台灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/xiaoyangtai.png?v={{now()}}
+  - type: image
+    entity: light.xiao_yang_tai_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 12%
+      left: 45%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights_off.svg
+      'on': /local/ui/SVG/ceiling_lights_on.svg
+  - type: image
+    entity: light.zhu_wei_xi_ding_deng
+    name: 主卫顶灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg
+      'on': /local/ui/light_on_bg/zhuwei.png?v={{now()}}
+  - type: image
+    entity: light.zhu_wei_xi_ding_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 40%
+      left: 88%
+      width: 3%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights_off.svg
+      'on': /local/ui/SVG/ceiling_lights_on.svg
+  - type: image
+    entity: light.ke_wo_deng
+    name: 客卧灯
+    show_name: false
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      pointer-events: none
+      top: 50%
+      left: 50%
+      width: 100%
+      mix-blend-mode: lighten
+      transform: translate(-50%, -50%)
+      z-index: 2
+    state_image:
+      'off': /local/ui/SVG/trans.svg?v=1
+      'on': /local/ui/light_on_bg/laoren.png?v={{now()}}
+  - type: image
+    entity: light.ke_wo_deng
+    tap_action:
+      action: toggle
+      hold_action: none
+    style:
+      top: 66%
+      left: 40%
+      width: 3.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/ceiling_lights2_off.svg
+      'on': /local/ui/SVG/ceiling_lights2_on.svg
+################################人在传感器##################################
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1jlrbcjv0kk00_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1jlrbcjv0kk00_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 走廊传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1jlrbcjv0kk00_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 48%
+      left: 50%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1jm4jtn84co00_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1jm4jtn84co00_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 主卫传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1jm4jtn84co00_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 43%
+      left: 88%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1jlpr8mg0kk00_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1jlpr8mg0kk00_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 客卫传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1jlpr8mg0kk00_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 33%
+      left: 40%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1jlrr501kk800_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1jlrr501kk800_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 厨房传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1jlrr501kk800_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 20%
+      left: 23%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1k4mfagn8cc01_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1k4mfagn8cc01_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 入户传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: red
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1k4mfagn8cc01_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 18%
+      left: 11%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: binary_sensor.doorbell_repeater_b679_motion_sensor
+    icon: |
+      [[[
+        if (states['binary_sensor.doorbell_repeater_b679_motion_sensor'].state === 'on')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 门铃传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['binary_sensor.doorbell_repeater_b679_motion_sensor'].state === 'on')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 5%
+      left: 11%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1k59cu2skcg00_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1k59cu2skcg00_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 客厅传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1k59cu2skcg00_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 55%
+      left: 20%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1lgn3hd24c800_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1lgn3hd24c800_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 餐厅传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1lgn3hd24c800_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 35%
+      left: 20%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+  - type: custom:button-card
+    entity: sensor.linp_cn_blt_3_1lv7ucqrg4o01_es2_occupancy_status_p_2_1078
+    icon: |
+      [[[
+        if (states['sensor.linp_cn_blt_3_1lv7ucqrg4o01_es2_occupancy_status_p_2_1078'].state === '有人')
+          return 'mdi:motion-sensor';
+        else
+          return ' ';
+      ]]]
+    name: 书房传感器
+    show_name: false
+    show_icon: true
+    show_state: false
+    styles:
+      card:
+        - background-color: transparent
+        - box-shadow: none
+        - padding: 0
+        - margin: 0
+      icon:
+        - width: 100%
+        - height: auto
+        - color: orange
+        - animation: |
+            [[[
+              if (states['sensor.linp_cn_blt_3_1lv7ucqrg4o01_es2_occupancy_status_p_2_1078'].state === '有人')
+                return 'blink 2s infinite';
+              else
+                return 'none';
+            ]]]
+    style:
+      top: 35%
+      left: 57%
+      width: 3.5%
+      z-index: 3
+      position: absolute
+
+###############################门铃监控################
+  - type: image
+    image: local/ui/SVG/cctv-running.svg
+    entity: camera.doorbell_repeater_b679
+    layout: icon_name
+    show_icon: true
+    show_name: false
+    show_state: false
+    name: 门铃监控
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          timeout: 10000
+          card_mod:
+            style: |
+              ha-dialog {
+                --mdc-dialog-min-width: 70% !important;
+                --mdc-dialog-max-width: 800px !important;
+                --mdc-dialog-min-height: auto !important;
+                --mdc-dialog-max-height: 90vh !important;
+              }
+          content:
+            type: vertical-stack
+            cards:
+              - type: picture-entity
+                entity: camera.doorbell_repeater_b679
+                name: 门铃监控
+                theme: ios-dark-mode-blue-red
+                show_state: true
+                show_name: true
+                camera_view: live
+                hold_action:
+                  action: none
+    style:
+      top: 5%
+      left: 7%
+      width: 3.5%
+      z-index: 3
+    styles:
+      icon:
+        - margin-top: '-2.7px'
+        - width: 18px
+        - color: white
+      name:
+        - margin-left: '-20px'
+        - font-size: 14px
+        - font-weight: bold
+        - color: white
+      state:
+        - margin-top: '-19.5px'
+        - margin-left: 63px
+        - font-size: 16px
+        - font-weight: bold
+      card:
+        - background-color: transparent
+
+################################空调按钮##################################
+  - type: image
+    entity: climate.777ca934
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      heat: /local/ui/SVG/fan_sq_heat.svg?v={{now()}}
+      cool: /local/ui/SVG/fan_sq_cool.svg?v={{now()}}
+      auto: /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+      dry: /local/ui/SVG/fan_sq_dry.svg?v={{now()}}
+      fan_only: /local/ui/SVG/fan_sq_fan.svg?v={{now()}}
+    style:
+      top: 76%
+      left: 8%
+      width: 4%
+      z-index: 3
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          timeout: 5000
+          content:
+            style:
+              width: 800px
+              max-width: 90%
+              border-radius: 10px
+            type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.777ca934
+                features:
+                  - type: climate-hvac-modes
+                  - type: climate-swing-modes
+                    style: dropdown
+                  - type: climate-fan-modes
+                    style: dropdown
+  - type: image
+    entity: climate.5667c6ca
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      heat: /local/ui/SVG/fan_sq_heat.svg?v={{now()}}
+      cool: /local/ui/SVG/fan_sq_cool.svg?v={{now()}}
+      auto: /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+      dry: /local/ui/SVG/fan_sq_dry.svg?v={{now()}}
+      fan_only: /local/ui/SVG/fan_sq_fan.svg?v={{now()}}
+    style:
+      top: 20%
+      left: 50%
+      width: 4%
+      z-index: 3
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          timeout: 5000
+          content:
+            style:
+              width: 800px
+              max-width: 90%
+              border-radius: 10px
+            type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.5667c6ca
+                features:
+                  - type: climate-hvac-modes
+                  - type: climate-swing-modes
+                    style: dropdown
+                  - type: climate-fan-modes
+                    style: dropdown
+  - type: image
+    entity: climate.e816563b729f
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      heat: /local/ui/SVG/fan_sq_heat.svg?v={{now()}}
+      cool: /local/ui/SVG/fan_sq_cool.svg?v={{now()}}
+      auto: /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+      dry: /local/ui/SVG/fan_sq_dry.svg?v={{now()}}
+      fan_only: /local/ui/SVG/fan_sq_fan.svg?v={{now()}}
+    style:
+      top: 72%
+      left: 75%
+      width: 4%
+      z-index: 3
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          timeout: 5000
+          content:
+            style:
+              width: 800px
+              max-width: 90%
+              border-radius: 10px
+            type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.e816563b729f
+                features:
+                  - type: climate-hvac-modes
+                  - type: climate-swing-modes
+                    style: dropdown
+                  - type: climate-fan-modes
+                    style: dropdown
+  - type: image
+    entity: climate.24dfa7ad914a
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      heat: /local/ui/SVG/fan_sq_heat.svg?v={{now()}}
+      cool: /local/ui/SVG/fan_sq_cool.svg?v={{now()}}
+      auto: /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+      dry: /local/ui/SVG/fan_sq_dry.svg?v={{now()}}
+      fan_only: /local/ui/SVG/fan_sq_fan.svg?v={{now()}}
+    style:
+      top: 72%
+      left: 70%
+      width: 4%
+      z-index: 3
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          timeout: 5000
+          content:
+            style:
+              width: 800px
+              max-width: 90%
+              border-radius: 10px
+            type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.24dfa7ad914a
+                features:
+                  - type: climate-hvac-modes
+                  - type: climate-swing-modes
+                    style: dropdown
+                  - type: climate-fan-modes
+                    style: dropdown
+  - type: image
+    entity: climate.9424b8522029
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      heat: /local/ui/SVG/fan_sq_heat.svg?v={{now()}}
+      cool: /local/ui/SVG/fan_sq_cool.svg?v={{now()}}
+      auto: /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+      dry: /local/ui/SVG/fan_sq_dry.svg?v={{now()}}
+      fan_only: /local/ui/SVG/fan_sq_fan.svg?v={{now()}}
+    style:
+      top: 72%
+      left: 47.5%
+      width: 4%
+      z-index: 3
+    tap_action:
+      action: fire-dom-event
+      browser_mod:
+        service: browser_mod.popup
+        data:
+          timeout: 5000
+          content:
+            style:
+              width: 800px
+              max-width: 90%
+              border-radius: 10px
+            type: vertical-stack
+            cards:
+              - type: thermostat
+                entity: climate.9424b8522029
+                features:
+                  - type: climate-hvac-modes
+                  - type: climate-swing-modes
+                    style: dropdown
+                  - type: climate-fan-modes
+                    style: dropdown
+  - type: image
+    entity: fan.xiaomi_mp5_c55d_air_purifier
+    name: 空气净化器
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      'on': /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+
+    style:
+      top: 32%
+      left: 50%
+      width: 4%
+      z-index: 3
+
+  - type: image
+    name: 书房换气扇
+    entity: fan.shu_fang_huan_qi_shan
+    tap_action: 
+      action: toggle
+    state_image:
+      'off': /local/ui/SVG/fan.svg
+      unavailable: /local/ui/SVG/trans.svg
+      'on': /local/ui/SVG/fan_sq_auto.svg?v={{now()}}
+
+    style:
+      top: 28%
+      left: 62%
+      width: 4%
+      z-index: 3
+      
+# ################################NAS.info##################################
+#   - type: custom:button-card
+#     entity: input_button.nas_info
+#     name: Server.info
+#     show_name: false
+#     show_state: false
+#     icon: mdi:nas
+#     styles:
+#       card:
+#         - width: 160px
+#         - background: transparent
+#         - box-shadow: none
+#       icon:
+#         - color: orange
+#       custom_fields:
+#         icon:
+#           - justify-self: center
+#     style:
+#       left: 8%
+#       top: 102%
+
+#     tap_action:
+#       action: fire-dom-event
+#       browser_mod:
+#         service: browser_mod.popup
+#         data:
+#           card_mod:
+#             style: |
+#               ha-dialog {
+#                 --mdc-dialog-max-width: 50% !important;
+#               }
+#           title: NAS.info
+#           content:
+#             square: false
+#             type: grid
+#             cards:
+#               - type: picture
+#                 image: >-
+#                   https://www.synology.cn/img/products/detail/RS3618xs/heading.png
+#               - type: vertical-stack
+#                 cards:
+#                   - square: true
+#                     type: grid
+#                     cards:
+#                       - graph: line
+#                         type: sensor
+#                         detail: 2
+#                         entity: sensor.datacenter_cpu_utilization_total
+#                         name: CPU利用率
+#                       - graph: line
+#                         type: sensor
+#                         detail: 2
+#                         entity: sensor.datacenter_memory_usage_real
+#                         name: 内存使用率
+#                       - graph: line
+#                         type: sensor
+#                         entity: sensor.datacenter_temperature
+#                         detail: 2
+#                         name: CPU温度
+#                       - graph: line
+#                         type: sensor
+#                         detail: 2
+#                         entity: sensor.datacenter_download_throughput
+#                         name: 下载
+#                       - graph: line
+#                         type: sensor
+#                         entity: sensor.datacenter_upload_throughput
+#                         detail: 2
+#                         name: 上传
+#                       - graph: line
+#                         type: sensor
+#                         entity: sensor.datacenter_volume_1_used_space
+#                         detail: 2
+#                         name: 储存
+#                     columns: 3
+#             columns: 1
+
+###############################温度显示按钮##################################
+  - type: custom:button-card
+    name: 主卧温度
+    entity: sensor.xiaomi_cn_blt_3_1lgn8eb4ok800_mini_temperature_p_2_1001
+    style:
+      left: 85%
+      top: 75%
+      z-index: 4
+    styles:
+      card:
+        - background: transparent
+        - box-shadow: none
+        - border: none
+        - font-size: 20px
+        - color: black
+        - text-align: center
+        - overflow: visible
+        - white-space: nowrap
+        - min-width: 60px
+        - width: auto
+      state:
+        - color: white
+        - font-weight: 40
+        - margin-left: 45px
+        - margin-top: '-23px'
+      icon:
+        - margin-left: 25%
+        - width: 23px
+        - color: rgb(0,155,199)
+    tap_action: none 
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    show_name: false
+    show_icon: true
+    show_state: true
+    state:
+      - value: ".*"
+        name: "{{ states(config.entity) }}℃"
+
+  - type: custom:button-card
+    name: 客卧温度
+    entity: sensor.xiaomi_cn_blt_3_1lgn4iruocc01_mini_temperature_p_2_1001
+    style:
+      left: 42%
+      top: 55%
+      z-index: 4
+    styles:
+      card:
+        - background: transparent
+        - box-shadow: none
+        - border: none
+        - font-size: 20px
+        - color: black
+        - text-align: center
+        - overflow: visible
+        - white-space: nowrap
+        - min-width: 60px
+        - width: auto
+      state:
+        - color: white
+        - font-weight: 40
+        - margin-left: 45px
+        - margin-top: '-23px'
+      icon:
+        - margin-left: 25%
+        - width: 23px
+        - color: rgb(0,155,199)
+    tap_action: none 
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    show_name: false
+    show_icon: true
+    show_state: true
+    state:
+      - value: ".*"
+        name: "{{ states(config.entity) }}℃"
+  - type: custom:button-card
+    name: 客厅温度
+    entity: sensor.xiaomi_cn_blt_3_1lgn2hjk8c402_mini_temperature_p_2_1001
+    style:
+      left: 13%
+      top: 76%
+      z-index: 4
+    styles:
+      card:
+        - background: transparent
+        - box-shadow: none
+        - border: none
+        - font-size: 20px
+        - color: black
+        - text-align: center
+        - overflow: visible
+        - white-space: nowrap
+        - min-width: 60px
+        - width: auto
+      state:
+        - color: blue
+        - font-weight: 40
+        - margin-left: 45px
+        - margin-top: '-23px'
+      icon:
+        - margin-left: 25%
+        - width: 23px
+        - color: rgb(0,155,199)
+    tap_action: none 
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    show_name: false
+    show_icon: true
+    show_state: true
+    state:
+      - value: ".*"
+        name: "{{ states(config.entity) }}℃"
+  - type: custom:button-card
+    name: 书房温度
+    entity: sensor.xiaomi_cn_blt_3_1li4bop8d0c00_mini_temperature_p_2_1001
+    style:
+      left: 48%
+      top: 40%
+      z-index: 4
+    styles:
+      card:
+        - background: transparent
+        - box-shadow: none
+        - border: none
+        - font-size: 20px
+        - color: black
+        - text-align: center
+        - overflow: visible
+        - white-space: nowrap
+        - min-width: 60px
+        - width: auto
+      state:
+        - color: white
+        - font-weight: 40
+        - margin-left: 45px
+        - margin-top: '-23px'
+      icon:
+        - margin-left: 25%
+        - width: 23px
+        - color: rgb(0,155,199)
+    tap_action: none 
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    show_name: false
+    show_icon: true
+    show_state: true
+    state:
+      - value: ".*"
+        name: "{{ states(config.entity) }}℃"
+  - type: custom:button-card
+    name: 次卧温度
+    entity: sensor.xiaomi_cn_blt_3_1lgnq9ei4ck00_mini_temperature_p_2_1001
+    style:
+      left: 63%
+      top: 55%
+      z-index: 4
+    styles:
+      card:
+        - background: transparent
+        - box-shadow: none
+        - border: none
+        - font-size: 20px
+        - color: black
+        - text-align: center
+        - overflow: visible
+        - white-space: nowrap
+        - min-width: 60px
+        - width: auto
+      state:
+        - color: white
+        - font-weight: 40
+        - margin-left: 45px
+        - margin-top: '-23px'
+      icon:
+        - margin-left: 25%
+        - width: 23px
+        - color: rgb(0,155,199)
+    tap_action: none 
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    show_name: false
+    show_icon: true
+    show_state: true
+    state:
+      - value: ".*"
+        name: "{{ states(config.entity) }}℃"
+  - type: custom:button-card
+    name: 室外温度
+    entity: sensor.xiaomi_cn_blt_3_1lubuvk9t0k00_mini_temperature_p_2_1001
+    style:
+      left: 57%
+      top: 8%
+      z-index: 4
+    styles:
+      card:
+        - background: transparent
+        - box-shadow: none
+        - border: none
+        - font-size: 20px
+        - color: black
+        - text-align: center
+        - overflow: visible
+        - white-space: nowrap
+        - min-width: 60px
+        - width: auto
+      state:
+        - color: orange
+        - font-weight: 40
+        - margin-left: 45px
+        - margin-top: '-23px'
+      icon:
+        - margin-left: 25%
+        - width: 23px
+        - color: rgb(0,155,199)
+    tap_action: none 
+    hold_action:
+      action: none
+    double_tap_action:
+      action: none
+    show_name: false
+    show_icon: true
+    show_state: true
+    state:
+      - value: ".*"
+        name: "{{ states(config.entity) }}℃"
+# ################################NAS.info##################################
+#     - type: custom:button-card
+#       entity: input_button.nas_info
+#       name: Server.info
+#       show_name: false
+#       show_state: false
+#       icon: mdi:nas
+#       styles:
+#         card:
+#           - width: 160px
+#           - background: transparent
+#           - box-shadow: none
+#         icon:
+#           - color: orange
+#         custom_fields:
+#           icon:
+#             - justify-self: center
+#       style:
+#         left: 8%
+#         top: 102%
+
+#       tap_action:
+#         action: fire-dom-event
+#         browser_mod:
+#           service: browser_mod.popup
+#           data:
+#             card_mod:
+#               style: |
+#                 ha-dialog {
+#                   --mdc-dialog-max-width: 50% !important;
+#                 }
+#             title: NAS.info
+#             content:
+#               square: false
+#               type: grid
+#               cards:
+#                 - type: picture
+#                   image: >-
+#                     https://www.synology.cn/img/products/detail/RS3618xs/heading.png
+#                 - type: vertical-stack
+#                   cards:
+#                     - square: true
+#                       type: grid
+#                       cards:
+#                         - graph: line
+#                           type: sensor
+#                           detail: 2
+#                           entity: sensor.datacenter_cpu_utilization_total
+#                           name: CPU利用率
+#                         - graph: line
+#                           type: sensor
+#                           detail: 2
+#                           entity: sensor.datacenter_memory_usage_real
+#                           name: 内存使用率
+#                         - graph: line
+#                           type: sensor
+#                           entity: sensor.datacenter_temperature
+#                           detail: 2
+#                           name: CPU温度
+#                         - graph: line
+#                           type: sensor
+#                           detail: 2
+#                           entity: sensor.datacenter_download_throughput
+#                           name: 下载
+#                         - graph: line
+#                           type: sensor
+#                           entity: sensor.datacenter_upload_throughput
+#                           detail: 2
+#                           name: 上传
+#                         - graph: line
+#                           type: sensor
+#                           entity: sensor.datacenter_volume_1_used_space
+#                           detail: 2
+#                           name: 储存
+#                       columns: 3
+#               columns: 1
+
+
+# ################################窗帘##################################
+
+  # - type: image
+  #   entity: cover.curtain_2
+  #   name: 阳台纱帘
+  #   tap_action:
+  #     action: toggle
+  #   hold_action: none
+  #   style:
+  #     top: 80%
+  #     left: 18%
+  #     width: 3%
+  #     z-index: 3
+  #   state_image:
+  #     'closed': /local/ui/SVG/curtains-closed.svg
+  #     'closing': /local/ui/SVG/curtains-width-change.svg
+  #     'opening': /local/ui/SVG/curtains-width-change.svg
+  #     'open': /local/ui/SVG/curtains_open.svg
+  # - type: image
+  #   entity: cover.curtain
+  #   name: 阳台布帘
+  #   tap_action:
+  #     action: toggle
+  #   hold_action: none
+  #   style:
+  #     top: 85%
+  #     left: 18%
+  #     width: 3%
+  #     z-index: 3
+  #   state_image:
+  #     'closed': /local/ui/SVG/curtains-closed.svg
+  #     'closing': /local/ui/SVG/curtains-width-change.svg
+  #     'opening': /local/ui/SVG/curtains-width-change.svg
+  #     'open': /local/ui/SVG/curtains_open.svg
+
+      
+  # - type: image
+  #   entity: cover.curtain_5
+  #   name: 卧室窗帘
+  #   tap_action:
+  #     action: toggle
+  #   hold_action: none
+  #   style:
+  #     top: 50%
+  #     left: 30%
+  #     width: 3%
+  #     z-index: 3
+  #   state_image:
+  #     'closed': /local/ui/SVG/curtains-closed.svg
+  #     'closing': /local/ui/SVG/curtains-width-change.svg
+  #     'opening': /local/ui/SVG/curtains-width-change.svg
+  #     'open': /local/ui/SVG/curtains_open.svg
+
+      
+  # - type: image
+  #   entity: cover.curtain_4
+  #   name: 衣帽间窗帘
+  #   tap_action:
+  #     action: toggle
+  #   hold_action: none
+  #   style:
+  #     top: 22%
+  #     left: 35%
+  #     width: 3%
+  #     z-index: 3
+  #   state_image:
+  #     'closed': /local/ui/SVG/curtains-closed.svg
+  #     'closing': /local/ui/SVG/curtains-width-change.svg
+  #     'opening': /local/ui/SVG/curtains-width-change.svg
+  #     'open': /local/ui/SVG/curtains_open.svg
+
+
+  # - type: image
+  #   entity: cover.curtain_3
+  #   name: 书房窗帘
+  #   tap_action:
+  #     action: toggle
+  #   hold_action: none
+  #   style:
+  #     top: 35%
+  #     left: 69%
+  #     width: 3%
+  #     z-index: 3
+  #   state_image:
+  #     'closed': /local/ui/SVG/curtains-closed.svg
+  #     'closing': /local/ui/SVG/curtains-width-change.svg
+  #     'opening': /local/ui/SVG/curtains-width-change.svg
+  #     'open': /local/ui/SVG/curtains_open.svg
+
+#############################################快捷键
+  - type: image
+    entity: input_boolean.appletv_switch
+    layout: icon_name
+    show_icon: true
+    show_name: false
+    show_state: false
+    name: Apple TV
+    tap_action:
+      action: toggle
+    style:
+      top: 68%
+      left: 29%
+      width: 2.5%
+      z-index: 3
+    state_image:
+      'off': /local/ui/SVG/Apple_TV_off.svg
+      'on': /local/ui/SVG/Apple_TV_on.svg
+
+  # - type: conditional
+  #   conditions:
+  #     - entity: media_player.keting
+  #       state: 'playing'
+  #     - entity: media_player.keting
+  #       state: 'paused'
+  #   card:
+  #     type: image
+  #     image: /local/ui/SVG/Apple_TV_on.svg
+  #     entity: media_player.keting
+  #     layout: icon_name
+  #     show_icon: true
+  #     show_name: false
+  #     show_state: false
+  #     name: Apple TV
+  #     tap_action:
+  #       action: toggle
+  #     style:
+  #       top: 98%
+  #       left: 70%
+  #       width: 3.5%
+  #       z-index: 3
+  #     styles:
+  #       icon:
+  #         - margin-top: '-2.7px'
+  #         - width: 18px
+  #         - color: white
+  #       name:
+  #         - margin-left: '-20px'
+  #         - font-size: 14px
+  #         - font-weight: bold
+  #         - color: white
+  #       state:
+  #         - margin-top: '-19.5px'
+  #         - margin-left: 63px
+  #         - font-size: 16px
+  #         - font-weight: bold
+  #       card:
+  #         - background-color: transparent
+  #   card_if_false:
+  #     type: image
+  #     image: /local/ui/SVG/Apple_TV_off.svg
+          

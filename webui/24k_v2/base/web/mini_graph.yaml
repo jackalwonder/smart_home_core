@@ -1,0 +1,93 @@
+type: custom:swipe-card
+card_width: auto
+start_card: 2
+card_mod:
+  style: |
+    ha-card {
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      margin-top: 10px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+style:
+  top: 25%
+  left: 73%
+  # width: 25%
+  z-index: 3
+parameters:
+  slidesPerView: 1
+  spaceBetween: 0
+  grabCursor: true
+  followFinger: true
+  pagination:
+    type: none
+    color: white
+  autoplay:
+    delay: 5000
+cards:
+  
+
+  - type: grid
+    columns: 1
+    cards:
+      !include temperature-mobile.yaml
+
+  - type: grid
+    columns: 2
+    square: false     
+    cards:
+      
+      - type: custom:decluttering-card
+        template: sensor_card_template_line
+        tap_action:
+          action: navigate
+          navigation_path: "#test"
+        variables:
+          - entity: sensor.xiaomi_cn_blt_3_1lgn2hjk8c402_mini_temperature_p_2_1001
+          - name: 客厅温度
+          - min: 0
+          - max: 50
+
+      - type: custom:decluttering-card
+        template: sensor_card_template_line
+        variables:
+          - entity: sensor.xiaomi_cn_blt_3_1li4bop8d0c00_mini_temperature_p_2_1001
+          - name: 书房温度
+          - min: 0
+          - max: 50
+
+      - type: custom:decluttering-card
+        template: sensor_card_template_line
+        variables:
+          - entity: sensor.xiaomi_cn_blt_3_1lgnq9ei4ck00_mini_temperature_p_2_1001
+          - name: 儿童房
+          - min: 0
+          - max: 50
+
+      - type: custom:decluttering-card
+        template: sensor_card_template_line
+        variables:
+          - entity: sensor.xiaomi_cn_blt_3_1lgn4iruocc01_mini_temperature_p_2_1001
+          - name: 老人房
+          - min: 0
+          - max: 50
+
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:decluttering-card
+        template: sensor_card_template_line
+        variables:
+          - entity: sensor.xiaomi_cn_blt_3_1lgn8eb4ok800_mini_temperature_p_2_1001
+            name: 主卧温度
+          - min: 0
+          - max: 50
+      - type: custom:decluttering-card
+        template: sensor_card_template_line
+        variables:
+          - entity: sensor.xiaomi_cn_blt_3_1lubuvk9t0k00_mini_temperature_p_2_1001
+            name: 室外温度 
+          - min: 0
+          - max: 50    
+  

@@ -289,9 +289,11 @@ export const useDashboardStore = defineStore('dashboard', () => {
   const persisted = readSettingsStorage()
   const now = ref(new Date('2026-03-31T17:12:04'))
   const activeCategory = ref('')
+  const activeCategoryScope = ref('category')
   const activeRoomKey = ref('')
   const previewRoomKey = ref('')
   const selectedStageDeviceId = ref('')
+  const modalCloseGuardUntil = ref(0)
   const selectedFloorId = ref(persisted?.selectedFloorId ?? floorsSeed[0].id)
   const quickCategories = ref(quickCategoriesSeed.map((item) => ({ ...item })))
   const lightDevices = ref(lightDevicesSeed.map((item) => ({ ...item })))
@@ -419,6 +421,44 @@ export const useDashboardStore = defineStore('dashboard', () => {
     return roomEnvironmentSeed[roomKey]
   })
 
+  const activeStageDeviceMeta = computed(() => {
+    const light = lightDevices.value.find((device) => device.id === selectedStageDeviceId.value)
+    if (light) {
+      return { ...light, category: 'lights' }
+    }
+    const climate = climateDevices.value.find((device) => device.id === selectedStageDeviceId.value)
+    if (climate) {
+      return { ...climate, category: 'climate' }
+    }
+    return null
+  })
+
+  const activeLightModalDevices = computed(() => {
+    if (activeCategoryScope.value === 'device' && selectedStageDeviceId.value) {
+      return lightDevices.value.filter((device) => device.id === selectedStageDeviceId.value)
+    }
+    return filteredLightDevices.value
+  })
+
+  const activeClimateModalDevices = computed(() => {
+    if (activeCategoryScope.value === 'device' && selectedStageDeviceId.value) {
+      return climateDevices.value.filter((device) => device.id === selectedStageDeviceId.value)
+    }
+    return filteredClimateDevices.value
+  })
+
+  const activeLightModalTitle = computed(() =>
+    activeCategoryScope.value === 'device' && activeStageDeviceMeta.value?.category === 'lights'
+      ? activeStageDeviceMeta.value.name
+      : '灯光控制',
+  )
+
+  const activeClimateModalTitle = computed(() =>
+    activeCategoryScope.value === 'device' && activeStageDeviceMeta.value?.category === 'climate'
+      ? activeStageDeviceMeta.value.name
+      : '温控控制',
+  )
+
   watch(
     [settingsMenu, floorplanAssets, floors, roomLayersConfig, roomAnchorsConfig, selectedFloorId],
     () => {
@@ -435,10 +475,17 @@ export const useDashboardStore = defineStore('dashboard', () => {
   )
 
   function selectCategory(categoryKey) {
+    if (!categoryKey) {
+      return
+    }
+    if (Date.now() < modalCloseGuardUntil.value && !activeCategory.value) {
+      return
+    }
     quickCategories.value = quickCategories.value.map((item) => ({
       ...item,
       selected: item.key === categoryKey,
     }))
+    activeCategoryScope.value = 'category'
     activeCategory.value = categoryKey
   }
 
@@ -468,28 +515,29 @@ export const useDashboardStore = defineStore('dashboard', () => {
     if (!categoryKey) {
       return
     }
-    const hotspot = currentFloorHotspots.value.find((item) => item.deviceId === deviceId)
-    if (hotspot?.roomKey) {
-      activeRoomKey.value = hotspot.roomKey
+    if (Date.now() < modalCloseGuardUntil.value) {
+      return
     }
     selectedStageDeviceId.value = deviceId
-    selectCategory(categoryKey)
+    if (categoryKey === 'lights') {
+      toggleLightDevice(deviceId)
+      activeCategory.value = ''
+      activeCategoryScope.value = 'category'
+      return
+    }
+    activeCategoryScope.value = 'device'
+    activeCategory.value = categoryKey
   }
 
   function closeCategoryModal() {
+    modalCloseGuardUntil.value = Date.now() + 320
     activeCategory.value = ''
+    activeCategoryScope.value = 'category'
     selectedStageDeviceId.value = ''
   }
 
-  function focusDevice(deviceId, categoryKey) {
-    const hotspot = currentFloorHotspots.value.find((item) => item.deviceId === deviceId)
-    if (hotspot?.roomKey) {
-      activeRoomKey.value = hotspot.roomKey
-    }
+  function focusDevice(deviceId) {
     selectedStageDeviceId.value = deviceId
-    if (categoryKey) {
-      selectCategory(categoryKey)
-    }
   }
 
   function toggleLightDevice(deviceId) {
@@ -716,6 +764,10 @@ export const useDashboardStore = defineStore('dashboard', () => {
     currentRoomEnvironment,
     filteredLightDevices,
     filteredClimateDevices,
+    activeLightModalDevices,
+    activeClimateModalDevices,
+    activeLightModalTitle,
+    activeClimateModalTitle,
     filteredStats,
     filteredEventFeed,
     stageHotspots,
