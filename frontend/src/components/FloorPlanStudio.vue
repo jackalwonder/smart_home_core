@@ -66,20 +66,20 @@ if (typeof initialUiPreferences.showSensors === 'boolean') {
   showSensors.value = initialUiPreferences.showSensors
 }
 
-const sceneRooms = computed(() => props.scene?.rooms ?? [])
-const baseRoomModels = computed(() => buildFloorMapModel(sceneRooms.value, smartHomeStore.pendingDeviceIds))
-const floorMapEditor = useFloorMapEditorState(sceneRooms, baseRoomModels)
-const editorDraft = computed(() => ({
+const sceneRooms = computed(() => smartHomeStore.spatialRoomViews)
+const derivedRoomModels = computed(() => buildFloorMapModel(sceneRooms.value, smartHomeStore.pendingDeviceIds))
+const floorMapEditor = useFloorMapEditorState(sceneRooms, derivedRoomModels)
+const draftOverlay = computed(() => ({
   roomDrafts: floorMapEditor.roomDrafts.value,
   deviceDrafts: floorMapEditor.deviceDrafts.value,
 }))
-const previewRoomModels = computed(() =>
+const draftOverlayRoomModels = computed(() =>
   buildFloorMapModel(sceneRooms.value, smartHomeStore.pendingDeviceIds, {
-    roomDrafts: editorDraft.value.roomDrafts,
-    deviceDrafts: editorDraft.value.deviceDrafts,
+    roomDrafts: draftOverlay.value.roomDrafts,
+    deviceDrafts: draftOverlay.value.deviceDrafts,
   }),
 )
-const stageRooms = computed(() => (floorMapEditor.enabled.value ? previewRoomModels.value : baseRoomModels.value))
+const stageRooms = computed(() => (floorMapEditor.enabled.value ? draftOverlayRoomModels.value : derivedRoomModels.value))
 const selectedRoom = computed(() => {
   if (props.selectedRoomId === null || props.selectedRoomId === undefined) {
     return stageRooms.value[0] ?? null
@@ -99,12 +99,12 @@ const editorDevice = computed(() =>
 const selectedRoomMetrics = computed(() => buildRoomMetrics(selectedRoom.value, smartHomeStore.pendingDeviceIds))
 const selectedRoomAmbient = computed(() => formatRoomAmbient({ metrics: selectedRoomMetrics.value }))
 const drawerRoom = computed(() =>
-  smartHomeStore.findMergedRoomById(props.selectedRoomId ?? selectedRoom.value?.id ?? null) ?? selectedRoom.value ?? null,
+  smartHomeStore.selectRoomViewById(props.selectedRoomId ?? selectedRoom.value?.id ?? null) ?? selectedRoom.value ?? null,
 )
 const focusedDevice = computed(() =>
-  smartHomeStore.findMergedDeviceInRoom(
-    drawerRoom.value?.id ?? selectedRoom.value?.id ?? null,
+  smartHomeStore.selectDeviceViewById(
     highlightedDeviceId.value,
+    drawerRoom.value?.id ?? selectedRoom.value?.id ?? null,
   ) ?? null,
 )
 const stageStateLabel = computed(() => {
@@ -343,7 +343,7 @@ function handleStageRoomSelection(roomId) {
                 :pending-device-ids="smartHomeStore.pendingDeviceIds"
                 :show-sensors="showSensors"
                 :editor-enabled="floorMapEditor.enabled"
-                :editor-draft="editorDraft"
+                :editor-draft="draftOverlay"
                 :editor-selected-room-id="floorMapEditor.selectedRoomId"
                 :editor-selected-device-id="floorMapEditor.selectedDeviceId"
                 :editor-selected-opening-index="floorMapEditor.selectedOpeningIndex"
@@ -432,7 +432,7 @@ function handleStageRoomSelection(roomId) {
                   </p>
                 </div>
                 <span class="shell-status shell-status--idle">
-                  {{ selectedRoom?.zone?.name ?? props.scene?.zone?.name ?? '默认区域' }}
+                  {{ selectedRoom?.zone?.name ?? smartHomeStore.sceneMeta?.zone?.name ?? props.scene?.zone?.name ?? '默认区域' }}
                 </span>
               </div>
 

@@ -2,6 +2,8 @@ import { resolveRoomVisualConfig } from '../config/floorMapConfig'
 
 const ACTIVE_STATES = new Set(['on', 'online', 'playing', 'heat', 'cool', 'heat_cool', 'dry', 'fan_only', 'auto', 'opening', 'open'])
 const OFFLINE_STATES = new Set(['offline', 'unavailable', 'unknown'])
+const ROOM_LAYOUT_FIELDS = ['plan_x', 'plan_y', 'plan_width', 'plan_height', 'plan_rotation']
+const DEVICE_LAYOUT_FIELDS = ['plan_x', 'plan_y', 'plan_z', 'plan_rotation']
 const ROOM_TONES = [
   {
     fill: '#f2e4cf',
@@ -41,6 +43,43 @@ function hasNumber(value) {
 
 function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value))
+}
+
+function readLayoutFields(source, fields) {
+  return fields.reduce((layout, field) => {
+    layout[field] = source?.[field] ?? null
+    return layout
+  }, {})
+}
+
+function readLayoutLayer(source, layerName, fields) {
+  const layer = source?.[layerName]
+  if (!layer || typeof layer !== 'object') {
+    return readLayoutFields({}, fields)
+  }
+
+  return readLayoutFields(layer, fields)
+}
+
+function resolveEffectiveLayout(source, fields) {
+  const fallback = readLayoutFields(source, fields)
+  const effective = readLayoutLayer(source, 'effective_layout', fields)
+  return {
+    ...fallback,
+    ...effective,
+    source: source?.effective_layout?.source ?? source?.layout_source ?? 'unknown',
+    field_sources: source?.effective_layout?.field_sources ?? {},
+  }
+}
+
+function attachLayoutLayers(source, fields) {
+  return {
+    ...source,
+    ...resolveEffectiveLayout(source, fields),
+    layout_persisted: readLayoutLayer(source, 'layout_persisted', fields),
+    layout_derived: readLayoutLayer(source, 'layout_derived', fields),
+    effective_layout: resolveEffectiveLayout(source, fields),
+  }
 }
 
 function normalizeState(device) {
@@ -409,9 +448,13 @@ function distributeDevicePoint(roomFrame, sourceRoom, device, deviceIndex, devic
 export function buildFloorMapModel(rooms, pendingDeviceIds = [], options = {}) {
   const roomDrafts = options?.roomDrafts ?? {}
   const deviceDrafts = options?.deviceDrafts ?? {}
-  const frames = fitRoomsToCanvas(rooms)
+  const sceneRooms = (rooms ?? []).map((room) => ({
+    ...attachLayoutLayers(room, ROOM_LAYOUT_FIELDS),
+    devices: (room.devices ?? []).map((device) => attachLayoutLayers(device, DEVICE_LAYOUT_FIELDS)),
+  }))
+  const frames = fitRoomsToCanvas(sceneRooms)
 
-  return rooms.map((room, index) => {
+  return sceneRooms.map((room, index) => {
     const roomDraft = roomDrafts[room.id] ?? null
     const frame = applyFrameOverride(frames[index], roomDraft?.frame)
     const tone = getRoomTone(index)
@@ -433,6 +476,12 @@ export function buildFloorMapModel(rooms, pendingDeviceIds = [], options = {}) {
         active: isDeviceActive(device),
         offline: isDeviceOffline(device),
         pending: pendingDeviceIds.includes(device.id),
+        draftOverlay: deviceDraft?.position ? { position: { ...deviceDraft.position } } : null,
+        layoutLayers: {
+          persisted: device.layout_persisted,
+          derived: device.layout_derived,
+          effective: device.effective_layout,
+        },
       }
     })
 
@@ -449,6 +498,17 @@ export function buildFloorMapModel(rooms, pendingDeviceIds = [], options = {}) {
       visualConfig,
       metrics,
       devices,
+      draftOverlay: roomDraft
+        ? {
+            frame: roomDraft.frame ? { ...roomDraft.frame } : null,
+            visualConfig: roomDraft.visualConfig ?? null,
+          }
+        : null,
+      layoutLayers: {
+        persisted: room.layout_persisted,
+        derived: room.layout_derived,
+        effective: room.effective_layout,
+      },
     }
   })
 }

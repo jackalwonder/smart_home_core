@@ -1,10 +1,20 @@
-﻿import { computed, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { defineStore } from 'pinia'
 
-import { mergeDevicePatch, normalizeDeviceRead } from '../adapters/deviceAdapter'
+import {
+  extractSceneDeviceLayout,
+  mergeDevicePatch,
+  normalizeDeviceEntity,
+  normalizeDevicePatchV2,
+  normalizeDeviceRead,
+} from '../adapters/deviceAdapter'
 import { normalizeRealtimeMessage } from '../adapters/realtimeAdapter'
-import { normalizeRoomStateRead } from '../adapters/roomAdapter'
-import { normalizeSpatialSceneRead } from '../adapters/spatialSceneAdapter'
+import {
+  extractRoomSceneLayout,
+  normalizeRoomEntity,
+  normalizeRoomStateRead,
+} from '../adapters/roomAdapter'
+import { normalizeSceneMeta, normalizeSpatialSceneRead } from '../adapters/spatialSceneAdapter'
 import {
   countDisplayDevices,
   filterDisplayDevices,
@@ -157,78 +167,20 @@ function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
-function mergeRoomDevices(detailDevices = [], sceneDevices = []) {
-  const sceneDevicesById = new Map(sceneDevices.map((device) => [device.id, device]))
-  const detailDevicesById = new Map(detailDevices.map((device) => [device.id, device]))
-  const mergedIds = new Set([...sceneDevicesById.keys(), ...detailDevicesById.keys()])
-
-  return [...mergedIds].map((deviceId) => {
-    const sceneDevice = sceneDevicesById.get(deviceId) ?? null
-    const detailDevice = detailDevicesById.get(deviceId) ?? null
-
-    if (!detailDevice) {
-      return decorateDeviceSource(sceneDevice, { scene: true })
-    }
-
-    if (!sceneDevice) {
-      return decorateDeviceSource(detailDevice, { detail: true })
-    }
-
-    const mergedDevice = {
-      ...sceneDevice,
-      ...detailDevice,
-      plan_x: hasValue(sceneDevice.plan_x) ? sceneDevice.plan_x : detailDevice.plan_x,
-      plan_y: hasValue(sceneDevice.plan_y) ? sceneDevice.plan_y : detailDevice.plan_y,
-      plan_z: hasValue(sceneDevice.plan_z) ? sceneDevice.plan_z : detailDevice.plan_z,
-      plan_rotation: hasValue(sceneDevice.plan_rotation) ? sceneDevice.plan_rotation : detailDevice.plan_rotation,
-      position: sceneDevice.position ?? detailDevice.position ?? null,
-      control_options: detailDevice.control_options ?? sceneDevice.control_options ?? [],
-      hvac_modes: detailDevice.hvac_modes ?? sceneDevice.hvac_modes ?? [],
-      media_source_options: detailDevice.media_source_options ?? sceneDevice.media_source_options ?? [],
-    }
-
-    return decorateDeviceSource(mergedDevice, { detail: true, scene: true })
-  })
+function setRecordValue(source, key, value) {
+  return {
+    ...source,
+    [key]: value,
+  }
 }
 
-function mergeRoomContext(detailRoom, sceneRoom) {
-  if (!detailRoom && !sceneRoom) {
-    return null
-  }
+function hasRoomSceneLayout(layout = {}) {
+  return ['plan_x', 'plan_y', 'plan_width', 'plan_height', 'plan_rotation'].some((field) => hasValue(layout?.[field]))
+}
 
-  if (!detailRoom) {
-    return {
-      ...sceneRoom,
-      devices: sortDevices(sceneRoom.devices ?? []),
-    }
-  }
-
-  if (!sceneRoom) {
-    return {
-      ...detailRoom,
-      devices: sortDevices(detailRoom.devices ?? []),
-    }
-  }
-
-  return {
-    ...sceneRoom,
-    ...detailRoom,
-    id: detailRoom.id ?? sceneRoom.id,
-    zone_id: detailRoom.zone_id ?? sceneRoom.zone_id ?? sceneRoom.zone?.id ?? detailRoom.zone?.id ?? null,
-    name: detailRoom.name ?? sceneRoom.name,
-    description: detailRoom.description ?? sceneRoom.description ?? '',
-    zone: detailRoom.zone ?? sceneRoom.zone ?? null,
-    ambient_temperature: hasValue(detailRoom.ambient_temperature) ? detailRoom.ambient_temperature : sceneRoom.ambient_temperature,
-    ambient_humidity: hasValue(detailRoom.ambient_humidity) ? detailRoom.ambient_humidity : sceneRoom.ambient_humidity,
-    occupancy_status: detailRoom.occupancy_status ?? sceneRoom.occupancy_status ?? null,
-    active_device_count: detailRoom.active_device_count ?? sceneRoom.active_device_count ?? 0,
-    plan_x: hasValue(sceneRoom.plan_x) ? sceneRoom.plan_x : detailRoom.plan_x,
-    plan_y: hasValue(sceneRoom.plan_y) ? sceneRoom.plan_y : detailRoom.plan_y,
-    plan_width: hasValue(sceneRoom.plan_width) ? sceneRoom.plan_width : detailRoom.plan_width,
-    plan_height: hasValue(sceneRoom.plan_height) ? sceneRoom.plan_height : detailRoom.plan_height,
-    plan_rotation: hasValue(sceneRoom.plan_rotation) ? sceneRoom.plan_rotation : detailRoom.plan_rotation,
-    devices: sortDevices(mergeRoomDevices(detailRoom.devices ?? [], sceneRoom.devices ?? [])),
-  }
+function hasDeviceSceneLayout(layout = {}) {
+  return ['plan_x', 'plan_y', 'plan_z', 'plan_rotation'].some((field) => hasValue(layout?.[field]))
+    || hasValue(layout?.position)
 }
 
 function readCache(key, fallback) {
@@ -285,6 +237,12 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const notificationStore = useNotificationStore()
   const rooms = ref([])
   const spatialScene = ref({ zone: null, analysis: null, rooms: [] })
+  const roomsById = ref({})
+  const devicesById = ref({})
+  const roomDeviceIdsByRoomId = ref({})
+  const sceneMeta = ref({ zone: null, analysis: null })
+  const sceneLayoutByRoomId = ref({})
+  const sceneDeviceLayoutByDeviceId = ref({})
   const isLoading = ref(false)
   const spatialLoading = ref(false)
   const spatialBusy = ref(false)
@@ -302,9 +260,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const selectedRoomId = ref(null)
   const pendingDeviceIds = ref([])
   const spatialRefreshTimer = ref(null)
+  const detailRefreshTimer = ref(null)
   const catalogRefreshTimer = ref(null)
   const catalogRefreshPromise = ref(null)
   const catalogRefreshQueued = ref(false)
+  const lastRealtimeSeq = ref(null)
   const actionFeedback = ref({ status: 'idle', message: '', deviceId: null, updatedAt: '' })
   const feedbackTimer = ref(null)
   const visualActivity = ref([])
@@ -420,66 +380,153 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     })
   })
 
-  const roomCount = computed(() => rooms.value.length)
-  const deviceCount = computed(() => rooms.value.reduce((total, room) => total + countDisplayDevices(room.devices), 0))
-  const selectedRoom = computed(() => {
-    if (selectedRoomId.value === null || selectedRoomId.value === undefined) {
-      return rooms.value[0] ?? null
+  const allRoomViews = computed(() =>
+    Object.values(roomsById.value)
+      .map((room) => selectRoomViewById(room?.id))
+      .filter(Boolean),
+  )
+  const dashboardRoomViews = computed(() =>
+    sortRooms(allRoomViews.value.filter((room) => shouldDisplayDashboardRoom(room))),
+  )
+  const spatialRoomViews = computed(() =>
+    sortSceneRooms(allRoomViews.value.filter((room) => shouldDisplaySpatialRoom(room))),
+  )
+  const roomCount = computed(() => dashboardRoomViews.value.length)
+  const deviceCount = computed(() => dashboardRoomViews.value.reduce((total, room) => total + countDisplayDevices(room.devices), 0))
+
+  function resolveRoomZone(roomEntity) {
+    if (!roomEntity) {
+      return null
     }
 
-    return rooms.value.find((room) => room.id === selectedRoomId.value) ?? null
+    if (roomEntity.zone) {
+      return roomEntity.zone
+    }
+
+    const zone = sceneMeta.value.zone ?? null
+    if (!zone) {
+      return null
+    }
+
+    if (!hasValue(roomEntity.zone_id) || zone.id === roomEntity.zone_id) {
+      return zone
+    }
+
+    return null
+  }
+
+  function resolveRoomIdForDevice(deviceId) {
+    const entityDevice = devicesById.value[deviceId] ?? null
+    if (hasValue(entityDevice?.room_id)) {
+      return entityDevice.room_id
+    }
+
+    const matchedEntry = Object.entries(roomDeviceIdsByRoomId.value)
+      .find(([, deviceIds]) => Array.isArray(deviceIds) && deviceIds.includes(deviceId))
+
+    return matchedEntry ? matchedEntry[0] : null
+  }
+
+  function selectDeviceViewById(deviceId, preferredRoomId = null) {
+    if (!hasValue(deviceId)) {
+      return null
+    }
+
+    const entityDevice = devicesById.value[deviceId] ?? null
+    if (!entityDevice) {
+      return null
+    }
+
+    const sceneLayout = sceneDeviceLayoutByDeviceId.value[deviceId] ?? {}
+    const roomId = hasValue(preferredRoomId) ? preferredRoomId : resolveRoomIdForDevice(deviceId)
+    const isSceneBacked = hasDeviceSceneLayout(sceneLayout)
+
+    return normalizeDeviceRead({
+      ...entityDevice,
+      ...sceneLayout,
+      room_id: roomId ?? entityDevice.room_id ?? null,
+      position: sceneLayout.position ?? entityDevice.position ?? null,
+      source: isSceneBacked ? 'merged' : 'detail',
+      isDetailBacked: true,
+      isSceneBacked,
+    })
+  }
+
+  function selectRoomViewById(roomId) {
+    if (!hasValue(roomId)) {
+      return null
+    }
+
+    const roomEntity = roomsById.value[roomId] ?? null
+    if (!roomEntity) {
+      return null
+    }
+
+    const sceneLayout = sceneLayoutByRoomId.value[roomId] ?? {}
+    const deviceIds = roomDeviceIdsByRoomId.value[roomId] ?? []
+    const isSceneBacked = hasRoomSceneLayout(sceneLayout)
+
+    return normalizeRoomStateRead({
+      ...roomEntity,
+      ...sceneLayout,
+      zone: resolveRoomZone(roomEntity),
+      devices: sortDevices(
+        filterDisplayDevices(
+          deviceIds
+            .map((deviceId) => selectDeviceViewById(deviceId, roomId))
+            .filter(Boolean),
+        ),
+      ),
+      source: isSceneBacked ? 'merged' : 'detail',
+      isDetailBacked: true,
+      isSceneBacked,
+    })
+  }
+
+  function resolveFallbackRoomId() {
+    return spatialRoomViews.value[0]?.id ?? dashboardRoomViews.value[0]?.id ?? null
+  }
+
+  const selectedRoom = computed(() => {
+    if (!hasValue(selectedRoomId.value)) {
+      return dashboardRoomViews.value[0] ?? spatialRoomViews.value[0] ?? null
+    }
+
+    return selectRoomViewById(selectedRoomId.value) ?? dashboardRoomViews.value[0] ?? spatialRoomViews.value[0] ?? null
   })
   const selectedSceneRoom = computed(() => {
-    if (selectedRoomId.value === null || selectedRoomId.value === undefined) {
-      return spatialScene.value.rooms[0] ?? null
+    if (!hasValue(selectedRoomId.value)) {
+      return spatialRoomViews.value[0] ?? null
     }
 
-    return spatialScene.value.rooms.find((room) => room.id === selectedRoomId.value) ?? null
+    return spatialRoomViews.value.find((room) => room.id === selectedRoomId.value)
+      ?? selectRoomViewById(selectedRoomId.value)
+      ?? null
   })
   const selectedMergedRoom = computed(() => {
-    if (selectedRoomId.value === null || selectedRoomId.value === undefined) {
-      return mergeRoomContext(rooms.value[0] ?? null, spatialScene.value.rooms[0] ?? null)
+    if (!hasValue(selectedRoomId.value)) {
+      return spatialRoomViews.value[0] ?? dashboardRoomViews.value[0] ?? null
     }
 
-    return findMergedRoomById(selectedRoomId.value)
+    return selectRoomViewById(selectedRoomId.value)
   })
-  const activeZoneId = computed(() => spatialScene.value.zone?.id ?? selectedRoom.value?.zone_id ?? selectedRoom.value?.zone?.id ?? null)
+  const activeZoneId = computed(() => sceneMeta.value.zone?.id ?? selectedRoom.value?.zone_id ?? selectedRoom.value?.zone?.id ?? null)
 
   function hasAvailableRoom(roomId) {
-    return rooms.value.some((room) => room.id === roomId) || spatialScene.value.rooms.some((room) => room.id === roomId)
-  }
-
-  function findDetailRoomById(roomId) {
-    if (roomId === null || roomId === undefined) {
-      return null
-    }
-
-    return rooms.value.find((room) => room.id === roomId) ?? null
-  }
-
-  function findSceneRoomById(roomId) {
-    if (roomId === null || roomId === undefined) {
-      return null
-    }
-
-    return spatialScene.value.rooms.find((room) => room.id === roomId) ?? null
+    return Boolean(selectRoomViewById(roomId))
   }
 
   function findMergedRoomById(roomId) {
-    if (roomId === null || roomId === undefined) {
-      return null
-    }
-
-    return mergeRoomContext(findDetailRoomById(roomId), findSceneRoomById(roomId))
+    return selectRoomViewById(roomId)
   }
 
   function ensureSelectedRoom() {
     const currentId = selectedRoomId.value
-    if (currentId !== null && currentId !== undefined && hasAvailableRoom(currentId)) {
+    if (hasValue(currentId) && hasAvailableRoom(currentId)) {
       return
     }
 
-    const fallbackId = spatialScene.value.rooms[0]?.id ?? rooms.value[0]?.id ?? null
+    const fallbackId = resolveFallbackRoomId()
     if (fallbackId === currentId) {
       return
     }
@@ -535,12 +582,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return
     }
 
-    const preferredRoomId = getDevShowcasePreferredRoomId(spatialScene.value.rooms?.length ? spatialScene.value.rooms : rooms.value)
+    const sourceRooms = spatialRoomViews.value.length ? spatialRoomViews.value : dashboardRoomViews.value
+    const preferredRoomId = getDevShowcasePreferredRoomId(sourceRooms)
     if (preferredRoomId !== null && preferredRoomId !== undefined) {
       selectedRoomId.value = preferredRoomId
     }
 
-    createDevShowcaseActivities(spatialScene.value.rooms?.length ? spatialScene.value.rooms : rooms.value)
+    createDevShowcaseActivities(sourceRooms)
       .forEach((entry) => {
         recordVisualActivity(entry)
       })
@@ -559,11 +607,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     const cachedUiPreferences = readCache(CACHE_KEYS.uiPreferences, {})
 
     if (Array.isArray(cachedRooms) && cachedRooms.length > 0) {
-      rooms.value = normalizeDashboardRooms(cachedRooms)
+      rooms.value = ingestDashboardRooms(cachedRooms)
     }
 
     if (cachedSpatialScene?.rooms?.length) {
-      spatialScene.value = normalizeSpatialScene(cachedSpatialScene)
+      spatialScene.value = ingestSpatialScene(cachedSpatialScene)
     }
 
     if (cachedUiPreferences?.selectedRoomId !== undefined && cachedUiPreferences?.selectedRoomId !== null) {
@@ -587,7 +635,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       const payload = await authenticatedResponse.json()
-      rooms.value = normalizeDashboardRooms(payload)
+      rooms.value = ingestDashboardRooms(payload)
       ensureSelectedRoom()
     } catch (fetchError) {
       error.value = fetchError instanceof Error ? fetchError.message : '获取智能家居数据失败。'
@@ -616,7 +664,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         throw await createHttpError(response, '加载空间场景')
       }
 
-      spatialScene.value = normalizeSpatialScene(await response.json())
+      spatialScene.value = ingestSpatialScene(await response.json())
       ensureSelectedRoom()
       return spatialScene.value
     } catch (fetchError) {
@@ -647,6 +695,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const devices = Array.isArray(devicesPayload)
         ? devicesPayload.map((device) => normalizeDeviceRead(device))
         : []
+      devices.forEach((device) => {
+        upsertDeviceEntity(device)
+      })
+      setRoomDeviceIds(roomId, devices)
       rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
         if (room.id !== roomId) {
           return room
@@ -704,7 +756,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
       // 仅在重连成功后补拉一次，弥补断线期间可能漏掉的 patch。
       if (shouldRefreshAfterOpen) {
-        scheduleCatalogRefresh(60)
+        scheduleCompensationRefresh(60)
       }
     })
 
@@ -712,7 +764,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       lastMessageAt.value = new Date().toISOString()
 
       try {
-        const payload = normalizeRealtimeMessage(JSON.parse(event.data))
+        const rawPayload = JSON.parse(event.data)
+        if (isDevicePatchV2Message(rawPayload)) {
+          handleRealtimePatchV2(rawPayload)
+          return
+        }
+
+        const payload = normalizeRealtimeMessage(rawPayload)
         handleRealtimeMessage(payload)
       } catch (parseError) {
         console.error('解析实时消息失败。', parseError)
@@ -784,6 +842,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       catalogRefreshTimer.value = null
     }
 
+    if (detailRefreshTimer.value) {
+      window.clearTimeout(detailRefreshTimer.value)
+      detailRefreshTimer.value = null
+    }
+
     catalogRefreshQueued.value = false
 
     if (feedbackTimer.value) {
@@ -807,6 +870,30 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     spatialRefreshTimer.value = window.setTimeout(() => {
       fetchSpatialScene(activeZoneId.value, { silent: true }).catch(() => {})
     }, delay)
+  }
+
+  function scheduleDetailRefresh(delay = 180) {
+    const roomId = selectedRoomId.value
+    if (roomId === null || roomId === undefined) {
+      return null
+    }
+
+    if (detailRefreshTimer.value) {
+      window.clearTimeout(detailRefreshTimer.value)
+    }
+
+    detailRefreshTimer.value = window.setTimeout(() => {
+      detailRefreshTimer.value = null
+      fetchRoomDevices(roomId).catch(() => {})
+    }, delay)
+
+    return null
+  }
+
+  function scheduleCompensationRefresh(delay = 180) {
+    scheduleCatalogRefresh(delay)
+    scheduleDetailRefresh(delay)
+    return null
   }
 
   function runCatalogRefresh() {
@@ -850,20 +937,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     return null
   }
 
-  function findDeviceRoomsById(deviceId) {
-    if (deviceId === null || deviceId === undefined) {
-      return { detailRoom: null, sceneRoom: null }
-    }
-
-    return {
-      detailRoom: rooms.value.find((room) => room.devices.some((device) => device.id === deviceId)) ?? null,
-      sceneRoom: spatialScene.value.rooms.find((room) => room.devices.some((device) => device.id === deviceId)) ?? null,
-    }
-  }
-
   function prepareRealtimeDevicePatch(devicePatch) {
-    const { detailRoom, sceneRoom } = findDeviceRoomsById(devicePatch.id)
-    const previousRoomId = detailRoom?.id ?? sceneRoom?.id ?? null
+    const previousDevice = devicesById.value[devicePatch.id] ?? null
+    const previousRoomId = previousDevice?.room_id ?? null
     const resolvedDevicePatch = (!hasValue(devicePatch.room_id) && hasValue(previousRoomId))
       ? { ...devicePatch, room_id: previousRoomId }
       : devicePatch
@@ -872,13 +948,212 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       hasValue(resolvedDevicePatch.room_id)
       && hasValue(previousRoomId)
       && resolvedDevicePatch.room_id !== previousRoomId
-      && !rooms.value.some((room) => room.id === resolvedDevicePatch.room_id)
+      && !hasValue(roomsById.value[resolvedDevicePatch.room_id])
     )
 
     return {
       devicePatch: resolvedDevicePatch,
       movedToUnknownDetailRoom,
     }
+  }
+
+  function storeDeviceEntitySnapshot(nextDevice) {
+    if (!nextDevice || !hasValue(nextDevice.id)) {
+      return null
+    }
+
+    const previousDevice = devicesById.value[nextDevice.id] ?? null
+    devicesById.value = setRecordValue(devicesById.value, nextDevice.id, nextDevice)
+
+    const previousRoomId = previousDevice?.room_id ?? null
+    const nextRoomId = nextDevice.room_id ?? null
+    if (previousRoomId !== null && previousRoomId !== nextRoomId) {
+      roomDeviceIdsByRoomId.value = setRecordValue(
+        roomDeviceIdsByRoomId.value,
+        previousRoomId,
+        (roomDeviceIdsByRoomId.value[previousRoomId] ?? []).filter((deviceId) => deviceId !== nextDevice.id),
+      )
+    }
+    if (nextRoomId !== null) {
+      const nextIds = roomDeviceIdsByRoomId.value[nextRoomId] ?? []
+      if (!nextIds.includes(nextDevice.id)) {
+        roomDeviceIdsByRoomId.value = setRecordValue(
+          roomDeviceIdsByRoomId.value,
+          nextRoomId,
+          [...nextIds, nextDevice.id],
+        )
+      }
+    }
+
+    return nextDevice
+  }
+
+  function applyDeviceEntityPatch(rawPatch) {
+    const patch = normalizeDevicePatchV2(rawPatch)
+    if (!hasValue(patch.id)) {
+      return null
+    }
+
+    const previousDevice = devicesById.value[patch.id] ?? null
+    const nextDevice = previousDevice
+      ? mergeDevicePatch(previousDevice, patch)
+      : normalizeDeviceRead(patch)
+
+    return storeDeviceEntitySnapshot(nextDevice)
+  }
+
+  function buildSceneDeviceView(deviceId, existingDevice = null) {
+    const entityDevice = devicesById.value[deviceId] ?? null
+    if (!entityDevice) {
+      return null
+    }
+
+    const sceneLayout = sceneDeviceLayoutByDeviceId.value[deviceId] ?? {}
+    return normalizeDeviceRead({
+      ...(existingDevice ?? {}),
+      ...entityDevice,
+      ...sceneLayout,
+      position: sceneLayout.position ?? existingDevice?.position ?? entityDevice.position ?? null,
+    })
+  }
+
+  function syncLegacyDetailRoomDevice(deviceId) {
+    const entityDevice = devicesById.value[deviceId] ?? null
+    if (!entityDevice) {
+      return { matchedRoom: false }
+    }
+
+    let matchedRoom = false
+
+    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
+      const deviceIndex = room.devices.findIndex((device) => device.id === deviceId)
+      const belongsToRoom = room.id === entityDevice.room_id
+
+      if (deviceIndex === -1 && !belongsToRoom) {
+        return room
+      }
+
+      matchedRoom = true
+      const nextDevices = [...room.devices]
+
+      if (deviceIndex >= 0 && belongsToRoom) {
+        nextDevices.splice(deviceIndex, 1, mergeDevicePatch(nextDevices[deviceIndex], entityDevice))
+      } else if (deviceIndex >= 0) {
+        nextDevices.splice(deviceIndex, 1)
+      } else {
+        nextDevices.push(normalizeDeviceRead(entityDevice))
+      }
+
+      return { ...room, devices: nextDevices }
+    }))
+
+    return { matchedRoom }
+  }
+
+  function syncLegacySpatialDevice(deviceId) {
+    const entityDevice = devicesById.value[deviceId] ?? null
+    if (!entityDevice) {
+      return { matchedRoom: false }
+    }
+
+    let matchedRoom = false
+
+    spatialScene.value = normalizeSpatialScene({
+      ...spatialScene.value,
+      rooms: spatialScene.value.rooms.map((room) => {
+        const deviceIndex = room.devices.findIndex((device) => device.id === deviceId)
+        const belongsToRoom = room.id === entityDevice.room_id
+
+        if (deviceIndex === -1 && !belongsToRoom) {
+          return room
+        }
+
+        matchedRoom = true
+        const nextDevices = [...room.devices]
+        const nextSceneDevice = buildSceneDeviceView(deviceId, nextDevices[deviceIndex] ?? null)
+
+        if (!nextSceneDevice) {
+          return room
+        }
+
+        if (deviceIndex >= 0 && belongsToRoom) {
+          nextDevices.splice(deviceIndex, 1, nextSceneDevice)
+        } else if (deviceIndex >= 0) {
+          nextDevices.splice(deviceIndex, 1)
+        } else {
+          nextDevices.push(nextSceneDevice)
+        }
+
+        return { ...room, devices: nextDevices }
+      }),
+    })
+
+    return { matchedRoom }
+  }
+
+  function syncLegacyDeviceViews(deviceId) {
+    const detailResult = syncLegacyDetailRoomDevice(deviceId)
+    const sceneResult = syncLegacySpatialDevice(deviceId)
+    ensureSelectedRoom()
+    return { detailResult, sceneResult }
+  }
+
+  function shouldCompensateForSeq(seq) {
+    if (!Number.isInteger(seq) || seq <= 0) {
+      return true
+    }
+
+    return lastRealtimeSeq.value !== null && seq !== (lastRealtimeSeq.value + 1)
+  }
+
+  function rememberRealtimeSeq(seq) {
+    if (Number.isInteger(seq) && seq > 0) {
+      lastRealtimeSeq.value = seq
+    }
+  }
+
+  function isDevicePatchV2Message(message) {
+    return message?.type === 'device_state_updated'
+      && Number(message?.protocol_version) >= 2
+      && Boolean(message?.device)
+  }
+
+  function applyRealtimeDevicePatch(devicePatch, options = {}) {
+    const { seq = null } = options
+    if (seq !== null && shouldCompensateForSeq(seq)) {
+      scheduleCompensationRefresh(60)
+    }
+    if (seq !== null) {
+      rememberRealtimeSeq(seq)
+    }
+
+    const realtimeUpdate = prepareRealtimeDevicePatch(devicePatch)
+    const nextDevice = applyDeviceEntityPatch(realtimeUpdate.devicePatch)
+    if (!nextDevice) {
+      scheduleCompensationRefresh(60)
+      return
+    }
+
+    recordVisualActivity({
+      deviceId: nextDevice.id,
+      roomId: nextDevice.room_id,
+      domain: nextDevice.entity_domain ?? nextDevice.type ?? 'generic',
+      status: 'realtime',
+      source: 'realtime',
+    })
+
+    const syncResult = syncLegacyDeviceViews(nextDevice.id)
+    if (realtimeUpdate.movedToUnknownDetailRoom || !syncResult.detailResult.matchedRoom) {
+      scheduleCompensationRefresh(60)
+    } else if (!syncResult.sceneResult.matchedRoom) {
+      scheduleSpatialRefresh(60)
+    }
+  }
+
+  function handleRealtimePatchV2(message) {
+    applyRealtimeDevicePatch(normalizeDevicePatchV2(message.device ?? {}), {
+      seq: Number(message.seq),
+    })
   }
 
   function handleRealtimeMessage(message) {
@@ -893,88 +1168,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }
 
     if (message.type === 'device_state_updated' && message.devicePatch) {
-      const realtimeUpdate = prepareRealtimeDevicePatch(message.devicePatch)
-      const devicePatch = realtimeUpdate.devicePatch
-
-      recordVisualActivity({
-        deviceId: devicePatch.id,
-        roomId: devicePatch.room_id,
-        domain: devicePatch.entity_domain ?? devicePatch.type ?? 'generic',
-        status: 'realtime',
-        source: 'realtime',
-      })
-      upsertDevice(devicePatch)
-      upsertSpatialDevice(devicePatch)
-
-      if (realtimeUpdate.movedToUnknownDetailRoom) {
-        scheduleCatalogRefresh(60)
-      } else {
-        scheduleSpatialRefresh()
-      }
-    }
-  }
-
-  function upsertDevice(updatedDevice) {
-    let matchedRoom = false
-
-    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
-      const deviceIndex = room.devices.findIndex((device) => device.id === updatedDevice.id)
-      const belongsToRoom = room.id === updatedDevice.room_id
-
-      if (deviceIndex === -1 && !belongsToRoom) {
-        return room
-      }
-
-      matchedRoom = true
-      const nextDevices = [...room.devices]
-
-      if (deviceIndex >= 0 && belongsToRoom) {
-        nextDevices.splice(deviceIndex, 1, mergeDevicePatch(nextDevices[deviceIndex], updatedDevice))
-      } else if (deviceIndex >= 0) {
-        nextDevices.splice(deviceIndex, 1)
-      } else {
-        nextDevices.push(normalizeDeviceRead(updatedDevice))
-      }
-
-      return { ...room, devices: nextDevices }
-    }))
-    ensureSelectedRoom()
-
-    if (!matchedRoom) {
-      fetchInitialState().catch(() => {})
-    }
-  }
-
-  function upsertSpatialDevice(updatedDevice) {
-    let matchedRoom = false
-
-    spatialScene.value = normalizeSpatialScene({
-      ...spatialScene.value,
-      rooms: spatialScene.value.rooms.map((room) => {
-        const deviceIndex = room.devices.findIndex((device) => device.id === updatedDevice.id)
-        const belongsToRoom = room.id === updatedDevice.room_id
-
-        if (deviceIndex === -1 && !belongsToRoom) {
-          return room
-        }
-
-        matchedRoom = true
-        const nextDevices = [...room.devices]
-
-        if (deviceIndex >= 0 && belongsToRoom) {
-          nextDevices.splice(deviceIndex, 1, mergeDevicePatch(nextDevices[deviceIndex], updatedDevice))
-        } else if (deviceIndex >= 0) {
-          nextDevices.splice(deviceIndex, 1)
-        } else {
-          nextDevices.push(normalizeDeviceRead(updatedDevice))
-        }
-
-        return { ...room, devices: nextDevices }
-      }),
-    })
-
-    if (!matchedRoom) {
-      scheduleSpatialRefresh(60)
+      applyRealtimeDevicePatch(message.devicePatch)
     }
   }
 
@@ -985,11 +1179,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       userSelectedRoom.value = true
     }
 
-    const nextRoom = rooms.value.find((room) => room.id === roomId)
-      ?? spatialScene.value.rooms.find((room) => room.id === roomId)
-      ?? null
+    const nextRoom = selectRoomViewById(roomId)
     const zoneId = nextRoom?.zone_id ?? nextRoom?.zone?.id ?? null
-    if (zoneId && zoneId !== spatialScene.value.zone?.id) {
+    if (zoneId && zoneId !== sceneMeta.value.zone?.id) {
       fetchSpatialScene(zoneId, { silent: true }).catch(() => {})
     }
   }
@@ -999,32 +1191,20 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   }
 
   function findMergedDeviceInRoom(roomId, deviceId) {
-    if ((roomId === null || roomId === undefined) || (deviceId === null || deviceId === undefined)) {
+    if (!hasValue(roomId) || !hasValue(deviceId)) {
       return null
     }
 
-    const mergedRoom = findMergedRoomById(roomId)
-    return mergedRoom?.devices.find((device) => device.id === deviceId) ?? null
+    const room = selectRoomViewById(roomId)
+    return room?.devices.find((device) => device.id === deviceId) ?? null
   }
 
   function findMergedDeviceById(deviceId) {
-    if (deviceId === null || deviceId === undefined) {
-      return null
-    }
-
-    const detailRoom = rooms.value.find((room) => room.devices.some((device) => device.id === deviceId)) ?? null
-    const sceneRoom = spatialScene.value.rooms.find((room) => room.devices.some((device) => device.id === deviceId)) ?? null
-    const roomId = detailRoom?.id ?? sceneRoom?.id ?? null
-
-    if (roomId !== null && roomId !== undefined) {
-      return findMergedDeviceInRoom(roomId, deviceId)
-    }
-
-    return null
+    return selectDeviceViewById(deviceId)
   }
 
   function findDevice(deviceId) {
-    return findMergedDeviceById(deviceId)
+    return selectDeviceViewById(deviceId) ?? devicesById.value[deviceId] ?? null
   }
 
   function snapshotDevice(deviceId) {
@@ -1037,11 +1217,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       return
     }
 
-    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => ({
-      ...room,
-      devices: room.devices.map((device) => (device.id === snapshot.id ? { ...device, ...snapshot } : device)),
-    })))
-    ensureSelectedRoom()
+    const normalizedSnapshot = normalizeDeviceRead(snapshot)
+    storeDeviceEntitySnapshot(normalizedSnapshot)
+    syncLegacyDeviceViews(normalizedSnapshot.id)
   }
 
   function markPending(deviceId) {
@@ -1053,35 +1231,14 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   }
 
   function updateDeviceCollections(deviceId, updater) {
-    let nextDevice = null
+    const baseDevice = devicesById.value[deviceId] ?? findMergedDeviceById(deviceId)
+    if (!baseDevice) {
+      return null
+    }
 
-    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => ({
-      ...room,
-      devices: room.devices.map((device) => {
-        if (device.id !== deviceId) {
-          return device
-        }
-
-        nextDevice = updater({ ...device })
-        return nextDevice
-      }),
-    })))
-    ensureSelectedRoom()
-
-    spatialScene.value = normalizeSpatialScene({
-      ...spatialScene.value,
-      rooms: spatialScene.value.rooms.map((room) => ({
-        ...room,
-        devices: room.devices.map((device) => {
-          if (device.id !== deviceId) {
-            return device
-          }
-
-          return nextDevice ? { ...device, ...nextDevice } : device
-        }),
-      })),
-    })
-
+    const nextDevice = normalizeDeviceRead(updater({ ...baseDevice }))
+    storeDeviceEntitySnapshot(nextDevice)
+    syncLegacyDeviceViews(deviceId)
     return nextDevice
   }
 
@@ -1321,28 +1478,22 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       offline: 'online',
     }
 
-    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => ({
-      ...room,
-      devices: room.devices.map((device) => {
-        if (device.id !== deviceId) {
-          return device
-        }
+    updateDeviceCollections(deviceId, (device) => {
+      const nextStatus =
+        action === 'toggle'
+          ? nextStatusByCurrentStatus[device.current_status] ?? 'on'
+          : action === 'on'
+            ? 'on'
+            : 'off'
 
-        const nextStatus =
-          action === 'toggle'
-            ? nextStatusByCurrentStatus[device.current_status] ?? 'on'
-            : action === 'on'
-              ? 'on'
-              : 'off'
-
-        return {
-          ...device,
-          current_status: nextStatus,
-          raw_state: nextStatus,
-        }
-      }),
-    })))
-    ensureSelectedRoom()
+      return {
+        ...device,
+        current_status: nextStatus,
+        raw_state: nextStatus,
+        state: nextStatus,
+        online: nextStatus !== 'offline',
+      }
+    })
   }
 
   async function uploadFloorPlan({ zoneId, imageWidth, imageHeight, file, preserveExisting = true }) {
@@ -1459,6 +1610,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       const updatedRoom = await response.json()
+      setRoomEntity(updatedRoom)
+      setSceneRoomLayout(roomId, updatedRoom)
       spatialScene.value = normalizeSpatialScene({
         ...spatialScene.value,
         rooms: spatialScene.value.rooms.map((room) => (room.id === roomId ? { ...room, ...updatedRoom } : room)),
@@ -1491,6 +1644,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       const updatedDevice = await response.json()
+      upsertDeviceEntity(updatedDevice, { preferExisting: true })
+      setSceneDeviceLayout(deviceId, updatedDevice)
       spatialScene.value = normalizeSpatialScene({
         ...spatialScene.value,
         rooms: spatialScene.value.rooms.map((room) => ({
@@ -1553,6 +1708,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       rooms.value = normalizeDashboardRooms([])
+      roomsById.value = {}
+      devicesById.value = {}
+      roomDeviceIdsByRoomId.value = {}
       error.value = ''
     }
 
@@ -1564,6 +1722,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       spatialScene.value = normalizeSpatialScene({ zone: null, analysis: null, rooms: [] })
+      sceneMeta.value = { zone: null, analysis: null }
+      sceneLayoutByRoomId.value = {}
+      sceneDeviceLayoutByDeviceId.value = {}
       spatialError.value = ''
     }
 
@@ -1579,6 +1740,12 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   return {
     rooms,
     spatialScene,
+    roomsById,
+    devicesById,
+    roomDeviceIdsByRoomId,
+    sceneMeta,
+    sceneLayoutByRoomId,
+    sceneDeviceLayoutByDeviceId,
     isLoading,
     spatialLoading,
     spatialBusy,
@@ -1596,9 +1763,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     visualActivity,
     roomCount,
     deviceCount,
+    dashboardRoomViews,
+    spatialRoomViews,
     selectedRoom,
     selectedSceneRoom,
     selectedMergedRoom,
+    selectRoomViewById,
+    selectDeviceViewById,
     findMergedRoomById,
     findMergedDeviceInRoom,
     findMergedDeviceById,
@@ -1625,4 +1796,3 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     initialize,
   }
 })
-

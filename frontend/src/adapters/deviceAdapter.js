@@ -49,7 +49,7 @@ function normalizeNumberArray(values) {
   return Array.isArray(values) ? values : []
 }
 
-export function normalizeDeviceRead(raw = {}) {
+function normalizeDeviceBase(raw = {}) {
   const entityId = deriveEntityId(raw)
   const entityDomain = deriveEntityDomain(raw)
   const currentStatus = deriveCurrentStatus(raw)
@@ -61,7 +61,7 @@ export function normalizeDeviceRead(raw = {}) {
     ...raw,
     id: raw.id,
     room_id: raw.room_id ?? raw.roomId ?? null,
-    name: normalizeText(raw.name ?? raw.friendly_name ?? '未命名设备', '未命名设备'),
+    name: normalizeText(raw.name ?? raw.friendly_name ?? 'Unknown device', 'Unknown device'),
     entity_id: entityId || `${entityDomain}.${raw.id ?? 'unknown'}`,
     ha_entity_id: entityId || `${entityDomain}.${raw.id ?? 'unknown'}`,
     ha_device_id: raw.ha_device_id ?? raw.haDeviceId ?? null,
@@ -82,14 +82,32 @@ export function normalizeDeviceRead(raw = {}) {
   }
 }
 
+export function normalizeDeviceEntity(raw = {}) {
+  return normalizeDeviceBase(raw)
+}
+
+export function extractSceneDeviceLayout(raw = {}) {
+  return {
+    plan_x: raw.plan_x ?? null,
+    plan_y: raw.plan_y ?? null,
+    plan_z: raw.plan_z ?? null,
+    plan_rotation: raw.plan_rotation ?? null,
+    position: raw.position ?? null,
+  }
+}
+
+export function normalizeDeviceRead(raw = {}) {
+  return normalizeDeviceBase(raw)
+}
+
 export function normalizeDevicePatch(raw = {}) {
   const patch = {}
 
   if (hasOwn(raw, 'id')) patch.id = raw.id
   if (hasOwn(raw, 'room_id')) patch.room_id = raw.room_id
   if (hasOwn(raw, 'roomId')) patch.room_id = raw.roomId
-  if (hasOwn(raw, 'name')) patch.name = normalizeText(raw.name, '未命名设备')
-  if (hasOwn(raw, 'friendly_name')) patch.name = normalizeText(raw.friendly_name, '未命名设备')
+  if (hasOwn(raw, 'name')) patch.name = normalizeText(raw.name, 'Unknown device')
+  if (hasOwn(raw, 'friendly_name')) patch.name = normalizeText(raw.friendly_name, 'Unknown device')
 
   if (hasOwn(raw, 'entity_id') || hasOwn(raw, 'ha_entity_id')) {
     const entityId = deriveEntityId(raw)
@@ -102,23 +120,19 @@ export function normalizeDevicePatch(raw = {}) {
     patch.type = normalizeText(raw.type ?? raw.device_type ?? 'generic', 'generic').toLowerCase()
     patch.device_type = normalizeText(raw.device_type ?? raw.type ?? 'generic', 'generic').toLowerCase()
   }
-
-  if (
-    hasOwn(raw, 'entity_domain')
-    || hasOwn(raw, 'entity_id')
-    || hasOwn(raw, 'ha_entity_id')
-    || hasOwn(raw, 'type')
-    || hasOwn(raw, 'device_type')
-  ) {
-    patch.entity_domain = deriveEntityDomain(raw)
+  if (hasOwn(raw, 'entity_domain')) {
+    patch.entity_domain = normalizeText(raw.entity_domain ?? '', '').toLowerCase()
   }
-
-  if (hasOwn(raw, 'current_status') || hasOwn(raw, 'state') || hasOwn(raw, 'raw_state')) {
-    patch.current_status = deriveCurrentStatus(raw)
-    patch.raw_state = normalizeText(raw.raw_state ?? patch.current_status, patch.current_status).toLowerCase()
-    patch.state = deriveState(raw)
-    patch.online = deriveOnline(raw)
-  } else if (hasOwn(raw, 'online')) {
+  if (hasOwn(raw, 'current_status')) {
+    patch.current_status = normalizeText(raw.current_status ?? 'unknown', 'unknown').toLowerCase()
+  }
+  if (hasOwn(raw, 'raw_state')) {
+    patch.raw_state = normalizeText(raw.raw_state ?? '', '').toLowerCase()
+  }
+  if (hasOwn(raw, 'state')) {
+    patch.state = normalizeText(raw.state ?? 'unknown', 'unknown').toLowerCase()
+  }
+  if (hasOwn(raw, 'online')) {
     patch.online = Boolean(raw.online)
   }
 
@@ -166,6 +180,10 @@ export function normalizeDevicePatch(raw = {}) {
   })
 
   return patch
+}
+
+export function normalizeDevicePatchV2(raw = {}) {
+  return normalizeDevicePatch(raw)
 }
 
 export function mergeDevicePatch(base, rawPatch = {}) {

@@ -184,7 +184,7 @@ class HomeAssistantWebSocketListener:
             return
 
         mapped_status = self._map_home_assistant_state(raw_state)
-        updated = await asyncio.to_thread(self._update_device_state, entity_id, mapped_status)
+        updated = await asyncio.to_thread(self._update_device_state, entity_id, mapped_status, raw_state)
         if updated:
             logger.info("Updated device %s to status %s.", entity_id, mapped_status.value)
             return
@@ -234,7 +234,7 @@ class HomeAssistantWebSocketListener:
             if self._pending_auto_imports and not self._stop_event.is_set():
                 self._ensure_auto_import_worker()
 
-    def _update_device_state(self, entity_id: str, status: DeviceStatus) -> bool:
+    def _update_device_state(self, entity_id: str, status: DeviceStatus, raw_state: str) -> bool:
         session = SessionLocal()
         try:
             device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
@@ -243,7 +243,7 @@ class HomeAssistantWebSocketListener:
             device.current_status = status
             session.commit()
             session.refresh(device)
-            device_realtime_hub.publish_threadsafe(build_device_update_event(device))
+            device_realtime_hub.publish_threadsafe(build_device_update_event(device, raw_state=raw_state))
             return True
         except Exception:
             session.rollback()

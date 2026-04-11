@@ -59,6 +59,8 @@ FALLBACK_SLOTS = [
     (0.36, 0.58, 0.24, 0.18),
     (0.64, 0.58, 0.24, 0.18),
 ]
+ROOM_LAYOUT_FIELDS = ("plan_x", "plan_y", "plan_width", "plan_height", "plan_rotation")
+DEVICE_LAYOUT_FIELDS = ("plan_x", "plan_y", "plan_z", "plan_rotation")
 
 
 async def get_spatial_scene(zone_id: int | None = None) -> dict[str, object]:
@@ -79,7 +81,6 @@ async def get_spatial_scene(zone_id: int | None = None) -> dict[str, object]:
     if zone_payload is None:
         return {"zone": None, "rooms": [], "analysis": None}
 
-    zone_payload = await _upgrade_legacy_analysis_if_needed(zone_id, zone_payload)
     plan_width = zone_payload.get("floor_plan_image_width") or DEFAULT_PLAN_WIDTH
     plan_height = zone_payload.get("floor_plan_image_height") or DEFAULT_PLAN_HEIGHT
     analysis = _parse_floor_plan_analysis(zone_payload.get("floor_plan_analysis"))
@@ -87,17 +88,21 @@ async def get_spatial_scene(zone_id: int | None = None) -> dict[str, object]:
     derived_layouts = _derive_room_layouts(normalized_rooms, plan_width, plan_height, analysis)
     scene_rooms = []
     for room in normalized_rooms:
-        derived_layout = derived_layouts.get(int(room["id"]))
+        derived_layout = derived_layouts.get(int(room["id"])) or _empty_layout(ROOM_LAYOUT_FIELDS)
+        room_layout_layers = _build_layout_layers(
+            _extract_layout(room, ROOM_LAYOUT_FIELDS),
+            derived_layout,
+            ROOM_LAYOUT_FIELDS,
+        )
         room_payload = {
             **room,
             "zone": zone_payload,
-            "plan_x": room.get("plan_x") if room.get("plan_x") is not None else derived_layout["plan_x"],
-            "plan_y": room.get("plan_y") if room.get("plan_y") is not None else derived_layout["plan_y"],
-            "plan_width": room.get("plan_width") if room.get("plan_width") is not None else derived_layout["plan_width"],
-            "plan_height": room.get("plan_height") if room.get("plan_height") is not None else derived_layout["plan_height"],
-            "plan_rotation": room.get("plan_rotation") if room.get("plan_rotation") is not None else derived_layout["plan_rotation"],
+            **_compat_layout_fields(room_layout_layers["effective_layout"], ROOM_LAYOUT_FIELDS),
+            "layout_persisted": room_layout_layers["persisted"],
+            "layout_derived": room_layout_layers["derived"],
+            "effective_layout": room_layout_layers["effective_layout"],
         }
-        room_payload["devices"] = _with_device_fallback_positions(room_payload, analysis)
+        room_payload["devices"] = _with_device_layout_layers(room_payload, analysis)
         scene_rooms.append(room_payload)
 
     return {"zone": zone_payload, "rooms": scene_rooms, "analysis": analysis}
@@ -329,6 +334,53 @@ def _parse_floor_plan_analysis(value: object) -> dict[str, object] | None:
 
 def _stringify_floor_plan_analysis(analysis: dict[str, object]) -> str:
     return json.dumps(analysis, ensure_ascii=False)
+
+
+def _empty_layout(fields: tuple[str, ...]) -> dict[str, object]:
+    return {field: None for field in fields}
+
+
+def _extract_layout(source: dict[str, object], fields: tuple[str, ...]) -> dict[str, object]:
+    return {
+        field: source.get(field)
+        for field in fields
+    }
+
+
+def _build_layout_layers(
+    persisted_layout: dict[str, object],
+    derived_layout: dict[str, object],
+    fields: tuple[str, ...],
+) -> dict[str, dict[str, object]]:
+    effective_layout: dict[str, object] = {}
+    field_sources: dict[str, str] = {}
+
+    for field in fields:
+        persisted_value = persisted_layout.get(field)
+        derived_value = derived_layout.get(field)
+        if persisted_value is not None:
+            effective_layout[field] = persisted_value
+            field_sources[field] = "persisted"
+        else:
+            effective_layout[field] = derived_value
+            field_sources[field] = "derived"
+
+    unique_sources = set(field_sources.values())
+    effective_layout["source"] = unique_sources.pop() if len(unique_sources) == 1 else "mixed"
+    effective_layout["field_sources"] = field_sources
+
+    return {
+        "persisted": persisted_layout,
+        "derived": derived_layout,
+        "effective_layout": effective_layout,
+    }
+
+
+def _compat_layout_fields(layout: dict[str, object], fields: tuple[str, ...]) -> dict[str, object]:
+    return {
+        field: layout.get(field)
+        for field in fields
+    }
 
 
 def _should_refresh_floor_plan_analysis(zone_payload: dict[str, object]) -> bool:
@@ -808,17 +860,18 @@ def _classify_room_type(name: str, description: str) -> str:
     return "generic"
 
 
-def _with_device_fallback_positions(
+def _with_device_layout_layers(
     room: dict[str, object],
     analysis: dict[str, object] | None,
 ) -> list[dict[str, object]]:
     devices = [dict(device) for device in room.get("devices", [])]
+    effective_room_layout = room.get("effective_layout") or {}
     layout = {
-        "plan_x": float(room.get("plan_x") or 0),
-        "plan_y": float(room.get("plan_y") or 0),
-        "plan_width": float(room.get("plan_width") or 0),
-        "plan_height": float(room.get("plan_height") or 0),
-        "plan_rotation": float(room.get("plan_rotation") or 0),
+        "plan_x": float(effective_room_layout.get("plan_x") or room.get("plan_x") or 0),
+        "plan_y": float(effective_room_layout.get("plan_y") or room.get("plan_y") or 0),
+        "plan_width": float(effective_room_layout.get("plan_width") or room.get("plan_width") or 0),
+        "plan_height": float(effective_room_layout.get("plan_height") or room.get("plan_height") or 0),
+        "plan_rotation": float(effective_room_layout.get("plan_rotation") or room.get("plan_rotation") or 0),
     }
     points = _derive_device_positions(
         devices,
@@ -829,14 +882,24 @@ def _with_device_fallback_positions(
     next_devices = []
     for device in devices:
         point = points.get(int(device["id"]), {})
-        prefer_semantic_anchor = bool(point.get("semantic_locked"))
+        derived_layout = {
+            "plan_x": point.get("plan_x"),
+            "plan_y": point.get("plan_y"),
+            "plan_z": point.get("plan_z"),
+            "plan_rotation": point.get("plan_rotation"),
+        }
+        device_layout_layers = _build_layout_layers(
+            _extract_layout(device, DEVICE_LAYOUT_FIELDS),
+            derived_layout,
+            DEVICE_LAYOUT_FIELDS,
+        )
         next_devices.append(
             {
                 **device,
-                "plan_x": point.get("plan_x") if prefer_semantic_anchor else (device.get("plan_x") if device.get("plan_x") is not None else point.get("plan_x")),
-                "plan_y": point.get("plan_y") if prefer_semantic_anchor else (device.get("plan_y") if device.get("plan_y") is not None else point.get("plan_y")),
-                "plan_z": point.get("plan_z") if prefer_semantic_anchor else (device.get("plan_z") if device.get("plan_z") is not None else point.get("plan_z")),
-                "plan_rotation": point.get("plan_rotation") if prefer_semantic_anchor else (device.get("plan_rotation") if device.get("plan_rotation") is not None else point.get("plan_rotation")),
+                **_compat_layout_fields(device_layout_layers["effective_layout"], DEVICE_LAYOUT_FIELDS),
+                "layout_persisted": device_layout_layers["persisted"],
+                "layout_derived": device_layout_layers["derived"],
+                "effective_layout": device_layout_layers["effective_layout"],
             }
         )
     return next_devices

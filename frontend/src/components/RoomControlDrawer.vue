@@ -28,8 +28,16 @@ const selectDraft = ref('')
 const brightnessDraft = ref(0)
 const colorTemperatureDraft = ref(0)
 
-const roomDevices = computed(() => props.room?.devices ?? [])
-const currentDevice = computed(() => props.device ?? roomDevices.value[0] ?? null)
+const resolvedRoom = computed(() =>
+  smartHomeStore.selectRoomViewById(props.room?.id ?? props.device?.room_id ?? null) ?? props.room ?? null,
+)
+const roomDevices = computed(() => resolvedRoom.value?.devices ?? [])
+const currentDevice = computed(() =>
+  smartHomeStore.selectDeviceViewById(props.device?.id ?? null, resolvedRoom.value?.id ?? props.device?.room_id ?? null)
+  ?? props.device
+  ?? roomDevices.value[0]
+  ?? null,
+)
 const isPending = computed(() => (currentDevice.value ? smartHomeStore.isDevicePending(currentDevice.value.id) : false))
 const feedbackState = computed(() => {
   if (!currentDevice.value) {
@@ -242,7 +250,7 @@ function controlLabel(device) {
     leave-to-class="translate-y-4 scale-[0.992] opacity-0"
   >
     <section
-      v-if="room && currentDevice"
+      v-if="resolvedRoom && currentDevice"
       class="shell-surface-strong p-5 sm:p-6"
       :class="drawerSurfaceClass"
     >
@@ -260,7 +268,7 @@ function controlLabel(device) {
           <div>
             <p class="shell-kicker">Secondary Control</p>
             <h3 class="shell-title-section mt-3">{{ currentDevice.name }}</h3>
-            <p class="shell-copy mt-2 text-sm">{{ room.name }} · {{ controlLabel(currentDevice) }}</p>
+            <p class="shell-copy mt-2 text-sm">{{ resolvedRoom.name }} · {{ controlLabel(currentDevice) }}</p>
             <div class="mt-3 flex flex-wrap items-center gap-2">
               <span :class="deviceSourcePresentation.badgeClass">
                 {{ deviceSourcePresentation.label }}
