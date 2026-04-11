@@ -68,6 +68,7 @@ const sceneRefs = {
   roomById: new Map(),
   loader: new GLTFLoader(),
   modelRoot: null,
+  planTextureToken: 0,
   modelLoadToken: 0,
 }
 
@@ -102,6 +103,27 @@ const WORLD_SCALE = 0.022
 const WALK_HEIGHT = 16
 const LOOK_SENSITIVITY = 0.006
 const ACTIVE_RUNTIME_STATES = new Set(['on', 'online', 'playing', 'heat', 'cool', 'heat_cool', 'dry', 'fan_only', 'auto'])
+const MATERIAL_MAP_KEYS = [
+  'map',
+  'alphaMap',
+  'aoMap',
+  'bumpMap',
+  'displacementMap',
+  'emissiveMap',
+  'envMap',
+  'lightMap',
+  'metalnessMap',
+  'normalMap',
+  'roughnessMap',
+  'specularMap',
+  'clearcoatMap',
+  'clearcoatNormalMap',
+  'clearcoatRoughnessMap',
+  'sheenColorMap',
+  'sheenRoughnessMap',
+  'transmissionMap',
+  'thicknessMap',
+]
 const sceneZone = computed(() => props.scene?.zone ?? null)
 const sceneAnalysis = computed(() => props.scene?.analysis ?? null)
 const sceneRooms = computed(() => props.scene?.rooms ?? [])
@@ -517,11 +539,14 @@ function teardownScene() {
   clearImportedModel()
   disposeDynamicScene()
 
+  renderer?.renderLists?.dispose?.()
+  renderer?.dispose()
+  renderer?.forceContextLoss?.()
+
   if (renderer?.domElement?.parentNode) {
     renderer.domElement.parentNode.removeChild(renderer.domElement)
   }
 
-  renderer?.dispose()
   sceneRefs.renderer = null
   sceneRefs.scene = null
   sceneRefs.camera = null
@@ -537,6 +562,9 @@ function disposeDynamicScene() {
   if (!scene) {
     return
   }
+
+  sceneRefs.planTextureToken += 1
+
   for (const child of [...scene.children]) {
     if (!child.userData?.dynamic) {
       continue
@@ -558,10 +586,30 @@ function disposeObject(object) {
 }
 
 function disposeMaterial(material) {
-  if (material.map) {
-    material.map.dispose?.()
-  }
-  material.dispose?.()
+  MATERIAL_MAP_KEYS.forEach((key) => {
+    const texture = material?.[key]
+    if (texture?.dispose) {
+      texture.dispose()
+      material[key] = null
+    }
+  })
+
+  material?.dispose?.()
+}
+
+function loadPlanTexture(url, onApply) {
+  const loader = new THREE.TextureLoader()
+  sceneRefs.planTextureToken += 1
+  const token = sceneRefs.planTextureToken
+
+  loader.load(url, (texture) => {
+    if (token !== sceneRefs.planTextureToken) {
+      texture.dispose()
+      return
+    }
+
+    onApply(texture)
+  })
 }
 
 function rebuildScene() {
@@ -657,9 +705,10 @@ function buildFloorMesh() {
   floorGroup.add(floor)
 
   if (planImageUrl.value) {
-    new THREE.TextureLoader().load(planImageUrl.value, (texture) => {
+    loadPlanTexture(planImageUrl.value, (texture) => {
       texture.colorSpace = THREE.SRGBColorSpace
       texture.anisotropy = 4
+      floorMaterial.map?.dispose?.()
       floorMaterial.map = texture
       floorMaterial.needsUpdate = true
     })
@@ -1250,6 +1299,9 @@ function refreshImportedModel() {
 }
 
 function clearImportedModel() {
+  sceneRefs.modelLoadToken += 1
+  sceneRefs.planTextureToken += 1
+
   const root = sceneRefs.modelRoot
   if (!root) {
     return

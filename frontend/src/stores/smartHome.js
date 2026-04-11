@@ -109,6 +109,24 @@ function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
+function throttle(fn, wait = 400) {
+  let timer = null
+  let pendingArgs = null
+
+  return (...args) => {
+    pendingArgs = args
+    if (timer) {
+      return
+    }
+
+    timer = window.setTimeout(() => {
+      timer = null
+      fn(...(pendingArgs ?? []))
+      pendingArgs = null
+    }, wait)
+  }
+}
+
 function setRecordValue(source, key, value) {
   return {
     ...source,
@@ -451,23 +469,26 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }
   }
 
-  watch([roomsById, devicesById, roomDeviceIdsByRoomId], () => {
+  const persistCatalogCache = throttle(() => {
     const cache = buildCatalogEntityCache()
     if (hasCatalogEntityCache(cache)) {
       writeCache(CACHE_KEYS.catalogEntities, cache)
     } else {
       removeCache(CACHE_KEYS.catalogEntities)
     }
-  }, { deep: true })
+  }, 400)
 
-  watch([sceneMeta, sceneLayoutByRoomId, sceneDeviceLayoutByDeviceId], () => {
+  const persistSceneCache = throttle(() => {
     const cache = buildSceneEntityCache()
     if (hasSceneEntityCache(cache)) {
       writeCache(CACHE_KEYS.sceneEntities, cache)
     } else {
       removeCache(CACHE_KEYS.sceneEntities)
     }
-  }, { deep: true })
+  }, 400)
+
+  watch([roomsById, devicesById, roomDeviceIdsByRoomId], persistCatalogCache, { deep: true })
+  watch([sceneMeta, sceneLayoutByRoomId, sceneDeviceLayoutByDeviceId], persistSceneCache, { deep: true })
 
   watch([selectedRoomId, userSelectedRoom], ([roomId, selectedByUser]) => {
     writeCache(CACHE_KEYS.uiPreferences, {
