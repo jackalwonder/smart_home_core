@@ -1,4 +1,4 @@
-﻿from __future__ import annotations
+from __future__ import annotations
 
 """Home Assistant WebSocket listener for realtime state sync and auto-import."""
 
@@ -8,6 +8,7 @@ import json
 import logging
 import os
 import time
+from enum import Enum
 from itertools import count
 from typing import Any
 
@@ -22,6 +23,12 @@ from app.services.home_assistant_state_mapper import map_home_assistant_state
 from app.services.realtime import build_catalog_refresh_event, build_device_update_event, device_realtime_hub
 
 logger = logging.getLogger(__name__)
+
+
+class DeviceUpdateResult(str, Enum):
+    UPDATED = "updated"
+    MISSING = "missing"
+    FAILED = "failed"
 
 
 class HomeAssistantWebSocketListener:
@@ -184,9 +191,20 @@ class HomeAssistantWebSocketListener:
             return
 
         mapped_status = self._map_home_assistant_state(raw_state)
-        updated = await asyncio.to_thread(self._update_device_state, entity_id, mapped_status, raw_state)
-        if updated:
+        update_result = await asyncio.to_thread(
+            self._update_device_state,
+            entity_id,
+            mapped_status,
+            raw_state,
+        )
+        if update_result is DeviceUpdateResult.UPDATED:
             logger.info("Updated device %s to status %s.", entity_id, mapped_status.value)
+            return
+        if update_result is DeviceUpdateResult.FAILED:
+            logger.warning(
+                "Skipping auto-import for entity %s because device state update failed.",
+                entity_id,
+            )
             return
 
         logger.info("Discovered unknown Home Assistant entity %s; scheduling automatic import.", entity_id)
@@ -234,21 +252,26 @@ class HomeAssistantWebSocketListener:
             if self._pending_auto_imports and not self._stop_event.is_set():
                 self._ensure_auto_import_worker()
 
-    def _update_device_state(self, entity_id: str, status: DeviceStatus, raw_state: str) -> bool:
+    def _update_device_state(
+        self,
+        entity_id: str,
+        status: DeviceStatus,
+        raw_state: str,
+    ) -> DeviceUpdateResult:
         session = SessionLocal()
         try:
             device = session.scalar(select(Device).where(Device.ha_entity_id == entity_id))
             if device is None:
-                return False
+                return DeviceUpdateResult.MISSING
             device.current_status = status
             session.commit()
             session.refresh(device)
             device_realtime_hub.publish_threadsafe(build_device_update_event(device, raw_state=raw_state))
-            return True
+            return DeviceUpdateResult.UPDATED
         except Exception:
             session.rollback()
             logger.exception("Failed to update device state for entity %s.", entity_id)
-            return False
+            return DeviceUpdateResult.FAILED
         finally:
             session.close()
 

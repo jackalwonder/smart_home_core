@@ -1,25 +1,33 @@
 from __future__ import annotations
 
-"""空间仲裁服务，尝试把语音来源映射到当前所在房间。"""
+"""Contextual room arbitration backed by an in-memory presence snapshot."""
 
-from typing import Any
+import asyncio
+import time
 
 from loguru import logger
-from sqlalchemy import select
-from sqlalchemy.orm import Session
-
-from app.database import run_in_threadpool_session
-from app.models import Device, Room
-from app.services.home_assistant_api import HomeAssistantRestClient
 
 STATIC_DEVICE_ROOM_MAP: dict[str, str] = {
-    "主卧的 HomePod": "主卧",
-    "客厅的 HomePod": "客厅",
-    "书房的 iPhone": "书房",
+    "主卧�?HomePod": "主卧",
+    "客厅�?HomePod": "客厅",
+    "书房�?iPhone": "书房",
 }
 
-RADAR_DEVICE_CLASSES = {"motion", "presence", "occupancy"}
 AMBIGUOUS_ROOM = "AMBIGUOUS"
+PRESENCE_TTL_SECONDS = 8.0
+
+_presence_lock = asyncio.Lock()
+_presence_snapshot: dict[str, tuple[str, float]] = {}
+
+
+async def remember_presence(entity_id: str, room_name: str) -> None:
+    normalized_entity_id = entity_id.strip()
+    normalized_room_name = room_name.strip()
+    if not normalized_entity_id or not normalized_room_name:
+        return
+
+    async with _presence_lock:
+        _presence_snapshot[normalized_entity_id] = (normalized_room_name, time.monotonic())
 
 
 async def get_contextual_room(source_device: str) -> str:
@@ -31,65 +39,24 @@ async def get_contextual_room(source_device: str) -> str:
         logger.info("Matched source device {} to static room {}.", source_device_name, mapped_room)
         return mapped_room
 
-    # 静态来源映射命中失败后，再退回到雷达占用状态做实时推断。
-    states = await HomeAssistantRestClient.from_env().get_states()
-    active_radar_entity_ids = [
-        entity_id
-        for state in states
-        if (entity_id := _active_radar_entity_id(state)) is not None
-    ]
+    now = time.monotonic()
+    async with _presence_lock:
+        active_rooms = [
+            room_name
+            for room_name, seen_at in _presence_snapshot.values()
+            if now - seen_at <= PRESENCE_TTL_SECONDS
+        ]
 
-    logger.info("Found {} active radar sensors for contextual arbitration.", len(active_radar_entity_ids))
+    distinct_rooms = sorted(set(active_rooms))
+    logger.info("Found {} active presence rooms for contextual arbitration.", len(distinct_rooms))
 
-    # 只有“恰好一个房间有人”时，才认为空间上下文足够明确。
-    if len(active_radar_entity_ids) != 1:
+    if len(distinct_rooms) != 1:
         logger.warning(
-            "Unable to determine room from radar sensors. Active radars: {}",
-            active_radar_entity_ids,
+            "Unable to determine room from presence snapshot. Active rooms: {}",
+            distinct_rooms,
         )
         return AMBIGUOUS_ROOM
 
-    target_entity_id = active_radar_entity_ids[0]
-
-    def _lookup_room_name(db: Session) -> str | None:
-        stmt = (
-            select(Room.name)
-            .join(Device, Device.room_id == Room.id)
-            .where(Device.ha_entity_id == target_entity_id)
-            .limit(1)
-        )
-        return db.scalar(stmt)
-
-    room_name = await run_in_threadpool_session(_lookup_room_name)
-    if room_name is None:
-        logger.warning(
-            "Active radar entity {} is not mapped to any room in the database.",
-            target_entity_id,
-        )
-        return AMBIGUOUS_ROOM
-
-    logger.info(
-        "Resolved contextual room {} from active radar entity {}.",
-        room_name,
-        target_entity_id,
-    )
+    room_name = distinct_rooms[0]
+    logger.info("Resolved contextual room {} from in-memory presence snapshot.", room_name)
     return room_name
-
-
-def _active_radar_entity_id(state: dict[str, Any]) -> str | None:
-    entity_id = state.get("entity_id")
-    if not isinstance(entity_id, str) or not entity_id.startswith("binary_sensor."):
-        return None
-
-    if str(state.get("state", "")).strip().lower() != "on":
-        return None
-
-    attributes = state.get("attributes")
-    if not isinstance(attributes, dict):
-        return None
-
-    device_class = str(attributes.get("device_class", "")).strip().lower()
-    if device_class not in RADAR_DEVICE_CLASSES:
-        return None
-
-    return entity_id
