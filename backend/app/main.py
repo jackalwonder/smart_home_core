@@ -9,12 +9,11 @@ from contextlib import asynccontextmanager
 from contextlib import suppress
 
 from fastapi import FastAPI
-from fastapi.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from app import models as _models  # noqa: F401
-from app.database import Base, MEDIA_DIR, engine, ensure_runtime_schema
+from app.database import MEDIA_DIR
 from app.middleware import RequestIDMiddleware, general_exception_handler, smart_home_exception_handler
 from app.routers import chat
 from app.routers.auth_session import router as auth_session_router
@@ -57,8 +56,7 @@ async def _pending_intent_cleanup_loop(stop_event: asyncio.Event) -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # 启动时先确保表结构和运行期补充字段齐备，再启动同步任务。
-    await run_in_threadpool(Base.metadata.create_all, bind=engine)
-    await run_in_threadpool(ensure_runtime_schema)
+    # TODO: Schema 变更已移交 Alembic 管理，禁止在运行时自动建表以防止多实例启动锁竞争。
 
     cleanup_stop_event = asyncio.Event()
     cleanup_task = asyncio.create_task(_pending_intent_cleanup_loop(cleanup_stop_event))

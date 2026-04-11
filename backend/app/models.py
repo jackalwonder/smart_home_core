@@ -4,9 +4,10 @@ from enum import Enum
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, Float, Integer
+from sqlalchemy import Boolean, DateTime, Enum as SqlEnum, Float, Index, Integer
 from sqlalchemy import ForeignKey, String, Text, UniqueConstraint, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.sql import expression
 
 from app.database import Base
 
@@ -100,6 +101,14 @@ class Device(Base):
 
 class PendingIntent(Base):
     __tablename__ = "pending_intents"
+    __table_args__ = (
+        Index(
+            "uq_pending_intents_active_user",
+            "user_id",
+            unique=True,
+            postgresql_where=expression.column("is_active").is_(True),
+        ),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     user_id: Mapped[str] = mapped_column(String(255), index=True)
