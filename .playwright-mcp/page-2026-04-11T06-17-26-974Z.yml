@@ -1,0 +1,38 @@
+- main [ref=e4]:
+  - complementary [ref=e6]:
+    - generic [ref=e7]:
+      - generic [ref=e8]:
+        - paragraph [ref=e10]: 全屋智控
+        - heading "全屋智能 控制中心" [level=1] [ref=e11]:
+          - text: 全屋智能
+          - text: 控制中心
+        - paragraph [ref=e12]: 把房间导航、实时状态和常用设备控制收拢到同一块主屏里，让家庭管理更直观、更沉浸。
+        - generic [ref=e13]:
+          - generic [ref=e14]:
+            - paragraph [ref=e15]: 房间
+            - paragraph [ref=e16]: "1"
+          - generic [ref=e17]:
+            - paragraph [ref=e18]: 设备
+            - paragraph [ref=e19]: "5"
+          - generic [ref=e20]:
+            - paragraph [ref=e21]: 在线
+            - generic [ref=e23]: 待连接
+      - generic [ref=e24]:
+        - generic [ref=e26]:
+          - generic [ref=e27]:
+            - paragraph [ref=e28]: 当前房间
+            - paragraph [ref=e29]: 客厅
+            - paragraph [ref=e30]: 来自 Home Assistant 区域映射：客厅
+          - generic [ref=e31]:
+            - paragraph [ref=e32]: 最近同步
+            - paragraph [ref=e33]: 正在等待设备状态更新
+        - generic [ref=e34]:
+          - paragraph [ref=e35]: 房间导航
+          - generic [ref=e36]: 1 个房间
+        - button "Home Assistant 导入 客厅 5 来自 Home Assistant 区域映射：客厅" [ref=e39] [cursor=pointer]:
+          - generic [ref=e40]:
+            - generic [ref=e41]:
+              - paragraph [ref=e42]: Home Assistant 导入
+              - paragraph [ref=e43]: 客厅
+            - generic [ref=e44]: "5"
+          - paragraph [ref=e45]: 来自 Home Assistant 区域映射：客厅

@@ -234,6 +234,10 @@ smart_home_core/
 - 多房间、多设备的空间化可视控制
 - 需要在 Home Assistant 之上增加一层自定义业务编排的项目
 
+## Architecture
+
+- smartHome Store Contract: frontend/src/stores/smartHome.README.md
+
 ## License
 
 当前仓库尚未附带单独的开源许可证文件；如果计划对外发布，建议在正式开源前补充 `LICENSE`、贡献指南与安全披露流程。

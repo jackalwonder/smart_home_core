@@ -52,6 +52,153 @@ def test_spatial_scene_route_accepts_control_key(
     assert response.json()["zone"]["id"] == 2
 
 
+def test_spatial_scene_route_accepts_layout_layers(
+    client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    async def _fake_scene(zone_id: int | None = None):
+        assert zone_id == 2
+        return {
+            "zone": {
+                "id": 2,
+                "name": "鍏ㄥ眿",
+                "description": None,
+                "floor_plan_image_path": "/media/floorplans/demo.png",
+                "floor_plan_image_width": 1600,
+                "floor_plan_image_height": 960,
+                "floor_plan_analysis": "ok",
+            },
+            "analysis": {"source": "local-structure"},
+            "rooms": [
+                {
+                    "id": 11,
+                    "zone_id": 2,
+                    "name": "瀹㈠巺",
+                    "description": None,
+                    "plan_x": 100.0,
+                    "plan_y": 120.0,
+                    "plan_width": 420.0,
+                    "plan_height": 260.0,
+                    "plan_rotation": 0.0,
+                    "zone": {
+                        "id": 2,
+                        "name": "鍏ㄥ眿",
+                        "description": None,
+                        "floor_plan_image_path": "/media/floorplans/demo.png",
+                        "floor_plan_image_width": 1600,
+                        "floor_plan_image_height": 960,
+                        "floor_plan_analysis": "ok",
+                    },
+                    "ambient_temperature": 24.0,
+                    "ambient_humidity": 50.0,
+                    "occupancy_status": "occupied",
+                    "active_device_count": 1,
+                    "layout_persisted": {
+                        "plan_x": None,
+                        "plan_y": None,
+                        "plan_width": None,
+                        "plan_height": None,
+                        "plan_rotation": None,
+                    },
+                    "layout_derived": {
+                        "plan_x": 100.0,
+                        "plan_y": 120.0,
+                        "plan_width": 420.0,
+                        "plan_height": 260.0,
+                        "plan_rotation": 0.0,
+                    },
+                    "effective_layout": {
+                        "plan_x": 100.0,
+                        "plan_y": 120.0,
+                        "plan_width": 420.0,
+                        "plan_height": 260.0,
+                        "plan_rotation": 0.0,
+                        "source": "derived",
+                        "field_sources": {
+                            "plan_x": "derived",
+                            "plan_y": "derived",
+                        },
+                    },
+                    "devices": [
+                        {
+                            "id": 7,
+                            "room_id": 11,
+                            "name": "瀹㈠巺涓荤伅",
+                            "ha_entity_id": "light.living_main",
+                            "ha_device_id": None,
+                            "device_type": "mijia_light",
+                            "current_status": "on",
+                            "entity_domain": "light",
+                            "raw_state": "on",
+                            "device_class": None,
+                            "can_control": True,
+                            "control_kind": "toggle",
+                            "control_options": [],
+                            "number_value": None,
+                            "min_value": None,
+                            "max_value": None,
+                            "step": None,
+                            "unit_of_measurement": None,
+                            "target_temperature": None,
+                            "current_temperature": None,
+                            "hvac_mode": None,
+                            "hvac_modes": [],
+                            "media_volume_level": None,
+                            "media_source": None,
+                            "media_source_options": [],
+                            "appliance_name": None,
+                            "appliance_type": None,
+                            "brightness_value": 80.0,
+                            "brightness_min": None,
+                            "brightness_max": None,
+                            "color_temperature": None,
+                            "min_color_temperature": None,
+                            "max_color_temperature": None,
+                            "supports_brightness": False,
+                            "supports_color_temperature": False,
+                            "plan_x": 160.0,
+                            "plan_y": 180.0,
+                            "plan_z": 0.9,
+                            "plan_rotation": 0.0,
+                            "layout_persisted": {
+                                "plan_x": None,
+                                "plan_y": None,
+                                "plan_z": None,
+                                "plan_rotation": None,
+                            },
+                            "layout_derived": {
+                                "plan_x": 160.0,
+                                "plan_y": 180.0,
+                                "plan_z": 0.9,
+                                "plan_rotation": 0.0,
+                            },
+                            "effective_layout": {
+                                "plan_x": 160.0,
+                                "plan_y": 180.0,
+                                "plan_z": 0.9,
+                                "plan_rotation": 0.0,
+                                "source": "derived",
+                                "field_sources": {
+                                    "plan_x": "derived",
+                                    "plan_y": "derived",
+                                },
+                            },
+                        }
+                    ],
+                }
+            ],
+        }
+
+    monkeypatch.setattr(spatial_scene_service, "get_spatial_scene", _fake_scene)
+
+    response = client.get("/api/spatial/scene?zone_id=2", headers={"X-API-Key": "control-token"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["rooms"][0]["effective_layout"]["source"] == "derived"
+    assert body["rooms"][0]["devices"][0]["layout_derived"]["plan_x"] == 160.0
+
+
 def test_floorplan_upload_route_forwards_metadata_and_bytes(
     client: TestClient,
     monkeypatch: pytest.MonkeyPatch,

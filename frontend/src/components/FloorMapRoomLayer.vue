@@ -16,8 +16,6 @@ const props = defineProps({
   },
 })
 
-defineEmits(['select-room'])
-
 function hexToRgb(value) {
   const normalized = `${value ?? ''}`.replace('#', '').trim()
   if (normalized.length !== 6) {
@@ -116,10 +114,10 @@ function zoneFill(zoneRole) {
 
 <template>
   <g
-    class="cursor-pointer floor-room-layer"
+    class="floor-room-layer"
     :class="{ 'floor-room-layer--selected': selected }"
     :style="roomLayerStyle"
-    @click="$emit('select-room', room.id)"
+    pointer-events="none"
   >
     <defs>
       <linearGradient
@@ -268,10 +266,6 @@ function zoneFill(zoneRole) {
   transition: transform 260ms ease, opacity 220ms ease;
   transform-box: fill-box;
   transform-origin: center;
-}
-
-.floor-room-layer:hover {
-  transform: translateY(-1px);
 }
 
 .floor-room-layer--selected {

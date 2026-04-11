@@ -1,6 +1,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 
+import ApplianceCard from './ApplianceCard.vue'
 import FloorMapCanvas from './FloorMapCanvas.vue'
 import FloorMapEditorPanel from './FloorMapEditorPanel.vue'
 import HomeControlSummary from './HomeControlSummary.vue'
@@ -10,13 +11,9 @@ import { useSmartHomeStore } from '../stores/smartHome'
 import { buildFloorMapModel, buildRoomMetrics, formatRoomAmbient, getQuickAction } from '../utils/floorMap'
 
 const UI_PREFERENCES_KEY = 'smart-home-cache:floor-map-ui'
-const isDevEditorAvailable = import.meta.env.DEV
+const isDevEditorAvailable = false
 
 const props = defineProps({
-  scene: {
-    type: Object,
-    default: () => ({ zone: null, analysis: null, rooms: [] }),
-  },
   selectedRoomId: {
     type: [Number, String],
     default: null,
@@ -48,6 +45,7 @@ const emit = defineEmits(['select-room'])
 const smartHomeStore = useSmartHomeStore()
 const showSensors = ref(true)
 const highlightedDeviceId = ref(null)
+const highlightedAggregate = ref(null)
 const isDrawerOpen = ref(false)
 const showEditorPanel = ref(false)
 
@@ -66,15 +64,15 @@ if (typeof initialUiPreferences.showSensors === 'boolean') {
   showSensors.value = initialUiPreferences.showSensors
 }
 
-const sceneRooms = computed(() => smartHomeStore.spatialRoomViews)
-const derivedRoomModels = computed(() => buildFloorMapModel(sceneRooms.value, smartHomeStore.pendingDeviceIds))
-const floorMapEditor = useFloorMapEditorState(sceneRooms, derivedRoomModels)
+const spatialRoomViews = computed(() => smartHomeStore.spatialRoomViews)
+const derivedRoomModels = computed(() => buildFloorMapModel(spatialRoomViews.value, smartHomeStore.pendingDeviceIds))
+const floorMapEditor = useFloorMapEditorState(spatialRoomViews, derivedRoomModels)
 const draftOverlay = computed(() => ({
   roomDrafts: floorMapEditor.roomDrafts.value,
   deviceDrafts: floorMapEditor.deviceDrafts.value,
 }))
 const draftOverlayRoomModels = computed(() =>
-  buildFloorMapModel(sceneRooms.value, smartHomeStore.pendingDeviceIds, {
+  buildFloorMapModel(spatialRoomViews.value, smartHomeStore.pendingDeviceIds, {
     roomDrafts: draftOverlay.value.roomDrafts,
     deviceDrafts: draftOverlay.value.deviceDrafts,
   }),
@@ -107,8 +105,17 @@ const focusedDevice = computed(() =>
     drawerRoom.value?.id ?? selectedRoom.value?.id ?? null,
   ) ?? null,
 )
+const focusedAggregateDevices = computed(() => {
+  if (!highlightedAggregate.value?.devices?.length) {
+    return []
+  }
+
+  const roomId = drawerRoom.value?.id ?? selectedRoom.value?.id ?? null
+  return highlightedAggregate.value.devices
+    .map((device) => smartHomeStore.selectDeviceViewById(device.id, roomId) ?? device)
+})
 const stageStateLabel = computed(() => {
-  if (props.spatialLoading && sceneRooms.value.length === 0) {
+  if (props.spatialLoading && spatialRoomViews.value.length === 0) {
     return 'loading'
   }
 
@@ -140,6 +147,7 @@ watch(
       return
     }
 
+    highlightedAggregate.value = null
     highlightedDeviceId.value = room.devices.find((device) => device.can_control)?.id ?? room.devices[0]?.id ?? null
   },
   { immediate: true },
@@ -174,15 +182,33 @@ watch(
   },
 )
 
+watch(
+  () => isDevEditorAvailable,
+  (enabled) => {
+    if (!enabled && floorMapEditor.enabled.value) {
+      floorMapEditor.setEnabled(false)
+      showEditorPanel.value = false
+    }
+  },
+  { immediate: true },
+)
+
 function openDevice(device) {
   if (!device) {
     return
   }
 
   emit('select-room', device.room_id ?? selectedRoom.value?.id ?? null)
-  highlightedDeviceId.value = device.id
+  highlightedAggregate.value = device.isAggregate
+    ? {
+        title: device.name,
+        applianceType: device.applianceType ?? 'generic',
+        devices: device.devices ?? [],
+      }
+    : null
+  highlightedDeviceId.value = device.primaryDeviceId ?? device.id
   if (floorMapEditor.enabled.value) {
-    floorMapEditor.selectDevice(device.id)
+    floorMapEditor.selectDevice(device.primaryDeviceId ?? device.id)
   }
   isDrawerOpen.value = true
 }
@@ -203,11 +229,19 @@ async function handleQuickAction(device) {
   }
 
   try {
-    highlightedDeviceId.value = device.id
+    highlightedAggregate.value = device.isAggregate
+      ? {
+          title: device.name,
+          applianceType: device.applianceType ?? 'generic',
+          devices: device.devices ?? [],
+        }
+      : null
+    highlightedDeviceId.value = device.primaryDeviceId ?? device.id
+    const controlDeviceId = device.primaryDeviceId ?? device.id
     if (action.type === 'toggle') {
-      await smartHomeStore.toggleDevice(device.id)
+      await smartHomeStore.toggleDevice(controlDeviceId)
     } else if (action.type === 'button') {
-      await smartHomeStore.pressDeviceButton(device.id)
+      await smartHomeStore.pressDeviceButton(controlDeviceId)
     }
   } catch (error) {
     console.error('Failed to execute quick action.', error)
@@ -268,7 +302,7 @@ function handleStageRoomSelection(roomId) {
     <div class="space-y-6">
       <div class="xl:max-w-[96rem]">
         <HomeControlSummary
-          :rooms="sceneRooms"
+          :rooms="spatialRoomViews"
           :selected-room-id="props.selectedRoomId"
           :connection-status="props.connectionStatus"
           :spatial-loading="props.spatialLoading"
@@ -285,7 +319,7 @@ function handleStageRoomSelection(roomId) {
         </div>
 
         <div
-          v-if="props.spatialLoading && sceneRooms.length === 0"
+          v-if="props.spatialLoading && spatialRoomViews.length === 0"
           class="mt-8 grid gap-5 xl:grid-cols-[minmax(0,1.58fr)_320px]"
         >
           <div class="shell-loading-block h-[540px] animate-pulse" />
@@ -296,7 +330,7 @@ function handleStageRoomSelection(roomId) {
         </div>
 
         <div
-          v-else-if="sceneRooms.length === 0"
+          v-else-if="spatialRoomViews.length === 0"
           class="shell-empty-state mt-8 px-6 py-12 text-center text-sm leading-6"
         >
           当前空间场景还没有可渲染的房间。等首轮空间接口返回后，这里会自动回到真实户型视图。
@@ -337,12 +371,12 @@ function handleStageRoomSelection(roomId) {
 
             <div class="xl:pr-2">
               <FloorMapCanvas
-                :rooms="sceneRooms"
+                :rooms="spatialRoomViews"
                 :selected-room-id="props.selectedRoomId"
                 :selected-device-id="highlightedDeviceId"
                 :pending-device-ids="smartHomeStore.pendingDeviceIds"
                 :show-sensors="showSensors"
-                :editor-enabled="floorMapEditor.enabled"
+                :editor-enabled="false"
                 :editor-draft="draftOverlay"
                 :editor-selected-room-id="floorMapEditor.selectedRoomId"
                 :editor-selected-device-id="floorMapEditor.selectedDeviceId"
@@ -360,7 +394,7 @@ function handleStageRoomSelection(roomId) {
             </div>
 
             <div
-              v-if="floorMapEditor.enabled"
+              v-if="false"
               class="shell-surface-muted px-4 py-3 opacity-85"
             >
               <div class="flex flex-wrap items-center justify-between gap-3">
@@ -380,7 +414,7 @@ function handleStageRoomSelection(roomId) {
             </div>
 
             <FloorMapEditorPanel
-              v-if="floorMapEditor.enabled && showEditorPanel"
+              v-if="false"
               class="opacity-90"
               :selected-room="editorRoom"
               :selected-room-visual-config="floorMapEditor.selectedRoomVisualConfig"
@@ -411,8 +445,43 @@ function handleStageRoomSelection(roomId) {
               @download-export="floorMapEditor.downloadExport"
             />
 
+            <section
+              v-if="isDrawerOpen && focusedAggregateDevices.length > 0"
+              class="shell-surface-strong p-5 sm:p-6"
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="shell-kicker">Secondary Control</p>
+                  <h3 class="shell-title-section mt-3">{{ highlightedAggregate?.title ?? '聚合设备' }}</h3>
+                  <p class="shell-copy mt-2 text-sm">{{ drawerRoom?.name ?? selectedRoom?.name ?? '当前房间' }} · 聚合设备详情</p>
+                </div>
+                <button
+                  type="button"
+                  class="shell-chip shell-chip--interactive"
+                  @click="closeDeviceDrawer"
+                >
+                  关闭
+                </button>
+              </div>
+
+              <div
+                v-if="props.actionError"
+                class="shell-state-surface shell-state-surface--error mt-4 text-sm"
+              >
+                {{ props.actionError }}
+              </div>
+
+              <div class="mt-5">
+                <ApplianceCard
+                  :title="highlightedAggregate?.title ?? '聚合设备'"
+                  :appliance-type="highlightedAggregate?.applianceType ?? 'generic'"
+                  :devices="focusedAggregateDevices"
+                />
+              </div>
+            </section>
+
             <RoomControlDrawer
-              v-if="isDrawerOpen && focusedDevice"
+              v-else-if="isDrawerOpen && focusedDevice"
               :room="drawerRoom"
               :device="focusedDevice"
               :action-error="props.actionError"
@@ -432,7 +501,7 @@ function handleStageRoomSelection(roomId) {
                   </p>
                 </div>
                 <span class="shell-status shell-status--idle">
-                  {{ selectedRoom?.zone?.name ?? smartHomeStore.sceneMeta?.zone?.name ?? props.scene?.zone?.name ?? '默认区域' }}
+                  {{ selectedRoom?.zone?.name ?? smartHomeStore.sceneMeta?.zone?.name ?? '默认区域' }}
                 </span>
               </div>
 
@@ -459,7 +528,7 @@ function handleStageRoomSelection(roomId) {
             <div class="shell-surface-muted p-5">
               <div class="flex items-center justify-between gap-3">
                 <p class="shell-kicker text-slate-500">Room Navigator</p>
-                <span class="shell-status shell-status--idle">{{ sceneRooms.length }} Rooms</span>
+                <span class="shell-status shell-status--idle">{{ spatialRoomViews.length }} Rooms</span>
               </div>
 
               <div class="mt-4 space-y-3">

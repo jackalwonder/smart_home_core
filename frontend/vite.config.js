@@ -17,6 +17,14 @@ export default defineConfig(({ mode }) => {
 
   return {
     plugins: [vue()],
+    test: {
+      environment: 'node',
+      globals: true,
+      setupFiles: './src/test/setup.js',
+      include: ['src/**/*.spec.js'],
+      restoreMocks: true,
+      clearMocks: true,
+    },
     server: {
       host: '0.0.0.0',
       port: 5173,

@@ -228,9 +228,25 @@ const shadowOpacity = computed(() => {
   if (isHovered.value || props.selected) return 0.28
   return 0.22
 })
+const hitAreaBox = computed(() => ({
+  x: props.device.position.x - 26,
+  y: props.device.position.y - 44,
+  width: 138,
+  height: 76,
+  rx: 22,
+}))
 
 function startPress(event) {
   beginPressGesture(event)
+}
+
+function handleClick(event) {
+  if (!props.device?.isAggregate) {
+    return
+  }
+
+  event?.stopPropagation?.()
+  emit('open-device', props.device)
 }
 
 function movePress(event) {
@@ -240,6 +256,11 @@ function movePress(event) {
 function endPress() {
   completePressGesture(
     () => {
+      if (props.device?.isAggregate) {
+        emit('open-device', props.device)
+        return
+      }
+
       const quickAction = getQuickAction(props.device)
       if (quickAction) {
         emit('quick-action', props.device)
@@ -254,6 +275,16 @@ function endPress() {
 }
 
 function deviceGlyph(device) {
+  if (device?.isAggregate) {
+    const applianceType = `${device.applianceType ?? ''}`.toLowerCase()
+    if (applianceType.includes('fridge')) return '冰'
+    if (applianceType.includes('air_conditioner')) return '空'
+    if (applianceType.includes('tv') || applianceType.includes('media')) return '视'
+    if (applianceType.includes('purifier')) return '净'
+    if (applianceType.includes('washer')) return '洗'
+    if (applianceType.includes('speaker')) return '音'
+  }
+
   const type = `${device.entity_domain ?? device.type ?? ''}`.toLowerCase()
   if (type.includes('light')) return '灯'
   if (type.includes('cover')) return '帘'
@@ -279,23 +310,28 @@ function handlePointerLeave() {
 
 <template>
   <g
-    class="cursor-pointer"
+    class="floor-device-layer cursor-pointer"
     :class="{ 'cursor-not-allowed': !interactive, 'floor-device-layer--selected': selected }"
     :opacity="hotspotOpacity"
     :style="rootGroupStyle"
     @pointerenter="handlePointerEnter"
     @pointerleave="handlePointerLeave"
+    @pointerdown="startPress($event)"
+    @pointerup="endPress"
+    @pointercancel="cancelPress"
+    @pointermove="movePress($event)"
+    @click="handleClick"
   >
-    <circle
-      :cx="device.position.x"
-      :cy="device.position.y"
-      r="22"
+    <rect
+      :x="hitAreaBox.x"
+      :y="hitAreaBox.y"
+      :width="hitAreaBox.width"
+      :height="hitAreaBox.height"
+      :rx="hitAreaBox.rx"
       fill="rgba(255,255,255,0)"
       class="floor-device-layer__hit-area"
-      @pointerdown="startPress($event)"
-      @pointerup="endPress"
-      @pointercancel="cancelPress"
-      @pointermove="movePress($event)"
+      pointer-events="all"
+      @click.stop="handleClick"
     />
     <ellipse
       :cx="device.position.x"
@@ -410,7 +446,7 @@ function handlePointerLeave() {
         {{ device.name }}
       </text>
       <text :x="device.position.x + 26" :y="device.position.y - 4" fill="rgba(71,85,105,0.84)" font-size="10">
-        {{ holdReady ? '松手打开详情' : getDevicePrimaryMetric(device) }}
+        {{ holdReady ? '松手打开详情' : (device.displayMetric ?? getDevicePrimaryMetric(device)) }}
       </text>
       <circle
         :cx="device.position.x + 97"
@@ -436,5 +472,15 @@ function handlePointerLeave() {
 
 .floor-device-layer__hit-area {
   pointer-events: all;
+}
+
+.floor-device-layer__icon-group,
+.floor-device-layer__label-group,
+.floor-device-layer ellipse,
+.floor-device-layer circle,
+.floor-device-layer rect,
+.floor-device-layer text,
+.floor-device-layer title {
+  pointer-events: none;
 }
 </style>

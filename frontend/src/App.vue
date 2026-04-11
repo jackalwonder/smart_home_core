@@ -10,8 +10,6 @@ import { useSmartHomeStore } from './stores/smartHome'
 
 const smartHomeStore = useSmartHomeStore()
 const {
-  rooms,
-  spatialScene,
   isLoading,
   spatialLoading,
   spatialBusy,
@@ -23,11 +21,10 @@ const {
   reconnectDelayMs,
   roomCount,
   deviceCount,
+  dashboardRoomViews,
   lastMessageAt,
   selectedRoomId,
   selectedRoom,
-  selectedSceneRoom,
-  selectedMergedRoom,
 } = storeToRefs(smartHomeStore)
 
 const connectionLabel = computed(() => {
@@ -89,7 +86,7 @@ onMounted(() => {
 watch(
   selectedRoomId,
   (roomId) => {
-    if (!roomId || (!selectedRoom.value && !selectedSceneRoom.value)) {
+    if (!roomId || !selectedRoom.value) {
       return
     }
 
@@ -115,7 +112,7 @@ onBeforeUnmount(() => {
     </div>
 
     <DashboardLayout
-      :rooms="rooms"
+      :rooms="dashboardRoomViews"
       :selected-room-id="selectedRoomId"
       :room-count="roomCount"
       :device-count="deviceCount"
@@ -143,7 +140,7 @@ onBeforeUnmount(() => {
       </div>
 
       <div
-        v-else-if="rooms.length === 0"
+        v-else-if="dashboardRoomViews.length === 0"
         class="flex min-h-[420px] items-center justify-center px-4 py-8 sm:px-6 xl:min-h-[520px] xl:px-8"
       >
         <div class="shell-empty-state max-w-2xl px-6 py-8 text-center sm:px-8">
@@ -157,7 +154,6 @@ onBeforeUnmount(() => {
 
       <div v-else class="pb-4 sm:pb-5 xl:pb-8">
         <FloorPlanStudio
-          :scene="spatialScene"
           :selected-room-id="selectedRoomId"
           :spatial-loading="spatialLoading"
           :spatial-busy="spatialBusy"
@@ -168,7 +164,7 @@ onBeforeUnmount(() => {
         />
 
         <RoomView
-          :room="selectedMergedRoom"
+          :room="selectedRoom"
           :action-error="actionError"
         />
       </div>

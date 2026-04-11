@@ -128,6 +128,34 @@ class DeviceRead(StrictSchema):
     plan_y: float | None = None
     plan_z: float | None = None
     plan_rotation: float | None = None
+    layout_persisted: "DeviceLayoutLayerRead | None" = None
+    layout_derived: "DeviceLayoutLayerRead | None" = None
+    effective_layout: "EffectiveDeviceLayoutRead | None" = None
+
+
+class RoomLayoutLayerRead(StrictSchema):
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_width: float | None = None
+    plan_height: float | None = None
+    plan_rotation: float | None = None
+
+
+class EffectiveRoomLayoutRead(RoomLayoutLayerRead):
+    source: str | None = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
+
+
+class DeviceLayoutLayerRead(StrictSchema):
+    plan_x: float | None = None
+    plan_y: float | None = None
+    plan_z: float | None = None
+    plan_rotation: float | None = None
+
+
+class EffectiveDeviceLayoutRead(DeviceLayoutLayerRead):
+    source: str | None = None
+    field_sources: dict[str, str] = Field(default_factory=dict)
 
 
 class RoomStateRead(StrictSchema):
@@ -147,6 +175,9 @@ class RoomStateRead(StrictSchema):
     ambient_humidity: float | None = None
     occupancy_status: str | None = None
     active_device_count: int = Field(default=0, ge=0)
+    layout_persisted: RoomLayoutLayerRead | None = None
+    layout_derived: RoomLayoutLayerRead | None = None
+    effective_layout: EffectiveRoomLayoutRead | None = None
     devices: list[DeviceRead] = Field(default_factory=list)
 
 

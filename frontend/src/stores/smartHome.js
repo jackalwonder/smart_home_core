@@ -34,8 +34,8 @@ import { useNotificationStore } from './notification'
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL?.trim() || ''
 const CACHE_KEYS = {
-  rooms: 'smart-home-cache:rooms',
-  spatialScene: 'smart-home-cache:spatial-scene',
+  catalogEntities: 'smart-home-cache:catalog-entities',
+  sceneEntities: 'smart-home-cache:scene-entities',
   uiPreferences: 'smart-home-cache:ui-preferences',
 }
 const RECONNECT_BASE_DELAY_MS = 1000
@@ -105,64 +105,6 @@ function hasValue(value) {
   return value !== null && value !== undefined
 }
 
-function decorateDeviceSource(device, { detail = false, scene = false } = {}) {
-  const normalizedDevice = normalizeDeviceRead(device)
-  const source = detail && scene
-    ? 'merged'
-    : detail
-      ? 'detail'
-      : 'scene'
-
-  return {
-    ...normalizedDevice,
-    source,
-    isDetailBacked: detail,
-    isSceneBacked: scene,
-  }
-}
-
-function normalizeRoom(room) {
-  const normalizedRoom = normalizeRoomStateRead(room)
-  return {
-    ...normalizedRoom,
-    devices: sortDevices(
-      filterDisplayDevices(normalizedRoom.devices ?? [])
-        .map((device) => decorateDeviceSource(device, { detail: true })),
-    ),
-  }
-}
-
-function normalizeSpatialRoom(room) {
-  const normalizedRoom = normalizeRoomStateRead(room)
-  return {
-    ...normalizedRoom,
-    devices: sortDevices(
-      filterDisplayDevices(normalizedRoom.devices ?? [])
-        .map((device) => decorateDeviceSource(device, { scene: true })),
-    ),
-  }
-}
-
-function normalizeDashboardRooms(rooms) {
-  const sourceRooms = DEV_SHOWCASE_ENABLED ? applyDevShowcaseRooms(rooms ?? []) : (rooms ?? [])
-  return sortRooms(sourceRooms.map(normalizeRoom).filter(shouldDisplayDashboardRoom))
-}
-
-function normalizeSpatialRooms(rooms) {
-  const sourceRooms = DEV_SHOWCASE_ENABLED ? applyDevShowcaseRooms(rooms ?? []) : (rooms ?? [])
-  return sortSceneRooms(sourceRooms.map(normalizeSpatialRoom).filter(shouldDisplaySpatialRoom))
-}
-
-function normalizeSpatialScene(scene) {
-  const normalizedScene = normalizeSpatialSceneRead(scene ?? {})
-  const sourceScene = DEV_SHOWCASE_ENABLED ? applyDevShowcaseScene(normalizedScene) : normalizedScene
-  return {
-    zone: sourceScene?.zone ?? null,
-    analysis: sourceScene?.analysis ?? null,
-    rooms: normalizeSpatialRooms(sourceScene?.rooms ?? []),
-  }
-}
-
 function wait(ms) {
   return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
@@ -171,6 +113,13 @@ function setRecordValue(source, key, value) {
   return {
     ...source,
     [key]: value,
+  }
+}
+
+function withCredentials(options = {}) {
+  return {
+    ...options,
+    credentials: options.credentials ?? 'include',
   }
 }
 
@@ -197,46 +146,20 @@ function writeCache(key, value) {
   try {
     window.localStorage.setItem(key, JSON.stringify(value))
   } catch (error) {
-    console.warn('写入本地缓存失败。', error)
+    console.warn('Failed to write local cache.', error)
   }
 }
 
-async function requestControlSession() {
-  const apiKey = window.prompt('请输入控制口令后继续操作')
-  if (!apiKey) {
-    throw new Error('已取消控制解锁。')
+function removeCache(key) {
+  try {
+    window.localStorage.removeItem(key)
+  } catch (error) {
+    console.warn('Failed to remove local cache.', error)
   }
-
-  const response = await fetch(resolveApiUrl('/api/auth/control-session'), {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ api_key: apiKey.trim() }),
-  })
-
-  if (!response.ok) {
-    throw new Error('控制口令无效或已过期。')
-  }
-
-  return response.json()
-}
-
-async function fetchWithControlSession(path, options = {}) {
-  let response = await fetch(resolveApiUrl(path), options)
-  if (response.status !== 401 && response.status !== 403) {
-    return response
-  }
-
-  await requestControlSession()
-  response = await fetch(resolveApiUrl(path), options)
-  return response
 }
 
 export const useSmartHomeStore = defineStore('smartHome', () => {
   const notificationStore = useNotificationStore()
-  const rooms = ref([])
-  const spatialScene = ref({ zone: null, analysis: null, rooms: [] })
   const roomsById = ref({})
   const devicesById = ref({})
   const roomDeviceIdsByRoomId = ref({})
@@ -261,6 +184,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   const pendingDeviceIds = ref([])
   const spatialRefreshTimer = ref(null)
   const detailRefreshTimer = ref(null)
+  const detailRefreshPromise = ref(null)
+  const detailRefreshQueued = ref(false)
   const catalogRefreshTimer = ref(null)
   const catalogRefreshPromise = ref(null)
   const catalogRefreshQueued = ref(false)
@@ -330,13 +255,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       throw new Error('已取消控制解锁。')
     }
 
-    const response = await fetch(resolveApiUrl('/api/auth/control-session'), {
+    const response = await fetch(resolveApiUrl('/api/auth/control-session'), withCredentials({
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({ api_key: apiKey.trim() }),
-    })
+    }))
 
     if (!response.ok) {
       throw await createHttpError(response, '鎺у埗浼氳瘽鏍￠獙')
@@ -346,13 +271,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   }
 
   async function fetchWithControlSession(path, options = {}, actionLabel = '璇锋眰') {
-    let response = await fetch(resolveApiUrl(path), options)
+    let response = await fetch(resolveApiUrl(path), withCredentials(options))
     if (response.status !== 401 && response.status !== 403) {
       return response
     }
 
     await requestControlSession()
-    response = await fetch(resolveApiUrl(path), options)
+    response = await fetch(resolveApiUrl(path), withCredentials(options))
 
     if (!response.ok && response.status !== 401 && response.status !== 403) {
       throw await createHttpError(response, actionLabel)
@@ -361,15 +286,184 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     return response
   }
 
-  watch(rooms, (value) => {
-    if (value.length > 0) {
-      writeCache(CACHE_KEYS.rooms, value)
+  function buildCatalogEntityCache() {
+    return {
+      roomsById: roomsById.value,
+      devicesById: devicesById.value,
+      roomDeviceIdsByRoomId: roomDeviceIdsByRoomId.value,
+    }
+  }
+
+  function buildSceneEntityCache() {
+    return {
+      sceneMeta: sceneMeta.value,
+      sceneLayoutByRoomId: sceneLayoutByRoomId.value,
+      sceneDeviceLayoutByDeviceId: sceneDeviceLayoutByDeviceId.value,
+    }
+  }
+
+  function hasCatalogEntityCache(cache) {
+    return Object.keys(cache?.roomsById ?? {}).length > 0 || Object.keys(cache?.devicesById ?? {}).length > 0
+  }
+
+  function hasSceneEntityCache(cache) {
+    return Boolean(cache?.sceneMeta?.zone || cache?.sceneMeta?.analysis)
+      || Object.keys(cache?.sceneLayoutByRoomId ?? {}).length > 0
+      || Object.keys(cache?.sceneDeviceLayoutByDeviceId ?? {}).length > 0
+  }
+
+  function setRoomEntity(rawRoom) {
+    if (!hasValue(rawRoom?.id)) {
+      return null
+    }
+
+    const roomId = rawRoom.id
+    const nextRoom = normalizeRoomEntity({
+      ...(roomsById.value[roomId] ?? {}),
+      ...rawRoom,
+    })
+    roomsById.value = setRecordValue(roomsById.value, roomId, nextRoom)
+    return nextRoom
+  }
+
+  function setSceneRoomLayout(roomId, rawRoom) {
+    if (!hasValue(roomId)) {
+      return null
+    }
+
+    const nextLayout = extractRoomSceneLayout(rawRoom)
+    sceneLayoutByRoomId.value = setRecordValue(sceneLayoutByRoomId.value, roomId, nextLayout)
+    return nextLayout
+  }
+
+  function setSceneDeviceLayout(deviceId, rawDevice) {
+    if (!hasValue(deviceId)) {
+      return null
+    }
+
+    const nextLayout = extractSceneDeviceLayout(rawDevice)
+    sceneDeviceLayoutByDeviceId.value = setRecordValue(sceneDeviceLayoutByDeviceId.value, deviceId, nextLayout)
+    return nextLayout
+  }
+
+  function setRoomDeviceIds(roomId, rawDevices = []) {
+    if (!hasValue(roomId)) {
+      return []
+    }
+
+    const nextDeviceIds = rawDevices
+      .map((device) => normalizeDeviceEntity(device))
+      .map((device) => device.id)
+      .filter(hasValue)
+    const nextDeviceIdSet = new Set(nextDeviceIds.map((deviceId) => `${deviceId}`))
+    const targetRoomKey = `${roomId}`
+    const nextCollections = Object.entries(roomDeviceIdsByRoomId.value).reduce((result, [currentRoomId, deviceIds]) => ({
+      ...result,
+      [currentRoomId]: Array.isArray(deviceIds)
+        ? deviceIds.filter((deviceId) => `${currentRoomId}` === targetRoomKey || !nextDeviceIdSet.has(`${deviceId}`))
+        : [],
+    }), {})
+
+    nextCollections[roomId] = nextDeviceIds
+    roomDeviceIdsByRoomId.value = nextCollections
+    return nextDeviceIds
+  }
+
+  function upsertDeviceEntity(rawDevice, options = {}) {
+    if (!hasValue(rawDevice?.id)) {
+      return null
+    }
+
+    const { preferExisting = false } = options
+    const previousDevice = devicesById.value[rawDevice.id] ?? null
+    const nextDevice = previousDevice && preferExisting
+      ? mergeDevicePatch(previousDevice, rawDevice)
+      : previousDevice
+        ? mergeDevicePatch(previousDevice, rawDevice)
+        : normalizeDeviceEntity(rawDevice)
+
+    return storeDeviceEntitySnapshot(nextDevice)
+  }
+
+  function ingestDashboardRooms(rawRooms = []) {
+    const sourceRooms = DEV_SHOWCASE_ENABLED ? applyDevShowcaseRooms(rawRooms ?? []) : (rawRooms ?? [])
+
+    sourceRooms.forEach((rawRoom) => {
+      const room = setRoomEntity(rawRoom)
+      if (!room) {
+        return
+      }
+
+      setSceneRoomLayout(room.id, rawRoom)
+      const devices = Array.isArray(rawRoom?.devices) ? rawRoom.devices : []
+      devices.forEach((rawDevice) => {
+        const nextDevice = {
+          ...rawDevice,
+          room_id: rawDevice?.room_id ?? room.id,
+        }
+
+        upsertDeviceEntity(nextDevice, { preferExisting: true })
+        setSceneDeviceLayout(nextDevice.id, nextDevice)
+      })
+      setRoomDeviceIds(room.id, devices.map((device) => ({
+        ...device,
+        room_id: device?.room_id ?? room.id,
+      })))
+    })
+
+    return dashboardRoomViews.value
+  }
+
+  function ingestSpatialScene(rawScene) {
+    const normalizedScene = normalizeSpatialSceneRead(rawScene ?? {})
+    const sourceScene = DEV_SHOWCASE_ENABLED ? applyDevShowcaseScene(normalizedScene) : normalizedScene
+
+    sceneMeta.value = normalizeSceneMeta(sourceScene)
+    ;(sourceScene?.rooms ?? []).forEach((rawRoom) => {
+      const room = setRoomEntity(rawRoom)
+      if (!room) {
+        return
+      }
+
+      setSceneRoomLayout(room.id, rawRoom)
+      const devices = Array.isArray(rawRoom?.devices) ? rawRoom.devices : []
+      devices.forEach((rawDevice) => {
+        const nextDevice = {
+          ...rawDevice,
+          room_id: rawDevice?.room_id ?? room.id,
+        }
+
+        upsertDeviceEntity(nextDevice, { preferExisting: true })
+        setSceneDeviceLayout(nextDevice.id, nextDevice)
+      })
+      setRoomDeviceIds(room.id, devices.map((device) => ({
+        ...device,
+        room_id: device?.room_id ?? room.id,
+      })))
+    })
+
+    return {
+      zone: sceneMeta.value.zone,
+      analysis: sceneMeta.value.analysis,
+      rooms: spatialRoomViews.value,
+    }
+  }
+
+  watch([roomsById, devicesById, roomDeviceIdsByRoomId], () => {
+    const cache = buildCatalogEntityCache()
+    if (hasCatalogEntityCache(cache)) {
+      writeCache(CACHE_KEYS.catalogEntities, cache)
+    } else {
+      removeCache(CACHE_KEYS.catalogEntities)
     }
   }, { deep: true })
 
-  watch(spatialScene, (value) => {
-    if (value?.rooms?.length > 0) {
-      writeCache(CACHE_KEYS.spatialScene, value)
+  watch([sceneMeta, sceneLayoutByRoomId, sceneDeviceLayoutByDeviceId], () => {
+    const cache = buildSceneEntityCache()
+    if (hasSceneEntityCache(cache)) {
+      writeCache(CACHE_KEYS.sceneEntities, cache)
+    } else {
+      removeCache(CACHE_KEYS.sceneEntities)
     }
   }, { deep: true })
 
@@ -494,30 +588,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     return selectRoomViewById(selectedRoomId.value) ?? dashboardRoomViews.value[0] ?? spatialRoomViews.value[0] ?? null
   })
-  const selectedSceneRoom = computed(() => {
-    if (!hasValue(selectedRoomId.value)) {
-      return spatialRoomViews.value[0] ?? null
-    }
-
-    return spatialRoomViews.value.find((room) => room.id === selectedRoomId.value)
-      ?? selectRoomViewById(selectedRoomId.value)
-      ?? null
-  })
-  const selectedMergedRoom = computed(() => {
-    if (!hasValue(selectedRoomId.value)) {
-      return spatialRoomViews.value[0] ?? dashboardRoomViews.value[0] ?? null
-    }
-
-    return selectRoomViewById(selectedRoomId.value)
-  })
   const activeZoneId = computed(() => sceneMeta.value.zone?.id ?? selectedRoom.value?.zone_id ?? selectedRoom.value?.zone?.id ?? null)
 
   function hasAvailableRoom(roomId) {
     return Boolean(selectRoomViewById(roomId))
-  }
-
-  function findMergedRoomById(roomId) {
-    return selectRoomViewById(roomId)
   }
 
   function ensureSelectedRoom() {
@@ -602,16 +676,20 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   }
 
   function hydrateFromCache() {
-    const cachedRooms = readCache(CACHE_KEYS.rooms, [])
-    const cachedSpatialScene = readCache(CACHE_KEYS.spatialScene, null)
+    const cachedCatalogEntities = readCache(CACHE_KEYS.catalogEntities, null)
+    const cachedSceneEntities = readCache(CACHE_KEYS.sceneEntities, null)
     const cachedUiPreferences = readCache(CACHE_KEYS.uiPreferences, {})
 
-    if (Array.isArray(cachedRooms) && cachedRooms.length > 0) {
-      rooms.value = ingestDashboardRooms(cachedRooms)
+    if (cachedCatalogEntities && typeof cachedCatalogEntities === 'object') {
+      roomsById.value = cachedCatalogEntities.roomsById ?? {}
+      devicesById.value = cachedCatalogEntities.devicesById ?? {}
+      roomDeviceIdsByRoomId.value = cachedCatalogEntities.roomDeviceIdsByRoomId ?? {}
     }
 
-    if (cachedSpatialScene?.rooms?.length) {
-      spatialScene.value = ingestSpatialScene(cachedSpatialScene)
+    if (cachedSceneEntities && typeof cachedSceneEntities === 'object') {
+      sceneMeta.value = cachedSceneEntities.sceneMeta ?? { zone: null, analysis: null }
+      sceneLayoutByRoomId.value = cachedSceneEntities.sceneLayoutByRoomId ?? {}
+      sceneDeviceLayoutByDeviceId.value = cachedSceneEntities.sceneDeviceLayoutByDeviceId ?? {}
     }
 
     if (cachedUiPreferences?.selectedRoomId !== undefined && cachedUiPreferences?.selectedRoomId !== null) {
@@ -635,7 +713,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       }
 
       const payload = await authenticatedResponse.json()
-      rooms.value = ingestDashboardRooms(payload)
+      ingestDashboardRooms(payload)
       ensureSelectedRoom()
     } catch (fetchError) {
       error.value = fetchError instanceof Error ? fetchError.message : '获取智能家居数据失败。'
@@ -664,9 +742,9 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         throw await createHttpError(response, '加载空间场景')
       }
 
-      spatialScene.value = ingestSpatialScene(await response.json())
+      const scene = ingestSpatialScene(await response.json())
       ensureSelectedRoom()
-      return spatialScene.value
+      return scene
     } catch (fetchError) {
       spatialError.value = fetchError instanceof Error ? fetchError.message : '获取空间场景失败。'
       notifyRequestFailure(fetchError, '加载空间场景')
@@ -696,16 +774,10 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         ? devicesPayload.map((device) => normalizeDeviceRead(device))
         : []
       devices.forEach((device) => {
-        upsertDeviceEntity(device)
+        upsertDeviceEntity(device, { preferExisting: true })
+        setSceneDeviceLayout(device.id, device)
       })
       setRoomDeviceIds(roomId, devices)
-      rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
-        if (room.id !== roomId) {
-          return room
-        }
-
-        return { ...room, devices }
-      }))
       ensureSelectedRoom()
     } catch (fetchError) {
       actionError.value = fetchError instanceof Error ? fetchError.message : '刷新房间设备失败。'
@@ -847,6 +919,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       detailRefreshTimer.value = null
     }
 
+    detailRefreshQueued.value = false
     catalogRefreshQueued.value = false
 
     if (feedbackTimer.value) {
@@ -872,10 +945,38 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     }, delay)
   }
 
-  function scheduleDetailRefresh(delay = 180) {
-    const roomId = selectedRoomId.value
+  function runDetailRefresh(roomId = selectedRoomId.value) {
+    if (roomId === null || roomId === undefined) {
+      return Promise.resolve(null)
+    }
+
+    if (detailRefreshPromise.value) {
+      detailRefreshQueued.value = true
+      return detailRefreshPromise.value
+    }
+
+    const targetRoomId = roomId
+    const refreshPromise = fetchRoomDevices(targetRoomId)
+    detailRefreshPromise.value = refreshPromise.finally(() => {
+      detailRefreshPromise.value = null
+
+      if (detailRefreshQueued.value) {
+        detailRefreshQueued.value = false
+        scheduleDetailRefresh(180)
+      }
+    })
+
+    return detailRefreshPromise.value
+  }
+
+  function scheduleDetailRefresh(delay = 180, roomId = selectedRoomId.value) {
     if (roomId === null || roomId === undefined) {
       return null
+    }
+
+    if (detailRefreshPromise.value) {
+      detailRefreshQueued.value = true
+      return detailRefreshPromise.value
     }
 
     if (detailRefreshTimer.value) {
@@ -884,7 +985,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     detailRefreshTimer.value = window.setTimeout(() => {
       detailRefreshTimer.value = null
-      fetchRoomDevices(roomId).catch(() => {})
+      runDetailRefresh(roomId).catch(() => {})
     }, delay)
 
     return null
@@ -892,7 +993,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
   function scheduleCompensationRefresh(delay = 180) {
     scheduleCatalogRefresh(delay)
-    scheduleDetailRefresh(delay)
+    scheduleDetailRefresh(delay, selectedRoomId.value)
     return null
   }
 
@@ -1002,102 +1103,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     return storeDeviceEntitySnapshot(nextDevice)
   }
 
-  function buildSceneDeviceView(deviceId, existingDevice = null) {
-    const entityDevice = devicesById.value[deviceId] ?? null
-    if (!entityDevice) {
-      return null
-    }
-
-    const sceneLayout = sceneDeviceLayoutByDeviceId.value[deviceId] ?? {}
-    return normalizeDeviceRead({
-      ...(existingDevice ?? {}),
-      ...entityDevice,
-      ...sceneLayout,
-      position: sceneLayout.position ?? existingDevice?.position ?? entityDevice.position ?? null,
-    })
-  }
-
-  function syncLegacyDetailRoomDevice(deviceId) {
-    const entityDevice = devicesById.value[deviceId] ?? null
-    if (!entityDevice) {
-      return { matchedRoom: false }
-    }
-
-    let matchedRoom = false
-
-    rooms.value = normalizeDashboardRooms(rooms.value.map((room) => {
-      const deviceIndex = room.devices.findIndex((device) => device.id === deviceId)
-      const belongsToRoom = room.id === entityDevice.room_id
-
-      if (deviceIndex === -1 && !belongsToRoom) {
-        return room
-      }
-
-      matchedRoom = true
-      const nextDevices = [...room.devices]
-
-      if (deviceIndex >= 0 && belongsToRoom) {
-        nextDevices.splice(deviceIndex, 1, mergeDevicePatch(nextDevices[deviceIndex], entityDevice))
-      } else if (deviceIndex >= 0) {
-        nextDevices.splice(deviceIndex, 1)
-      } else {
-        nextDevices.push(normalizeDeviceRead(entityDevice))
-      }
-
-      return { ...room, devices: nextDevices }
-    }))
-
-    return { matchedRoom }
-  }
-
-  function syncLegacySpatialDevice(deviceId) {
-    const entityDevice = devicesById.value[deviceId] ?? null
-    if (!entityDevice) {
-      return { matchedRoom: false }
-    }
-
-    let matchedRoom = false
-
-    spatialScene.value = normalizeSpatialScene({
-      ...spatialScene.value,
-      rooms: spatialScene.value.rooms.map((room) => {
-        const deviceIndex = room.devices.findIndex((device) => device.id === deviceId)
-        const belongsToRoom = room.id === entityDevice.room_id
-
-        if (deviceIndex === -1 && !belongsToRoom) {
-          return room
-        }
-
-        matchedRoom = true
-        const nextDevices = [...room.devices]
-        const nextSceneDevice = buildSceneDeviceView(deviceId, nextDevices[deviceIndex] ?? null)
-
-        if (!nextSceneDevice) {
-          return room
-        }
-
-        if (deviceIndex >= 0 && belongsToRoom) {
-          nextDevices.splice(deviceIndex, 1, nextSceneDevice)
-        } else if (deviceIndex >= 0) {
-          nextDevices.splice(deviceIndex, 1)
-        } else {
-          nextDevices.push(nextSceneDevice)
-        }
-
-        return { ...room, devices: nextDevices }
-      }),
-    })
-
-    return { matchedRoom }
-  }
-
-  function syncLegacyDeviceViews(deviceId) {
-    const detailResult = syncLegacyDetailRoomDevice(deviceId)
-    const sceneResult = syncLegacySpatialDevice(deviceId)
-    ensureSelectedRoom()
-    return { detailResult, sceneResult }
-  }
-
   function shouldCompensateForSeq(seq) {
     if (!Number.isInteger(seq) || seq <= 0) {
       return true
@@ -1142,11 +1147,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       source: 'realtime',
     })
 
-    const syncResult = syncLegacyDeviceViews(nextDevice.id)
-    if (realtimeUpdate.movedToUnknownDetailRoom || !syncResult.detailResult.matchedRoom) {
+    if (realtimeUpdate.movedToUnknownDetailRoom || !hasValue(nextDevice.room_id) || !hasValue(roomsById.value[nextDevice.room_id])) {
       scheduleCompensationRefresh(60)
-    } else if (!syncResult.sceneResult.matchedRoom) {
-      scheduleSpatialRefresh(60)
     }
   }
 
@@ -1190,19 +1192,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     return pendingDeviceIds.value.includes(deviceId)
   }
 
-  function findMergedDeviceInRoom(roomId, deviceId) {
-    if (!hasValue(roomId) || !hasValue(deviceId)) {
-      return null
-    }
-
-    const room = selectRoomViewById(roomId)
-    return room?.devices.find((device) => device.id === deviceId) ?? null
-  }
-
-  function findMergedDeviceById(deviceId) {
-    return selectDeviceViewById(deviceId)
-  }
-
   function findDevice(deviceId) {
     return selectDeviceViewById(deviceId) ?? devicesById.value[deviceId] ?? null
   }
@@ -1219,7 +1208,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
 
     const normalizedSnapshot = normalizeDeviceRead(snapshot)
     storeDeviceEntitySnapshot(normalizedSnapshot)
-    syncLegacyDeviceViews(normalizedSnapshot.id)
   }
 
   function markPending(deviceId) {
@@ -1231,14 +1219,13 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   }
 
   function updateDeviceCollections(deviceId, updater) {
-    const baseDevice = devicesById.value[deviceId] ?? findMergedDeviceById(deviceId)
+    const baseDevice = devicesById.value[deviceId] ?? selectDeviceViewById(deviceId)
     if (!baseDevice) {
       return null
     }
 
     const nextDevice = normalizeDeviceRead(updater({ ...baseDevice }))
     storeDeviceEntitySnapshot(nextDevice)
-    syncLegacyDeviceViews(deviceId)
     return nextDevice
   }
 
@@ -1612,10 +1599,7 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const updatedRoom = await response.json()
       setRoomEntity(updatedRoom)
       setSceneRoomLayout(roomId, updatedRoom)
-      spatialScene.value = normalizeSpatialScene({
-        ...spatialScene.value,
-        rooms: spatialScene.value.rooms.map((room) => (room.id === roomId ? { ...room, ...updatedRoom } : room)),
-      })
+      ensureSelectedRoom()
       return updatedRoom
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '保存房间布局失败。'
@@ -1646,13 +1630,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
       const updatedDevice = await response.json()
       upsertDeviceEntity(updatedDevice, { preferExisting: true })
       setSceneDeviceLayout(deviceId, updatedDevice)
-      spatialScene.value = normalizeSpatialScene({
-        ...spatialScene.value,
-        rooms: spatialScene.value.rooms.map((room) => ({
-          ...room,
-          devices: room.devices.map((device) => (device.id === deviceId ? { ...device, ...updatedDevice } : device)),
-        })),
-      })
       return updatedDevice
     } catch (requestError) {
       spatialError.value = requestError instanceof Error ? requestError.message : '保存设备点位失败。'
@@ -1707,11 +1684,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         throw fetchError
       }
 
-      rooms.value = normalizeDashboardRooms([])
       roomsById.value = {}
       devicesById.value = {}
       roomDeviceIdsByRoomId.value = {}
       error.value = ''
+      ingestDashboardRooms([])
     }
 
     try {
@@ -1721,11 +1698,11 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
         throw fetchError
       }
 
-      spatialScene.value = normalizeSpatialScene({ zone: null, analysis: null, rooms: [] })
       sceneMeta.value = { zone: null, analysis: null }
       sceneLayoutByRoomId.value = {}
       sceneDeviceLayoutByDeviceId.value = {}
       spatialError.value = ''
+      ingestSpatialScene({ zone: null, analysis: null, rooms: [] })
     }
 
     if (DEV_SHOWCASE_ENABLED) {
@@ -1738,8 +1715,6 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
   }
 
   return {
-    rooms,
-    spatialScene,
     roomsById,
     devicesById,
     roomDeviceIdsByRoomId,
@@ -1766,13 +1741,8 @@ export const useSmartHomeStore = defineStore('smartHome', () => {
     dashboardRoomViews,
     spatialRoomViews,
     selectedRoom,
-    selectedSceneRoom,
-    selectedMergedRoom,
     selectRoomViewById,
     selectDeviceViewById,
-    findMergedRoomById,
-    findMergedDeviceInRoom,
-    findMergedDeviceById,
     resolveAssetUrl,
     fetchInitialState,
     fetchSpatialScene,

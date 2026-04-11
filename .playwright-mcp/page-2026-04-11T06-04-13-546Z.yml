@@ -1,0 +1,195 @@
+- main [ref=e4]:
+  - generic [ref=e5]:
+    - complementary [ref=e6]:
+      - generic [ref=e7]:
+        - generic [ref=e8]:
+          - paragraph [ref=e10]: 全屋智控
+          - heading "全屋智能 控制中心" [level=1] [ref=e11]:
+            - text: 全屋智能
+            - text: 控制中心
+          - paragraph [ref=e12]: 把房间导航、实时状态和常用设备控制收拢到同一块主屏里，让家庭管理更直观、更沉浸。
+          - generic [ref=e13]:
+            - generic [ref=e14]:
+              - paragraph [ref=e15]: 房间
+              - paragraph [ref=e16]: "1"
+            - generic [ref=e17]:
+              - paragraph [ref=e18]: 设备
+              - paragraph [ref=e19]: "5"
+            - generic [ref=e20]:
+              - paragraph [ref=e21]: 在线
+              - generic [ref=e23]: 待连接
+        - generic [ref=e24]:
+          - generic [ref=e26]:
+            - generic [ref=e27]:
+              - paragraph [ref=e28]: 当前房间
+              - paragraph [ref=e29]: 客厅
+              - paragraph [ref=e30]: 来自 Home Assistant 区域映射：客厅
+            - generic [ref=e31]:
+              - paragraph [ref=e32]: 最近同步
+              - paragraph [ref=e33]: 正在等待设备状态更新
+          - generic [ref=e34]:
+            - paragraph [ref=e35]: 房间导航
+            - generic [ref=e36]: 1 个房间
+          - button "Home Assistant 导入 客厅 5 来自 Home Assistant 区域映射：客厅" [ref=e39] [cursor=pointer]:
+            - generic [ref=e40]:
+              - generic [ref=e41]:
+                - paragraph [ref=e42]: Home Assistant 导入
+                - paragraph [ref=e43]: 客厅
+              - generic [ref=e44]: "5"
+            - paragraph [ref=e45]: 来自 Home Assistant 区域映射：客厅
+    - generic [ref=e47]:
+      - generic [ref=e49]:
+        - generic [ref=e53]:
+          - generic [ref=e54]:
+            - generic [ref=e55]:
+              - generic [ref=e56]: 下午模式
+              - generic [ref=e57]: 下午
+            - generic [ref=e58]:
+              - generic [ref=e59]:
+                - paragraph [ref=e60]: 家庭状态
+                - heading "家庭状态平稳" [level=2] [ref=e61]
+                - paragraph [ref=e62]: 当前没有需要优先处理的联动，首页摘要会持续关注新的房间变化。
+              - generic [ref=e63]:
+                - paragraph [ref=e64]: 4 月 11 日 周六
+                - paragraph [ref=e65]: 14:04
+                - paragraph [ref=e66]: 室内均温
+            - generic [ref=e68]:
+              - generic [ref=e69]:
+                - paragraph [ref=e70]: 实时状态
+                - paragraph [ref=e71]: 正在等待首条状态回流
+              - paragraph [ref=e72]: 房间摘要与空间主舞台保持同一真相源
+            - generic [ref=e74]: 0 个房间有设备在运行
+          - complementary [ref=e75]:
+            - generic [ref=e76]:
+              - generic [ref=e77]:
+                - paragraph [ref=e78]: 关键房间
+                - paragraph [ref=e79]: 只保留当前最值得看的空间。
+              - generic [ref=e80]: 1 个摘要
+            - button "客厅 在线 状态平稳 在线稳定 2°C 灯光安静" [ref=e82] [cursor=pointer]:
+              - generic [ref=e83]:
+                - generic [ref=e84]:
+                  - generic [ref=e85]:
+                    - paragraph [ref=e86]: 客厅
+                    - generic [ref=e87]: 在线
+                  - paragraph [ref=e88]: 状态平稳
+                - paragraph [ref=e89]: 在线稳定
+              - generic [ref=e90]:
+                - generic [ref=e91]: 2°C
+                - generic [ref=e92]: 灯光安静
+        - generic [ref=e94]:
+          - generic [ref=e95]:
+            - generic [ref=e96]:
+              - generic [ref=e97]:
+                - generic [ref=e98]: success
+                - generic [ref=e99]: 点击快控，长按详情
+              - button "隐藏传感器" [ref=e101] [cursor=pointer]
+            - img "家庭空间户型图" [ref=e104]:
+              - generic [ref=e107]:
+                - generic [ref=e108]:
+                  - generic [ref=e124]: 客厅
+                  - generic [ref=e125]: 2°C
+                  - generic [ref=e126]: 5 设备 · 3 可控
+                - generic "客厅 / 米家对开门冰箱（适用610L/606L/616L) / 手动" [ref=e128] [cursor=pointer]:
+                  - generic [ref=e139]: 冰
+                  - generic [ref=e140]:
+                    - generic [ref=e142]: 米家对开门冰箱（适用610L/606L/616L)
+                    - generic [ref=e143]: "2"
+            - generic [ref=e157]:
+              - generic [ref=e158]:
+                - paragraph [ref=e159]: 开发标注
+                - paragraph [ref=e160]: 编辑器已启用，面板默认收起，不打断主舞台浏览。
+              - button "展开编辑面板" [ref=e161] [cursor=pointer]
+          - complementary [ref=e162]:
+            - generic [ref=e163]:
+              - generic [ref=e164]:
+                - generic [ref=e165]:
+                  - paragraph [ref=e166]: Room Focus
+                  - heading "客厅" [level=3] [ref=e167]
+                  - paragraph [ref=e168]: 客厅 当前 2°C。
+                - generic [ref=e169]: Home Assistant 导入
+              - generic [ref=e170]:
+                - generic [ref=e171]:
+                  - paragraph [ref=e172]: 设备
+                  - paragraph [ref=e173]: "5"
+                - generic [ref=e174]:
+                  - paragraph [ref=e175]: 可控
+                  - paragraph [ref=e176]: "3"
+                - generic [ref=e177]:
+                  - paragraph [ref=e178]: 离线
+                  - paragraph [ref=e179]: "0"
+                - generic [ref=e180]:
+                  - paragraph [ref=e181]: 待处理
+                  - paragraph [ref=e182]: "0"
+            - generic [ref=e183]:
+              - generic [ref=e184]:
+                - paragraph [ref=e185]: Room Navigator
+                - generic [ref=e186]: 1 Rooms
+              - button "客厅 2°C 5" [ref=e188] [cursor=pointer]:
+                - generic [ref=e189]:
+                  - generic [ref=e190]:
+                    - paragraph [ref=e191]: 客厅
+                    - paragraph [ref=e192]: 2°C
+                  - generic [ref=e193]: "5"
+      - generic [ref=e194]:
+        - generic [ref=e196]:
+          - paragraph [ref=e197]: Home Assistant 导入
+          - generic [ref=e198]:
+            - generic [ref=e199]:
+              - heading "客厅" [level=2] [ref=e200]
+              - paragraph [ref=e201]: 来自 Home Assistant 区域映射：客厅
+              - paragraph [ref=e202]: 这个房间页优先展示真正会被频繁查看和控制的实体，保证多设备情况下也能快速扫视与操作。
+            - generic [ref=e203]:
+              - generic [ref=e204]:
+                - paragraph [ref=e205]: 实体总数
+                - paragraph [ref=e206]: "5"
+              - generic [ref=e207]:
+                - paragraph [ref=e208]: 可控项目
+                - paragraph [ref=e209]: "3"
+              - generic [ref=e210]:
+                - paragraph [ref=e211]: 监测项目
+                - paragraph [ref=e212]: "2"
+        - generic [ref=e213]:
+          - generic [ref=e214]: 面板卡片 1
+          - generic [ref=e215]: 已做设备聚合
+          - generic [ref=e216]: 适合多设备浏览
+        - article [ref=e218]:
+          - generic [ref=e220]:
+            - generic [ref=e221]:
+              - img [ref=e223]
+              - generic [ref=e225]:
+                - paragraph [ref=e226]: 冰箱控制面板
+                - heading "米家对开门冰箱（适用610L/606L/616L)" [level=3] [ref=e227]
+                - paragraph [ref=e228]: 3 个控制项 · 2 个监测项
+            - generic [ref=e229]: 温控设备
+          - generic [ref=e230]:
+            - generic [ref=e231]:
+              - paragraph [ref=e232]: 实体
+              - paragraph [ref=e233]: "5"
+            - generic [ref=e234]:
+              - paragraph [ref=e235]: 激活
+              - paragraph [ref=e236]: 0 项
+            - generic [ref=e237]:
+              - paragraph [ref=e238]: 温度
+              - paragraph [ref=e239]: 2°C
+          - generic [ref=e240]:
+            - generic [ref=e241]:
+              - generic [ref=e242]: 冷藏室 温度
+              - generic [ref=e243]: 2°C
+            - generic [ref=e244]:
+              - generic [ref=e245]: 冷冻室 温度
+              - generic [ref=e246]: "-18°C"
+          - generic [ref=e247]:
+            - generic [ref=e248]:
+              - paragraph [ref=e249]: 控制次级区域
+              - paragraph [ref=e250]: 按需展开，保持总览更整齐
+            - group [ref=e252]:
+              - generic "设备控制 选项 / 滑杆 等 3 项 3 项" [ref=e253] [cursor=pointer]:
+                - generic [ref=e254]:
+                  - paragraph [ref=e255]: 设备控制
+                  - paragraph [ref=e256]: 选项 / 滑杆 等 3 项
+                - generic [ref=e257]: 3 项
+              - option "手动" [selected]
+              - option "智能"
+              - option "假日"
+              - option "速冷"
+              - option "速冻"
