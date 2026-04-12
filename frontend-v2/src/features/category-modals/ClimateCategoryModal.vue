@@ -17,20 +17,16 @@ const props = defineProps({
     default: () => [],
   },
   selectedDeviceId: {
-    type: String,
+    type: [String, Number],
     default: '',
+  },
+  pendingDeviceIds: {
+    type: Object,
+    default: () => ({}),
   },
 })
 
-const modes = [
-  { key: 'auto', label: 'AUTO' },
-  { key: 'cool', label: 'COOL' },
-  { key: 'dry', label: 'DRY' },
-  { key: 'fan', label: 'FAN' },
-  { key: 'heat', label: 'HEAT' },
-]
-
-defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
+defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'set-option', 'focus'])
 </script>
 
 <template>
@@ -62,36 +58,77 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
               v-for="device in props.devices"
               :key="device.id"
               class="climate-card"
-              :class="{ 'is-selected': props.selectedDeviceId === device.id }"
+              :class="{
+                'is-selected': props.selectedDeviceId === device.id,
+                'is-pending': props.pendingDeviceIds[device.id],
+              }"
               @mouseenter="$emit('focus', device.id)"
             >
               <header class="climate-card__header">
                 <div class="climate-card__badge" />
                 <div class="climate-card__header-actions">
-                  <span class="climate-card__pill">{{ device.power ? 'ON' : 'OFF' }}</span>
-                  <button type="button" class="climate-card__power" @click.stop="$emit('toggle-power', device.id)">⏻</button>
+                  <span class="climate-card__pill">{{ device.active ? 'ON' : 'OFF' }}</span>
+                  <button
+                    v-if="device.capabilities?.canToggle"
+                    type="button"
+                    class="climate-card__power"
+                    @click.stop="$emit('toggle-power', device.id)"
+                  >
+                    ⏻
+                  </button>
                 </div>
               </header>
 
               <h3>{{ device.name }}</h3>
 
-              <div class="climate-card__temp">
+              <div v-if="device.capabilities?.hasTargetTemperature" class="climate-card__temp">
                 <button type="button" @click.stop="$emit('adjust-temp', device.id, -1)">−</button>
-                <strong>{{ device.targetTemp }}°</strong>
+                <strong>{{ device.targetTemperature ?? '--' }}°</strong>
                 <button type="button" @click.stop="$emit('adjust-temp', device.id, 1)">+</button>
               </div>
 
-              <div class="climate-card__modes">
+              <div v-if="device.capabilities?.hvacModes?.length" class="climate-card__modes">
                 <button
-                  v-for="mode in modes"
-                  :key="mode.key"
+                  v-for="mode in device.capabilities.hvacModes"
+                  :key="mode"
                   type="button"
                   class="climate-mode"
-                  :class="{ 'is-active': device.mode === mode.key }"
-                  @click.stop="$emit('set-mode', device.id, mode.key)"
+                  :class="{ 'is-active': device.hvacMode === mode }"
+                  @click.stop="$emit('set-mode', device.id, mode)"
                 >
-                  {{ mode.label }}
+                  {{ String(mode).toUpperCase() }}
                 </button>
+              </div>
+
+              <div v-else-if="device.capabilities?.controlOptions?.length" class="climate-card__modes">
+                <button
+                  v-for="option in device.capabilities.controlOptions"
+                  :key="option"
+                  type="button"
+                  class="climate-mode"
+                  @click.stop="$emit('set-option', device.id, option)"
+                >
+                  {{ option }}
+                </button>
+              </div>
+
+              <div
+                v-if="device.capabilities?.hasNumberControl && !device.capabilities?.hasTargetTemperature"
+                class="device-slider-block"
+              >
+                <div class="panel-title-row">
+                  <h3>数值控制</h3>
+                  <span>{{ device.numberValue ?? '--' }}{{ device.unitOfMeasurement }}</span>
+                </div>
+                <input
+                  class="device-slider"
+                  type="range"
+                  :min="device.minValue ?? 0"
+                  :max="device.maxValue ?? 100"
+                  :step="device.step ?? 1"
+                  :value="device.numberValue ?? device.minValue ?? 0"
+                  @input="$emit('adjust-temp', device.id, Number($event.target.value) - Number(device.numberValue ?? 0))"
+                >
               </div>
             </article>
           </div>
@@ -100,4 +137,3 @@ defineEmits(['close', 'toggle-power', 'adjust-temp', 'set-mode', 'focus'])
     </transition>
   </Teleport>
 </template>
-

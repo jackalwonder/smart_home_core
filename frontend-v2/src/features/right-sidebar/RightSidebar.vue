@@ -1,8 +1,8 @@
 ﻿<script setup>
 import { ref } from 'vue'
-import { useDashboardStore } from '../../stores/dashboard'
+import { useDashboardPlaceholderStore } from '../../stores/dashboardPlaceholders'
 
-const dashboardStore = useDashboardStore()
+const dashboardStore = useDashboardPlaceholderStore()
 const activeSlide = ref(0)
 const slideCount = 2
 
@@ -167,3 +167,4 @@ function goToSlide(index) {
     </section>
   </div>
 </template>
+

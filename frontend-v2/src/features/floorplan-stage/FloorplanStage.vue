@@ -1,22 +1,129 @@
 ﻿<script setup>
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 
-import { useDashboardStore } from '../../stores/dashboard'
+import { useStageEditorInteractions } from './useStageEditorInteractions'
 
-const dashboardStore = useDashboardStore()
-const activeLightCount = computed(() => dashboardStore.visibleStageHotspots.filter((item) => item.active).length)
+const props = defineProps({
+  stageModel: {
+    type: Object,
+    default: () => ({
+      imageUrl: '/floorplans/songyue-floorplan.jpg',
+      aspectRatio: '1200 / 789',
+      rooms: [],
+      hotspots: [],
+    }),
+  },
+  mode: {
+    type: String,
+    default: 'view',
+    validator: (value) => ['view', 'edit'].includes(value),
+  },
+  selectedHotspotId: {
+    type: [String, Number],
+    default: '',
+  },
+  pendingDeviceIds: {
+    type: Object,
+    default: () => ({}),
+  },
+  loading: {
+    type: Boolean,
+    default: false,
+  },
+  error: {
+    type: String,
+    default: '',
+  },
+  showSummary: {
+    type: Boolean,
+    default: true,
+  },
+})
+
+const emit = defineEmits([
+  'device-interact',
+  'hotspot-select',
+  'hotspot-position-change',
+  'hotspot-create',
+  'hotspot-remove',
+  'hotspot-rotate',
+])
+
+const stageCanvasRef = ref(null)
+
+const stageHotspots = computed(() => props.stageModel?.hotspots || [])
+const activeLightCount = computed(() => stageHotspots.value.filter((item) => item.icon === 'light' && item.active).length)
+const isEditMode = computed(() => props.mode === 'edit')
+
+const stageEditorInteractions = useStageEditorInteractions({
+  stageCanvasRef,
+  onSelect: (hotspotId) => emit('hotspot-select', hotspotId),
+  onMove: (hotspotId, position) => emit('hotspot-position-change', { hotspotId, ...position }),
+  onCreate: (position) => emit('hotspot-create', position),
+  onRotate: (hotspotId, delta) => emit('hotspot-rotate', { hotspotId, delta }),
+})
+
+function handleHotspotClick(hotspot) {
+  if (isEditMode.value) {
+    stageEditorInteractions.handleHotspotClick(hotspot.id)
+    return
+  }
+  emit('device-interact', hotspot)
+}
+
+function handleHotspotPointerDown(event, hotspot) {
+  if (!isEditMode.value) {
+    return
+  }
+  event.preventDefault()
+  stageEditorInteractions.startDrag(event, hotspot.id)
+}
+
+function handleHotspotWheel(event, hotspot) {
+  if (!isEditMode.value) {
+    return
+  }
+  event.preventDefault()
+  const delta = event.deltaY > 0 ? 15 : -15
+  stageEditorInteractions.handleRotate(hotspot.id, delta)
+}
+
+function handleCanvasPointerDown(event) {
+  if (!isEditMode.value) {
+    return
+  }
+  stageEditorInteractions.handleCanvasPointerDown(event)
+}
+
+function handleCanvasPointerUp(event) {
+  if (!isEditMode.value) {
+    return
+  }
+  stageEditorInteractions.handleCanvasPointerUp(event)
+}
+
+function handleRemoveHotspot(event, hotspotId) {
+  event.stopPropagation()
+  if (!isEditMode.value) {
+    return
+  }
+  emit('hotspot-remove', hotspotId)
+}
 </script>
 
 <template>
-  <section class="stage">
+  <section class="stage" :class="{ 'stage--edit': isEditMode }">
     <div
+      ref="stageCanvasRef"
       class="stage__canvas"
-      :style="{ aspectRatio: dashboardStore.currentFloor?.aspectRatio || '1200 / 789' }"
+      :style="{ aspectRatio: stageModel.aspectRatio || '1200 / 789' }"
+      @pointerdown="handleCanvasPointerDown"
+      @pointerup="handleCanvasPointerUp"
     >
       <div class="stage__frame">
         <img
           class="stage__floorplan"
-          :src="dashboardStore.currentStageImage"
+          :src="stageModel.imageUrl"
           alt="当前主舞台户型图"
         >
       </div>
@@ -26,53 +133,56 @@ const activeLightCount = computed(() => dashboardStore.visibleStageHotspots.filt
       <div class="stage__edge-shadow stage__edge-shadow--right" />
       <div class="stage__edge-shadow stage__edge-shadow--bottom" />
 
-      <div
-        v-for="glow in dashboardStore.roomGlows"
-        :key="glow.id"
-        class="stage-glow"
-        :class="`stage-glow--${glow.tone}`"
-        :style="{
-          left: `${glow.x}%`,
-          top: `${glow.y}%`,
-          width: `${glow.width}%`,
-          height: `${glow.height}%`,
-        }"
-      />
-
-      <div
-        v-for="badge in dashboardStore.roomBadges"
-        :key="badge.id"
-        class="stage-temp-badge"
-        :style="{ left: `${badge.x}%`, top: `${badge.y}%` }"
-      >
-        {{ badge.value }}
-      </div>
-
       <button
-        v-for="hotspot in dashboardStore.visibleStageHotspots"
+        v-for="hotspot in stageHotspots"
         :key="hotspot.id"
         type="button"
         class="stage-hotspot"
         :class="[
           `is-${hotspot.icon}`,
-          `is-group-${hotspot.colorGroup}`,
+          hotspot.colorGroup ? `is-group-${hotspot.colorGroup}` : '',
+          hotspot.category ? `is-category-${hotspot.category}` : '',
           {
             'is-active': hotspot.active,
-            'is-selected': hotspot.selected,
+            'is-selected': String(selectedHotspotId) === String(hotspot.id),
+            'is-pending': !isEditMode && pendingDeviceIds[hotspot.deviceId],
+            'is-editable': isEditMode,
           },
         ]"
-        :style="{ left: `${hotspot.x}%`, top: `${hotspot.y}%` }"
+        :style="{
+          left: `${hotspot.x}%`,
+          top: `${hotspot.y}%`,
+          transform: `translate(-50%, -50%) rotate(${hotspot.rotation || 0}deg)`,
+        }"
         :aria-label="hotspot.label"
-        @click="dashboardStore.openCategoryFromStage(hotspot.category, hotspot.deviceId)"
+        @pointerdown="handleHotspotPointerDown($event, hotspot)"
+        @wheel="handleHotspotWheel($event, hotspot)"
+        @click="handleHotspotClick(hotspot)"
       >
         <span class="stage-hotspot__icon" />
+        <span v-if="isEditMode" class="stage-hotspot__label">{{ hotspot.label }}</span>
+        <span
+          v-if="isEditMode && String(selectedHotspotId) === String(hotspot.id)"
+          class="stage-hotspot__remove"
+          @click="handleRemoveHotspot($event, hotspot.id)"
+        >
+          ×
+        </span>
       </button>
+
+      <div v-if="loading && !stageHotspots.length" class="stage__status stage__status--loading">
+        正在加载主舞台...
+      </div>
+
+      <div v-else-if="error && !stageHotspots.length" class="stage__status stage__status--error">
+        {{ error }}
+      </div>
     </div>
 
-    <div class="stage__summary">
+    <div v-if="showSummary" class="stage__summary">
       <div class="stage-chip">
         <span class="stage-chip__label">热点</span>
-        <strong>{{ dashboardStore.visibleStageHotspots.length }}</strong>
+        <strong>{{ stageHotspots.length }}</strong>
       </div>
       <div class="stage-chip stage-chip--active">
         <span class="stage-chip__label">灯光</span>
@@ -80,8 +190,9 @@ const activeLightCount = computed(() => dashboardStore.visibleStageHotspots.filt
       </div>
       <div class="stage-chip">
         <span class="stage-chip__label">模式</span>
-        <strong>2.5D</strong>
+        <strong>{{ isEditMode ? '编辑' : '查看' }}</strong>
       </div>
     </div>
   </section>
 </template>
+

@@ -1,7 +1,7 @@
-<script setup>
-import { useDashboardStore } from '../../stores/dashboard'
+﻿<script setup>
+import { useDashboardPlaceholderStore } from '../../stores/dashboardPlaceholders'
 
-const dashboardStore = useDashboardStore()
+const dashboardStore = useDashboardPlaceholderStore()
 </script>
 
 <template>
@@ -15,3 +15,4 @@ const dashboardStore = useDashboardStore()
     </div>
   </aside>
 </template>
+

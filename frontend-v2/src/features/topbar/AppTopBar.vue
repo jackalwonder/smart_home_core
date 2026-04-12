@@ -6,7 +6,7 @@ const route = useRoute()
 const tabs = [
   { to: '/dashboard', label: '总览' },
   { to: '/security', label: '安防' },
-  { to: '/media', label: '影视' },
+  { to: '/entertainment', label: '影视' },
 ]
 
 const actions = ['settings', 'expand', 'cloud', 'snow', 'flash', 'sun', 'moon']

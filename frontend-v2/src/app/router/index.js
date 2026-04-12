@@ -7,8 +7,8 @@ import SettingsPage from '../../pages/settings/SettingsPage.vue'
 
 const routes = [
   { path: '/', redirect: '/dashboard' },
-  { path: '/login', redirect: '/media' },
-  { path: '/media', component: LoginPage },
+  { path: '/login', redirect: '/entertainment' },
+  { path: '/entertainment', component: LoginPage },
   { path: '/dashboard', component: DashboardPage },
   { path: '/security', component: SecurityPage },
   { path: '/settings', component: SettingsPage },

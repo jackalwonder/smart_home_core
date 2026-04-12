@@ -3,9 +3,9 @@ import { computed } from 'vue'
 import AppTopBar from '../../features/topbar/AppTopBar.vue'
 import FloorplanStage from '../../features/floorplan-stage/FloorplanStage.vue'
 import SecuritySidebar from '../../features/security-sidebar/SecuritySidebar.vue'
-import { useDashboardStore } from '../../stores/dashboard'
+import { useDashboardPlaceholderStore } from '../../stores/dashboardPlaceholders'
 
-const dashboardStore = useDashboardStore()
+const dashboardStore = useDashboardPlaceholderStore()
 
 const activeAlerts = computed(() =>
   dashboardStore.securitySensors.filter((sensor) => ['open', 'triggered'].includes(sensor.state)).length,
@@ -87,3 +87,4 @@ function zoneRoomLabel(roomKey) {
     </main>
   </div>
 </template>
+

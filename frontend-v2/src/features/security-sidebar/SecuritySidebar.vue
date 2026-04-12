@@ -1,8 +1,8 @@
 ﻿<script setup>
 import { computed } from 'vue'
-import { useDashboardStore } from '../../stores/dashboard'
+import { useDashboardPlaceholderStore } from '../../stores/dashboardPlaceholders'
 
-const dashboardStore = useDashboardStore()
+const dashboardStore = useDashboardPlaceholderStore()
 
 const activeAlerts = computed(() =>
   dashboardStore.securitySensors.filter((sensor) => ['open', 'triggered'].includes(sensor.state)).length,
@@ -87,3 +87,4 @@ function sensorStateText(state) {
     </section>
   </div>
 </template>
+
