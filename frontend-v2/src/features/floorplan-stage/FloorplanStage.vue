@@ -1,5 +1,5 @@
 ﻿<script setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 
 import { useStageEditorInteractions } from './useStageEditorInteractions'
 
@@ -50,10 +50,39 @@ const emit = defineEmits([
 ])
 
 const stageCanvasRef = ref(null)
+const defaultFloorplanImageUrl = '/floorplans/songyue-floorplan.jpg'
+const defaultFloorplanAspectRatio = '1200 / 789'
+const resolvedFloorplanImageUrl = ref(defaultFloorplanImageUrl)
+const resolvedStageAspectRatio = ref(defaultFloorplanAspectRatio)
+const floorplanFallbackApplied = ref(false)
 
 const stageHotspots = computed(() => props.stageModel?.hotspots || [])
 const activeLightCount = computed(() => stageHotspots.value.filter((item) => item.icon === 'light' && item.active).length)
 const isEditMode = computed(() => props.mode === 'edit')
+
+watch(
+  () => props.stageModel?.imageUrl,
+  (nextImageUrl) => {
+    floorplanFallbackApplied.value = false
+    resolvedFloorplanImageUrl.value =
+      typeof nextImageUrl === 'string' && nextImageUrl.trim()
+        ? nextImageUrl.trim()
+        : defaultFloorplanImageUrl
+  },
+  { immediate: true },
+)
+
+watch(
+  () => props.stageModel?.aspectRatio,
+  (nextAspectRatio) => {
+    const normalizedAspectRatio =
+      typeof nextAspectRatio === 'string' && nextAspectRatio.includes('/')
+        ? nextAspectRatio
+        : defaultFloorplanAspectRatio
+    resolvedStageAspectRatio.value = normalizedAspectRatio
+  },
+  { immediate: true },
+)
 
 const stageEditorInteractions = useStageEditorInteractions({
   stageCanvasRef,
@@ -109,6 +138,28 @@ function handleRemoveHotspot(event, hotspotId) {
   }
   emit('hotspot-remove', hotspotId)
 }
+
+function handleFloorplanLoadError() {
+  if (floorplanFallbackApplied.value) {
+    return
+  }
+  floorplanFallbackApplied.value = true
+  resolvedFloorplanImageUrl.value = defaultFloorplanImageUrl
+  resolvedStageAspectRatio.value = defaultFloorplanAspectRatio
+}
+
+function handleFloorplanLoad(event) {
+  const target = event?.target
+  if (!(target instanceof HTMLImageElement)) {
+    return
+  }
+  const width = Number(target.naturalWidth)
+  const height = Number(target.naturalHeight)
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    return
+  }
+  resolvedStageAspectRatio.value = `${width} / ${height}`
+}
 </script>
 
 <template>
@@ -116,15 +167,17 @@ function handleRemoveHotspot(event, hotspotId) {
     <div
       ref="stageCanvasRef"
       class="stage__canvas"
-      :style="{ aspectRatio: stageModel.aspectRatio || '1200 / 789' }"
+      :style="{ aspectRatio: resolvedStageAspectRatio }"
       @pointerdown="handleCanvasPointerDown"
       @pointerup="handleCanvasPointerUp"
     >
       <div class="stage__frame">
         <img
           class="stage__floorplan"
-          :src="stageModel.imageUrl"
+          :src="resolvedFloorplanImageUrl"
           alt="当前主舞台户型图"
+          @load="handleFloorplanLoad"
+          @error="handleFloorplanLoadError"
         >
       </div>
 

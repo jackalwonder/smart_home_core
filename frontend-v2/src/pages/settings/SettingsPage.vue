@@ -1,12 +1,20 @@
 ﻿<script setup>
 import { computed, nextTick, ref, watch } from 'vue'
-import { RouterLink } from 'vue-router'
+import { RouterLink, useRouter } from 'vue-router'
+import EntityToolbox from '../../features/entity-toolbox/EntityToolbox.vue'
 import FloorplanStage from '../../features/floorplan-stage/FloorplanStage.vue'
+import HotspotPropertiesPanel from '../../features/hotspot-editor/HotspotPropertiesPanel.vue'
+import { buildSettingsEntityToolboxItems } from '../../domain/settings/settingsEntityToolboxAdapters'
+import {
+  settingsHotspotCategoryOptions,
+  settingsHotspotTypeOptions,
+} from '../../domain/settings/settingsHotspotFieldOptions'
 import { buildSettingsStageModel } from '../../domain/settings/settingsStageAdapters'
 import { useSettingsEditorStore } from '../../stores/settingsEditor'
 import { registerDraftUploadFile } from '../../stores/settingsDraftUploadBridge'
 
 const settingsStore = useSettingsEditorStore()
+const router = useRouter()
 const fileInput = ref(null)
 const deletingHotspotId = ref('')
 const snapEnabled = ref(true)
@@ -27,6 +35,7 @@ const draftExecutionTarget = ref('floorplan_upload')
 const draftExecutionSnapshotOnly = ref(true)
 const draftExecutionReadbackAfterExecution = ref(true)
 const draftExecutionAutoBuildSubmitContextFromScene = ref(true)
+const showLegacyPageWorkbench = ref(false)
 
 const settingsMenuLabels = {
   devices: '常用设备',
@@ -35,20 +44,8 @@ const settingsMenuLabels = {
   features: '功能设置',
 }
 
-const hotspotTypeOptions = [
-  { value: 'light', label: '灯光' },
-  { value: 'climate', label: '温控' },
-  { value: 'fan', label: '风扇' },
-  { value: 'presence', label: '人体' },
-]
-
-const hotspotCategoryOptions = [
-  { value: 'lights', label: '灯光类' },
-  { value: 'climate', label: '温控类' },
-  { value: 'fans', label: '风扇类' },
-  { value: 'presence', label: '人体类' },
-  { value: 'sensors', label: '传感类' },
-]
+const hotspotTypeOptions = settingsHotspotTypeOptions
+const hotspotCategoryOptions = settingsHotspotCategoryOptions
 
 const currentSettingsMenuKey = computed(
   () => settingsStore.settingsMenu.find((item) => item.active)?.key ?? 'page',
@@ -72,52 +69,12 @@ const selectedWidgetRoomLabel = computed(
   () => settingsStore.roomOptions.find((room) => room.value === selectedWidgetHotspot.value?.roomKey)?.label ?? '未设置',
 )
 
-const deviceCategoryLabelMap = {
-  lights: '灯光类',
-  climate: '温控类',
-  fans: '风扇类',
-  sensor: '传感类',
-  sensors: '传感类',
-  presence: '人体类',
-}
-
 const deviceOptionItems = computed(() => {
-  const roomLabelMap = new Map(settingsStore.roomOptions.map((room) => [room.value, room.label]))
-
-  return settingsStore.draftEntityLibrary.map((device) => {
-    const roomKeys = Array.from(
-      new Set(
-        settingsStore.activeDraftHotspots
-          .filter((hotspot) => hotspot.deviceId === device.id)
-          .map((hotspot) => hotspot.roomKey)
-          .filter(Boolean),
-      ),
-    )
-
-    const roomLabels = roomKeys.map((roomKey) => roomLabelMap.get(roomKey) ?? roomKey)
-    const categoryLabel = deviceCategoryLabelMap[device.category] ?? device.category ?? '未分类'
-    const searchText = [
-      device.name,
-      device.id,
-      device.category,
-      categoryLabel,
-      ...roomLabels,
-      ...roomKeys,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase()
-
-    return {
-      id: device.id,
-      name: device.name || device.id,
-      category: device.category || '',
-      categoryLabel,
-      roomLabels,
-      subtitle: [device.id, roomLabels.join(' / ') || '未放置房间', categoryLabel].join(' · '),
-      searchText,
-    }
-  })
+  return buildSettingsEntityToolboxItems(
+    settingsStore.draftEntityLibrary,
+    settingsStore.activeDraftHotspots,
+    settingsStore.roomOptions,
+  )
 })
 
 const filteredDeviceOptionItems = computed(() => {
@@ -444,6 +401,35 @@ function bindSelectedDevice(deviceId) {
   deviceSearchQuery.value = ''
 }
 
+function handleToolboxEntitySelect(entityId) {
+  if (!selectedWidgetHotspot.value) {
+    return
+  }
+  bindSelectedDevice(entityId)
+}
+
+function handlePropertiesPanelFieldUpdate(payload) {
+  if (!payload?.field) {
+    return
+  }
+  updateSelectedHotspotField(payload.field, payload.value)
+}
+
+function handlePropertiesPanelCoordinateUpdate(payload) {
+  if (!payload?.axis) {
+    return
+  }
+  updateSelectedHotspotCoordinate(payload.axis, payload.value)
+}
+
+function handlePropertiesPanelRotationUpdate(value) {
+  updateSelectedHotspotRotation(value)
+}
+
+function handlePropertiesPanelDeviceUpdate(deviceId) {
+  bindSelectedDevice(deviceId)
+}
+
 function commitSelectedCoordinate(axis) {
   updateSelectedHotspotCoordinate(axis, coordinateFieldValues.value[axis])
 }
@@ -590,6 +576,15 @@ function clearDraftExecutionDebugReport() {
   draftExecutionDebugReport.value = null
 }
 
+function toggleLegacyPageWorkbench() {
+  showLegacyPageWorkbench.value = !showLegacyPageWorkbench.value
+}
+
+function enterDashboardEditorFromSettings() {
+  settingsStore.setDeveloperLayoutEditEnabled(true)
+  router.push('/dashboard')
+}
+
 </script>
 
 <template>
@@ -617,12 +612,36 @@ function clearDraftExecutionDebugReport() {
           <div class="device-library-list"><article v-for="group in settingsStore.commonDeviceGroups" :key="group.key" class="device-library-card"><div class="device-library-card__icon" :class="`is-${group.icon}`" /><div class="device-library-card__body"><strong>{{ group.title }}</strong><p>{{ group.desc }}</p></div><div class="device-library-card__meta">{{ group.count }} 个常用设备</div><button type="button" class="device-library-card__action" @click="settingsStore.selectSettingsMenu('page')">进入配置</button></article></div>
         </section>
 
-        <section v-else-if="currentSettingsMenuKey === 'page'" class="settings-stage-layout">
-          <aside class="settings-toolbox">
-            <div class="settings-toolbox__head"><strong>设备卡片</strong><input type="text" placeholder="搜索设备..." /></div>
-            <div class="settings-toolbox__chips"><button type="button" class="settings-toolbox__chip is-active">all</button><button type="button" class="settings-toolbox__chip">light</button><button type="button" class="settings-toolbox__chip">climate</button><button type="button" class="settings-toolbox__chip">sensor</button></div>
+        <section v-else-if="currentSettingsMenuKey === 'page'" class="settings-page-workflow">
+          <article class="settings-page-workflow__callout">
+            <div class="settings-page-workflow__copy">
+              <strong>主编辑工作流已迁移到总览页</strong>
+              <p>建议在总览页完成布局编辑。设置页保留素材管理、草稿维护和调试诊断入口，旧工作台仅作为开发者备用入口。</p>
+            </div>
+            <div class="settings-page-workflow__actions">
+              <button type="button" class="settings-action-button" @click="enterDashboardEditorFromSettings()">前往总览页编辑</button>
+              <button type="button" class="settings-inline-button" @click="toggleLegacyPageWorkbench()">
+                {{ showLegacyPageWorkbench ? '收起备用编辑器' : '展开备用编辑器' }}
+              </button>
+            </div>
+          </article>
+
+          <section v-if="showLegacyPageWorkbench" class="settings-stage-layout settings-stage-layout--legacy">
+            <div class="settings-stage-layout__legacy-note">
+              <strong>开发者备用编辑器</strong>
+              <span>此区域仅用于低频维护或诊断场景，日常布局编辑请优先在总览页进行。</span>
+            </div>
+
+            <aside class="settings-toolbox">
             <section class="settings-toolbox__section"><div class="settings-section-head"><strong>素材资源</strong><button type="button" class="settings-inline-button" @click="triggerUpload()">上传素材</button></div><input ref="fileInput" class="settings-hidden-input" type="file" accept="image/*" @change="handleUpload" /><div class="settings-asset-strip"><button v-for="asset in settingsStore.draftAssets" :key="asset.id" type="button" class="settings-asset-pill" :class="{ 'is-active': asset.id === settingsStore.activeDraftFloor?.floorplanAssetId }" @click="settingsStore.applyAssetToActiveDraftFloor(asset.id)">{{ asset.name }}</button></div></section>
-            <section class="settings-toolbox__section"><div class="settings-section-head"><strong>设备库卡片</strong><span class="settings-section-meta">{{ settingsStore.draftEntityLibrary.length }} 个实体</span></div><div class="settings-toolbox__list settings-toolbox__list--dense"><article v-for="group in settingsStore.commonDeviceGroups" :key="group.key" class="settings-toolbox__item"><div><strong>{{ group.title }}</strong><p>{{ group.key }}</p></div><span>{{ group.count }}</span></article><article v-for="device in settingsStore.draftEntityLibrary.slice(0, 10)" :key="device.id" class="settings-toolbox__item settings-toolbox__item--entity"><div><strong>{{ device.name }}</strong><p>{{ device.id }}</p></div><span>{{ device.category }}</span></article></div></section>
+            <EntityToolbox
+              title="实体工具箱"
+              :entities="deviceOptionItems"
+              :framed="false"
+              :selected-entity-id="selectedWidgetHotspot?.deviceId || ''"
+              :can-bind="Boolean(selectedWidgetHotspot)"
+              @select-entity="handleToolboxEntitySelect"
+            />
           </aside>
 
           <section class="settings-stage-center">
@@ -872,98 +891,42 @@ function clearDraftExecutionDebugReport() {
           </section>
 
           <aside class="settings-widget-panel settings-widget-panel--rich">
-            <div class="settings-widget-panel__head"><strong>点位设置</strong><span>{{ selectedWidgetHotspot ? '右侧为主编辑区' : '未选中热点' }}</span></div>
-            <div v-if="selectedWidgetHotspot" :key="selectedWidgetHotspot.id" class="settings-widget-panel__detail">
-              <section class="settings-widget-panel__summary"><div class="settings-widget-pill"><span>绑定实体</span><strong>{{ selectedWidgetDevice?.name || selectedWidgetHotspot.deviceId || '未绑定' }}</strong></div><div class="settings-widget-pill"><span>房间</span><strong>{{ selectedWidgetRoomLabel }}</strong></div><div class="settings-widget-pill"><span>编辑方式</span><strong>右侧主编辑</strong></div></section>
-              <section class="settings-widget-panel__section-block">
-                <div class="settings-widget-panel__section-head"><strong>基本信息</strong><span>先定义名称和视觉语义，再继续绑定实体</span></div>
-                <div class="settings-widget-panel__group settings-widget-panel__group--grid">
-                  <label class="settings-widget-panel__field settings-widget-panel__field--wide"><span>显示名称</span><input ref="selectedLabelInput" :value="selectedWidgetHotspot.label" type="text" @input="updateSelectedHotspotField('label', $event.target.value)" /></label>
-                  <label class="settings-widget-panel__field"><span>分类</span><select :value="selectedWidgetHotspot.category || 'lights'" @change="updateSelectedHotspotField('category', $event.target.value)"><option v-for="category in hotspotCategoryOptions" :key="category.value" :value="category.value">{{ category.label }}</option></select></label>
-                  <label class="settings-widget-panel__field"><span>控件图标</span><select :value="selectedWidgetHotspot.icon" @change="updateSelectedHotspotField('icon', $event.target.value)"><option v-for="type in hotspotTypeOptions" :key="type.value" :value="type.value">{{ type.label }}</option></select></label>
-                </div>
-              </section>
-              <section class="settings-widget-panel__section-block">
-                <div class="settings-widget-panel__section-head"><strong>设备与归属</strong><span>高频绑定项集中在同一组，减少来回跳转</span></div>
-                <div class="settings-widget-panel__group settings-widget-panel__group--grid">
-                  <div class="settings-widget-panel__field settings-widget-panel__field--wide settings-device-picker">
-                    <div class="settings-device-picker__head">
-                      <span>实体绑定</span>
-                      <button v-if="selectedWidgetHotspot.deviceId" type="button" class="settings-inline-button" @click="bindSelectedDevice('')">清空绑定</button>
-                    </div>
-                    <div class="settings-device-picker__current" :class="{ 'is-invalid': hasInvalidSelectedDevice }">
-                      <strong>{{ selectedDeviceOptionItem?.name || selectedWidgetHotspot.deviceId || '未绑定实体' }}</strong>
-                      <span v-if="selectedDeviceOptionItem">{{ selectedDeviceOptionItem.subtitle }}</span>
-                      <span v-else-if="hasInvalidSelectedDevice">当前绑定值 {{ selectedWidgetHotspot.deviceId }} 不在候选列表中，请重新选择。</span>
-                      <span v-else>当前还没有绑定设备，可通过下方搜索并选择。</span>
-                    </div>
-                    <input v-model="deviceSearchQuery" type="text" placeholder="搜索设备名 / deviceId / 房间 / 类别" />
-                    <div v-if="filteredDeviceOptionItems.length" class="settings-device-picker__list">
-                      <button
-                        v-for="device in filteredDeviceOptionItems"
-                        :key="device.id"
-                        type="button"
-                        class="settings-device-picker__item"
-                        :class="{ 'is-selected': selectedWidgetHotspot.deviceId === device.id }"
-                        @click="bindSelectedDevice(device.id)"
-                      >
-                        <div>
-                          <strong>{{ device.name }}</strong>
-                          <span>{{ device.subtitle }}</span>
-                        </div>
-                        <em>{{ selectedWidgetHotspot.deviceId === device.id ? '当前绑定' : '选择' }}</em>
-                      </button>
-                    </div>
-                    <div v-else class="settings-device-picker__empty">
-                      <strong>没有匹配设备</strong>
-                      <span>可尝试按设备名、deviceId、房间或类别重新搜索。</span>
-                    </div>
-                  </div>
-                  <label class="settings-widget-panel__field"><span>所属房间</span><select :value="selectedWidgetHotspot.roomKey" @change="updateSelectedHotspotField('roomKey', $event.target.value)"><option v-for="room in settingsStore.roomOptions" :key="room.value" :value="room.value">{{ room.label }}</option></select></label>
-                </div>
-              </section>
-              <section class="settings-widget-panel__section-block">
-                <div class="settings-widget-panel__section-head"><strong>视觉样式</strong><span>颜色组会直接影响舞台上的热点识别感</span></div>
-                <div class="settings-widget-panel__group settings-widget-panel__group--grid">
-                  <label class="settings-widget-panel__field"><span>颜色组</span><select :value="selectedWidgetHotspot.colorGroup" @change="updateSelectedHotspotField('colorGroup', $event.target.value)"><option v-for="group in settingsStore.colorGroupOptions" :key="group.value" :value="group.value">{{ group.label }}</option></select></label>
-                </div>
-              </section>
-              <section class="settings-widget-panel__section-block">
-                <div class="settings-widget-panel__section-head"><strong>布局与位置</strong><span>支持直接输入，也支持小步进微调</span></div>
-                <div class="settings-widget-panel__group settings-widget-panel__position-grid">
-                  <label class="settings-widget-panel__field settings-step-field">
-                    <span>X 坐标 (%)</span>
-                    <div class="settings-step-field__controls">
-                      <button type="button" class="settings-step-field__button" @click="nudgeSelectedHotspot('x', -Number(stepSize))">-</button>
-                      <input v-model="coordinateFieldValues.x" type="number" step="0.1" inputmode="decimal" @blur="commitSelectedCoordinate('x')" @keydown.enter.prevent="commitSelectedCoordinate('x')" />
-                      <button type="button" class="settings-step-field__button" @click="nudgeSelectedHotspot('x', Number(stepSize))">+</button>
-                    </div>
-                  </label>
-                  <label class="settings-widget-panel__field settings-step-field">
-                    <span>Y 坐标 (%)</span>
-                    <div class="settings-step-field__controls">
-                      <button type="button" class="settings-step-field__button" @click="nudgeSelectedHotspot('y', -Number(stepSize))">-</button>
-                      <input v-model="coordinateFieldValues.y" type="number" step="0.1" inputmode="decimal" @blur="commitSelectedCoordinate('y')" @keydown.enter.prevent="commitSelectedCoordinate('y')" />
-                      <button type="button" class="settings-step-field__button" @click="nudgeSelectedHotspot('y', Number(stepSize))">+</button>
-                    </div>
-                  </label>
-                  <label class="settings-widget-panel__field settings-step-field settings-widget-panel__field--wide">
-                    <span>旋转角度</span>
-                    <div class="settings-step-field__controls">
-                      <button type="button" class="settings-step-field__button" @click="nudgeSelectedRotation(-15)">-15</button>
-                      <input v-model="coordinateFieldValues.rotation" type="number" step="15" inputmode="numeric" @blur="commitSelectedRotation" @keydown.enter.prevent="commitSelectedRotation" />
-                      <button type="button" class="settings-step-field__button" @click="nudgeSelectedRotation(15)">+15</button>
-                    </div>
-                  </label>
-                </div>
-              </section>
-              <div class="settings-widget-panel__actions"><button type="button" class="settings-inline-button" @click="openHotspotActions()">更多动作</button></div>
-            </div>
-            <div v-else class="settings-widget-panel__empty">
-              <strong>未选中热点</strong>
-              <p>点击主舞台上的热点可查看当前位置、旋转角度和绑定实体。</p>
+            <HotspotPropertiesPanel
+              title="点位设置"
+              :hotspot="selectedWidgetHotspot"
+              :entity-options="deviceOptionItems"
+              :type-options="hotspotTypeOptions"
+              :category-options="hotspotCategoryOptions"
+              :framed="false"
+              @update-field="handlePropertiesPanelFieldUpdate"
+              @update-coordinate="handlePropertiesPanelCoordinateUpdate"
+              @update-rotation="handlePropertiesPanelRotationUpdate"
+              @update-device="handlePropertiesPanelDeviceUpdate"
+            />
+            <div v-if="selectedWidgetHotspot" class="settings-widget-panel__actions">
+              <button type="button" class="settings-inline-button" @click="openHotspotActions()">更多动作</button>
             </div>
           </aside>
+          </section>
+        </section>
+
+        <section v-else-if="currentSettingsMenuKey === 'features'" class="settings-panel">
+          <div class="system-card-list">
+            <article class="system-card system-card--feature-toggle">
+              <div>
+                <strong>开发者布局编辑模式</strong>
+                <p>开启后进入总览页会直接使用设置草稿进入舞台编辑态；关闭后恢复普通浏览态。</p>
+              </div>
+              <label class="settings-feature-toggle">
+                <input
+                  :checked="settingsStore.developerLayoutEditEnabled"
+                  type="checkbox"
+                  @change="settingsStore.setDeveloperLayoutEditEnabled($event.target.checked)"
+                />
+                <span>{{ settingsStore.developerLayoutEditEnabled ? '已开启' : '已关闭' }}</span>
+              </label>
+            </article>
+          </div>
         </section>
 
         <section v-else class="settings-panel"><div class="system-card-list"><article v-for="item in settingsStore.notifications" :key="item.id" class="system-card"><div><strong>{{ item.label }}</strong><p>统一管理全局通知、离线提醒与自动化联动的启停状态。</p></div><div class="toggle-switch" :class="{ 'is-on': item.enabled }"><span /></div></article></div></section>
@@ -991,6 +954,67 @@ function clearDraftExecutionDebugReport() {
 </template>
 
 <style scoped>
+.settings-page-workflow {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1.2rem;
+}
+
+.settings-page-workflow__callout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(103, 122, 177, 0.16);
+  border-radius: 20px;
+  background: rgba(14, 19, 31, 0.82);
+}
+
+.settings-page-workflow__copy {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.settings-page-workflow__copy strong {
+  font-size: 1rem;
+}
+
+.settings-page-workflow__copy p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+}
+
+.settings-page-workflow__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.settings-stage-layout--legacy {
+  margin-top: 0.2rem;
+}
+
+.settings-stage-layout__legacy-note {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed rgba(103, 122, 177, 0.2);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.settings-stage-layout__legacy-note span {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
 .settings-dev-debug-layout {
   display: grid;
   gap: 1rem;
@@ -1167,6 +1191,26 @@ function clearDraftExecutionDebugReport() {
   background: rgba(12, 17, 28, 0.6);
 }
 
+.system-card--feature-toggle {
+  align-items: center;
+  gap: 20px;
+}
+
+.settings-feature-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  background: rgba(15, 23, 42, 0.55);
+  color: rgba(226, 232, 240, 0.92);
+}
+
+.settings-feature-toggle input {
+  accent-color: rgba(96, 165, 250, 0.92);
+}
+
 @media (min-width: 1200px) {
   .settings-dev-debug-layout {
     grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
@@ -1181,6 +1225,16 @@ function clearDraftExecutionDebugReport() {
 }
 
 @media (max-width: 760px) {
+  .settings-page-workflow__callout {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .settings-page-workflow__actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
   .settings-dev-execution-panel__controls {
     grid-template-columns: 1fr;
   }

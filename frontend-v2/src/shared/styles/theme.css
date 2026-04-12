@@ -153,6 +153,58 @@ body {
   min-width: 0;
 }
 
+.dashboard-stage-wrap--edit {
+  display: grid;
+  grid-template-columns: minmax(0, 18rem) minmax(0, 1fr);
+  gap: 1rem;
+  align-items: start;
+}
+
+.dashboard-edit-toolbox {
+  min-width: 0;
+}
+
+.dashboard-stage-surface {
+  min-width: 0;
+}
+
+.dashboard-stage-wrap--edit .dashboard-stage-surface {
+  position: relative;
+}
+
+.dashboard-edit-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 0.8rem;
+  padding: 0.8rem 0.95rem;
+  border: 1px solid rgba(103, 122, 177, 0.2);
+  border-radius: 16px;
+  background: rgba(12, 18, 31, 0.84);
+}
+
+.dashboard-edit-toolbar__meta {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.dashboard-edit-toolbar__meta strong {
+  font-size: 0.94rem;
+}
+
+.dashboard-edit-toolbar__meta span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.dashboard-edit-toolbar__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+
 .dashboard-sidebar {
   border-left: 1px solid var(--line-soft);
   background: rgba(21, 28, 45, 0.65);
@@ -1490,6 +1542,15 @@ body {
   font-size: 1.2rem;
 }
 
+.settings-toolbox__embed {
+  margin-top: 1rem;
+}
+
+.settings-widget-panel__embed {
+  display: grid;
+  gap: 1rem;
+}
+
 .settings-toolbox__head input,
 .settings-widget-panel input {
   width: 100%;
@@ -1544,6 +1605,18 @@ body {
 
 .settings-toolbox__item {
   grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.settings-toolbox__item--pickable {
+  width: 100%;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.settings-toolbox__item--pickable.is-selected {
+  border-color: rgba(88, 138, 255, 0.58);
+  background: rgba(36, 54, 96, 0.56);
 }
 
 .device-library-card {
@@ -2546,6 +2619,15 @@ body {
     grid-template-columns: 1fr;
   }
 
+  .dashboard-stage-wrap--edit {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-edit-toolbar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
   .dashboard-sidebar {
     border-left: 0;
     border-top: 1px solid var(--line-soft);
@@ -2835,6 +2917,21 @@ body {
   color: #8eb8ff;
   text-transform: uppercase;
   font-size: 0.78rem;
+}
+
+.settings-toolbox__empty {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px dashed rgba(103, 122, 177, 0.2);
+  border-radius: 14px;
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.settings-toolbox__hint {
+  margin: 0.65rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.82rem;
 }
 
 .settings-stage-center__hint {

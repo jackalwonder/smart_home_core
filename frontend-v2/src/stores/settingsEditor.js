@@ -87,6 +87,9 @@ function normalizeDraftFloor(floor, index = 0) {
 function normalizeDraftPayload(payload) {
   const fallback = createDefaultSettingsDraft()
   return {
+    developerLayoutEditEnabled: Boolean(payload?.developerLayoutEditEnabled ?? fallback.developerLayoutEditEnabled),
+    developerLayoutViewDraftEnabled:
+      Boolean(payload?.developerLayoutViewDraftEnabled ?? fallback.developerLayoutViewDraftEnabled),
     settingsMenu: (Array.isArray(payload?.settingsMenu) ? payload.settingsMenu : fallback.settingsMenu).map((item) => ({ ...item })),
     draftAssets: (Array.isArray(payload?.draftAssets) ? payload.draftAssets : fallback.draftAssets).map((item, index) => normalizeDraftAsset(item, index)),
     draftFloors: (Array.isArray(payload?.draftFloors) ? payload.draftFloors : fallback.draftFloors).map((item, index) => normalizeDraftFloor(item, index)),
@@ -869,6 +872,8 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
   const loadedDraft = loadDraft(createDefaultSettingsDraft())
   const normalizedDraft = normalizeDraftPayload(loadedDraft.draft)
 
+  const developerLayoutEditEnabled = ref(normalizedDraft.developerLayoutEditEnabled)
+  const developerLayoutViewDraftEnabled = ref(normalizedDraft.developerLayoutViewDraftEnabled)
   const settingsMenu = ref(normalizedDraft.settingsMenu)
   const draftAssets = ref(normalizedDraft.draftAssets)
   const draftFloors = ref(normalizedDraft.draftFloors)
@@ -913,6 +918,8 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
 
   function buildPersistedDraftPayload() {
     return {
+      developerLayoutEditEnabled: developerLayoutEditEnabled.value,
+      developerLayoutViewDraftEnabled: developerLayoutViewDraftEnabled.value,
       settingsMenu: settingsMenu.value,
       draftAssets: draftAssets.value,
       draftFloors: draftFloors.value,
@@ -921,7 +928,7 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
   }
 
   watch(
-    [settingsMenu, draftAssets, draftFloors, activeDraftFloorId],
+    [developerLayoutEditEnabled, developerLayoutViewDraftEnabled, settingsMenu, draftAssets, draftFloors, activeDraftFloorId],
     () => {
       saveDraft(buildPersistedDraftPayload())
     },
@@ -1302,6 +1309,8 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
 
   function resetDraftState() {
     const nextDraft = normalizeDraftPayload(resetDraft(createDefaultSettingsDraft()))
+    developerLayoutEditEnabled.value = nextDraft.developerLayoutEditEnabled
+    developerLayoutViewDraftEnabled.value = nextDraft.developerLayoutViewDraftEnabled
     settingsMenu.value = nextDraft.settingsMenu
     draftAssets.value = nextDraft.draftAssets
     draftFloors.value = nextDraft.draftFloors
@@ -1311,6 +1320,14 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
 
   function clearLegacyDraftCache() {
     clearLegacyDraftCachePersistence()
+  }
+
+  function setDeveloperLayoutEditEnabled(value) {
+    developerLayoutEditEnabled.value = Boolean(value)
+  }
+
+  function setDeveloperLayoutViewDraftEnabled(value) {
+    developerLayoutViewDraftEnabled.value = Boolean(value)
   }
 
   function selectSettingsMenu(menuKey) {
@@ -1336,6 +1353,82 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
       }),
       ...draftAssets.value,
     ]
+  }
+
+  function syncDraftEntityLibrary(entityLibrary = []) {
+    const normalizedLibrary = (Array.isArray(entityLibrary) ? entityLibrary : [])
+      .map((entity, index) => {
+        const normalizedId = String(entity?.id ?? '').trim()
+        if (!normalizedId) {
+          return null
+        }
+
+        return {
+          id: normalizedId,
+          name: entity?.name ?? `设备 ${index + 1}`,
+          category: entity?.category ?? 'other',
+        }
+      })
+      .filter(Boolean)
+
+    if (!normalizedLibrary.length) {
+      return
+    }
+
+    draftEntityLibrary.value = normalizedLibrary
+  }
+
+  function replaceActiveDraftFloorHotspots(hotspots = [], floorPatch = {}) {
+    if (!activeDraftFloor.value) {
+      return
+    }
+
+    const targetFloor = activeDraftFloor.value
+    const fallbackRoomKey = settingsRoomOptions[0]?.value ?? 'living'
+    const fallbackColorGroup = settingsColorGroupOptions[0]?.value ?? 'blue'
+    const hotspotMetaByDeviceId = new Map(
+      targetFloor.hotspots.map((item) => [String(item.deviceId ?? ''), item]),
+    )
+
+    const normalizedHotspots = (Array.isArray(hotspots) ? hotspots : []).map((item, index) => {
+      const normalizedDeviceId = String(item?.deviceId ?? '').trim()
+      const matchedMeta = hotspotMetaByDeviceId.get(normalizedDeviceId) ?? null
+      return normalizeDraftHotspot(
+        {
+          id: String(item?.id ?? `runtime-hotspot-${index + 1}`),
+          x: item?.x ?? 50,
+          y: item?.y ?? 50,
+          icon: item?.icon ?? matchedMeta?.icon ?? 'light',
+          active: item?.active ?? false,
+          rotation: item?.rotation ?? matchedMeta?.rotation ?? 0,
+          label: item?.label ?? matchedMeta?.label ?? `热点 ${index + 1}`,
+          category: item?.category ?? matchedMeta?.category ?? 'lights',
+          deviceId: normalizedDeviceId,
+          roomKey: matchedMeta?.roomKey ?? fallbackRoomKey,
+          colorGroup: matchedMeta?.colorGroup ?? fallbackColorGroup,
+        },
+        index,
+      )
+    })
+
+    draftFloors.value = draftFloors.value.map((floor) =>
+      floor.id === targetFloor.id
+        ? {
+            ...floor,
+            imagePath: typeof floorPatch?.imagePath === 'string' && floorPatch.imagePath.trim()
+              ? floorPatch.imagePath.trim()
+              : floor.imagePath,
+            aspectRatio: typeof floorPatch?.aspectRatio === 'string' && floorPatch.aspectRatio.includes('/')
+              ? floorPatch.aspectRatio
+              : floor.aspectRatio,
+            hotspots: normalizedHotspots,
+          }
+        : floor,
+    )
+
+    if (!normalizedHotspots.some((item) => item.id === selectedDraftHotspotId.value)) {
+      selectedDraftHotspotId.value = ''
+    }
   }
 
   function applyAssetToActiveDraftFloor(assetId) {
@@ -1472,6 +1565,8 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
     roomOptions: settingsRoomOptions,
     colorGroupOptions: settingsColorGroupOptions,
     notifications: settingsNotificationsSeed,
+    developerLayoutEditEnabled,
+    developerLayoutViewDraftEnabled,
     settingsMenu,
     commonDeviceGroups,
     draftAssets,
@@ -1494,8 +1589,12 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
     runDraftSubmitExecutionDebug,
     resetDraftState,
     clearLegacyDraftCache,
+    setDeveloperLayoutEditEnabled,
+    setDeveloperLayoutViewDraftEnabled,
     selectSettingsMenu,
     addDraftAsset,
+    syncDraftEntityLibrary,
+    replaceActiveDraftFloorHotspots,
     applyAssetToActiveDraftFloor,
     updateDraftHotspot,
     updateDraftHotspotPosition,

@@ -133,6 +133,8 @@ export const settingsDraftFloorSeed = [
 
 export function createDefaultSettingsDraft() {
   return {
+    developerLayoutEditEnabled: false,
+    developerLayoutViewDraftEnabled: false,
     settingsMenu: settingsMenuSeed.map((item) => ({ ...item })),
     draftAssets: settingsDraftAssetSeed.map((item) => ({ ...item })),
     draftFloors: settingsDraftFloorSeed.map((item) => ({

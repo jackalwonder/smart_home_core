@@ -6,14 +6,41 @@ function toNumber(value, fallback = null) {
   return fallback
 }
 
-function normalizeImagePath(path) {
-  if (typeof path === 'string' && path.trim()) {
-    return path.trim()
-  }
-  return '/floorplans/songyue-floorplan.jpg'
+const DEFAULT_FLOORPLAN_IMAGE_URL = '/floorplans/songyue-floorplan.jpg'
+
+function isHttpImagePath(path) {
+  return /^https?:\/\//i.test(path)
 }
 
-function normalizeAspectRatio(value) {
+function isFileSystemLikePath(path) {
+  return /^[a-zA-Z]:[\\/]/.test(path) || path.includes('\\') || path.startsWith('file:') || path.startsWith('blob:')
+}
+
+function normalizeImagePath(path) {
+  if (typeof path !== 'string') {
+    return DEFAULT_FLOORPLAN_IMAGE_URL
+  }
+
+  const trimmedPath = path.trim()
+  if (!trimmedPath) {
+    return DEFAULT_FLOORPLAN_IMAGE_URL
+  }
+
+  if (isFileSystemLikePath(trimmedPath)) {
+    return DEFAULT_FLOORPLAN_IMAGE_URL
+  }
+
+  if (trimmedPath.startsWith('/floorplans/') || isHttpImagePath(trimmedPath)) {
+    return trimmedPath
+  }
+
+  return DEFAULT_FLOORPLAN_IMAGE_URL
+}
+
+function normalizeAspectRatio(value, imageUrl = DEFAULT_FLOORPLAN_IMAGE_URL) {
+  if (imageUrl === DEFAULT_FLOORPLAN_IMAGE_URL) {
+    return '1200 / 789'
+  }
   if (typeof value === 'string' && value.includes('/')) {
     return value
   }
@@ -23,10 +50,11 @@ function normalizeAspectRatio(value) {
 export function buildSettingsStageModel(activeDraftFloor, activeDraftHotspots = [], roomOptions = []) {
   const floor = activeDraftFloor || {}
   const hotspots = Array.isArray(activeDraftHotspots) ? activeDraftHotspots : []
+  const normalizedImageUrl = normalizeImagePath(floor.imagePath)
 
   return {
-    imageUrl: normalizeImagePath(floor.imagePath),
-    aspectRatio: normalizeAspectRatio(floor.aspectRatio),
+    imageUrl: normalizedImageUrl,
+    aspectRatio: normalizeAspectRatio(floor.aspectRatio, normalizedImageUrl),
     rooms: Array.isArray(roomOptions)
       ? roomOptions.map((room) => ({
           id: room.value,

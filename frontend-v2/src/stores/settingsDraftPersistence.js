@@ -72,6 +72,8 @@ function sanitizePersistedFloor(floor) {
 
 function sanitizeDraftForStorage(payload) {
   return {
+    developerLayoutEditEnabled: Boolean(payload?.developerLayoutEditEnabled),
+    developerLayoutViewDraftEnabled: Boolean(payload?.developerLayoutViewDraftEnabled),
     settingsMenu: Array.isArray(payload?.settingsMenu) ? payload.settingsMenu.map((item) => ({ ...item })) : [],
     draftAssets: Array.isArray(payload?.draftAssets) ? payload.draftAssets.map(sanitizePersistedAsset) : [],
     draftFloors: Array.isArray(payload?.draftFloors) ? payload.draftFloors.map(sanitizePersistedFloor) : [],
@@ -86,6 +88,9 @@ export function migrateLegacyDraft(defaultDraft) {
   const legacyAssets = readStorage('shadow-dashboard-v2:floorplanAssets')
 
   const migrated = sanitizeDraftForStorage({
+    developerLayoutEditEnabled: legacyRoot.developerLayoutEditEnabled ?? fallback.developerLayoutEditEnabled,
+    developerLayoutViewDraftEnabled:
+      legacyRoot.developerLayoutViewDraftEnabled ?? fallback.developerLayoutViewDraftEnabled,
     settingsMenu: Array.isArray(legacyRoot.settingsMenu) ? legacyRoot.settingsMenu : fallback.settingsMenu,
     draftAssets: Array.isArray(legacyRoot.draftAssets)
       ? legacyRoot.draftAssets
@@ -126,6 +131,9 @@ export function loadDraft(defaultDraft) {
   if (currentDraft) {
     return {
       draft: sanitizeDraftForStorage({
+        developerLayoutEditEnabled: currentDraft.developerLayoutEditEnabled ?? fallback.developerLayoutEditEnabled,
+        developerLayoutViewDraftEnabled:
+          currentDraft.developerLayoutViewDraftEnabled ?? fallback.developerLayoutViewDraftEnabled,
         settingsMenu: Array.isArray(currentDraft.settingsMenu) ? currentDraft.settingsMenu : fallback.settingsMenu,
         draftAssets: Array.isArray(currentDraft.draftAssets) ? currentDraft.draftAssets : fallback.draftAssets,
         draftFloors: Array.isArray(currentDraft.draftFloors) ? currentDraft.draftFloors : fallback.draftFloors,

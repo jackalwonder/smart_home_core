@@ -3,11 +3,35 @@
   return Number.isFinite(numeric) ? numeric : null
 }
 
+const DEFAULT_FLOORPLAN_IMAGE_URL = '/floorplans/songyue-floorplan.jpg'
+
+function isHttpImagePath(path) {
+  return /^https?:\/\//i.test(path)
+}
+
+function isFileSystemLikePath(path) {
+  return /^[a-zA-Z]:[\\/]/.test(path) || path.includes('\\') || path.startsWith('file:') || path.startsWith('blob:')
+}
+
 function normalizeImagePath(path) {
-  if (typeof path === 'string' && path.trim()) {
-    return path.trim()
+  if (typeof path !== 'string') {
+    return DEFAULT_FLOORPLAN_IMAGE_URL
   }
-  return '/floorplans/songyue-floorplan.jpg'
+
+  const trimmedPath = path.trim()
+  if (!trimmedPath) {
+    return DEFAULT_FLOORPLAN_IMAGE_URL
+  }
+
+  if (isFileSystemLikePath(trimmedPath)) {
+    return DEFAULT_FLOORPLAN_IMAGE_URL
+  }
+
+  if (trimmedPath.startsWith('/floorplans/') || isHttpImagePath(trimmedPath)) {
+    return trimmedPath
+  }
+
+  return DEFAULT_FLOORPLAN_IMAGE_URL
 }
 
 function deriveAspectRatio(zone) {
@@ -17,6 +41,13 @@ function deriveAspectRatio(zone) {
     return `${width} / ${height}`
   }
   return '1200 / 789'
+}
+
+function resolveZoneAspectRatio(zone, imageUrl) {
+  if (imageUrl === DEFAULT_FLOORPLAN_IMAGE_URL) {
+    return '1200 / 789'
+  }
+  return deriveAspectRatio(zone)
 }
 
 function deriveRoomLayout(room) {
@@ -137,6 +168,8 @@ export function derivePanelKind(device) {
 
 export function mapSceneDtoToDomain(rawScene) {
   const zone = rawScene?.zone ?? null
+  const normalizedZoneImageUrl = zone ? normalizeImagePath(zone.floor_plan_image_path) : DEFAULT_FLOORPLAN_IMAGE_URL
+  const normalizedZoneAspectRatio = zone ? resolveZoneAspectRatio(zone, normalizedZoneImageUrl) : '1200 / 789'
   const rooms = Array.isArray(rawScene?.rooms) ? rawScene.rooms : []
 
   const roomsById = {}
@@ -225,8 +258,8 @@ export function mapSceneDtoToDomain(rawScene) {
           id: Number(zone.id),
           name: zone.name || '默认空间',
           description: zone.description || '',
-          imageUrl: normalizeImagePath(zone.floor_plan_image_path),
-          aspectRatio: deriveAspectRatio(zone),
+          imageUrl: normalizedZoneImageUrl,
+          aspectRatio: normalizedZoneAspectRatio,
           raw: zone,
         }
       : null,
@@ -260,6 +293,7 @@ export function buildStageModel(zone, roomsById, roomOrder, devicesById, deviceI
         roomId: room.id,
         x: device.layout.x,
         y: device.layout.y,
+        rotation: device.layout.rotation ?? 0,
         icon: deriveHotspotIcon(device),
         label: device.name,
         active: device.active,
@@ -270,7 +304,7 @@ export function buildStageModel(zone, roomsById, roomOrder, devicesById, deviceI
   })
 
   return {
-    imageUrl: zone?.imageUrl || '/floorplans/songyue-floorplan.jpg',
+    imageUrl: zone?.imageUrl || DEFAULT_FLOORPLAN_IMAGE_URL,
     aspectRatio: zone?.aspectRatio || '1200 / 789',
     rooms,
     hotspots,
