@@ -23,6 +23,10 @@ import { buildSettingsDraftSubmitPlan } from './settingsDraftSubmitAdapters'
 import { resolveSettingsDraftExecutor } from './settingsDraftExecutorResolver'
 import { buildDevicePlacementExecutorAdapterPreview } from './settingsDraftDevicePlacementExecutorAdapter'
 import { buildFloorplanUploadExecutorAdapterPreview } from './settingsDraftFloorplanUploadExecutorAdapter'
+import { SETTINGS_DRAFT_DEVICE_PLACEMENT_REAL_EXECUTOR_KEY } from './settingsDraftDevicePlacementRealRunner'
+import { SETTINGS_DRAFT_FLOORPLAN_UPLOAD_REAL_EXECUTOR_KEY } from './settingsDraftFloorplanUploadRealRunner'
+import { buildSubmitContextFromSpatialScene } from './settingsDraftSubmitContext'
+import { getSpatialScene } from '../shared/api/endpoints/scene'
 
 function deriveAspectRatio(width, height, fallback = DEFAULT_FLOORPLAN_ASPECT_RATIO) {
   const normalizedWidth = Number(width)
@@ -284,6 +288,583 @@ function applySuccessfulFloorplanUploadCorrections(executionResult, draftFloorsR
   return floorMutated || assetMutated
 }
 
+function buildSubmitPlanSummary(submitPlan = null) {
+  const steps = Array.isArray(submitPlan?.steps) ? submitPlan.steps : []
+  const blockers = Array.isArray(submitPlan?.blockers) ? submitPlan.blockers : []
+  const ignored = Array.isArray(submitPlan?.ignored) ? submitPlan.ignored : []
+  const devicePlacements = Array.isArray(submitPlan?.devicePlacements) ? submitPlan.devicePlacements : []
+
+  return {
+    totalSteps: steps.length,
+    steps: steps.map((step, index) => ({
+      index,
+      type: step?.type ?? `step_${index}`,
+      status: step?.status ?? 'blocked',
+      count: Number.isFinite(Number(step?.count)) ? Number(step.count) : 0,
+    })),
+    blockerCount: blockers.length,
+    ignoredCount: ignored.length,
+    floorplanUploadStatus: submitPlan?.floorplanUpload?.status ?? null,
+    devicePlacementSummary: {
+      total: devicePlacements.length,
+      ready: devicePlacements.filter((item) => item?.status === 'ready').length,
+      noop: devicePlacements.filter((item) => item?.status === 'noop').length,
+      blocked: devicePlacements.filter((item) => item?.status === 'blocked').length,
+    },
+  }
+}
+
+function isSubmitContextObject(value) {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value))
+}
+
+function normalizePreflightText(value, fallback = '') {
+  if (typeof value !== 'string') {
+    return fallback
+  }
+  const trimmed = value.trim()
+  return trimmed || fallback
+}
+
+function normalizePreflightLevel(level) {
+  if (level === 'error' || level === 'warning' || level === 'info') {
+    return level
+  }
+  return 'info'
+}
+
+function normalizePreflightScope(scope) {
+  if (scope === 'global' || scope === 'floorplan_upload' || scope === 'device_placement_save' || scope === 'room_layout_save') {
+    return scope
+  }
+  return 'global'
+}
+
+function buildPreflightItemSignature(item = {}) {
+  return `${item.level}|${item.scope}|${item.code}|${item.message}`
+}
+
+function pushPreflightItem(items, signatures, item = {}) {
+  const normalized = {
+    level: normalizePreflightLevel(item.level),
+    scope: normalizePreflightScope(item.scope),
+    code: normalizePreflightText(item.code, 'unknown'),
+    message: normalizePreflightText(item.message, 'Unknown preflight state.'),
+  }
+  const signature = buildPreflightItemSignature(normalized)
+  if (signatures.has(signature)) {
+    return
+  }
+  signatures.add(signature)
+  items.push(normalized)
+}
+
+function buildDraftSubmitPreflight(executionArtifacts = {}) {
+  const submitPlan = executionArtifacts?.submitPlan ?? null
+  const executionPreview = executionArtifacts?.executionPreview ?? null
+  const executorContract = executionArtifacts?.executorContract ?? null
+  const blockers = Array.isArray(submitPlan?.blockers) ? submitPlan.blockers : []
+  const roomLayouts = Array.isArray(submitPlan?.roomLayouts) ? submitPlan.roomLayouts : []
+  const floorplanUpload = submitPlan?.floorplanUpload ?? null
+  const contractResults = Array.isArray(executorContract?.results) ? executorContract.results : []
+  const blockedStepKeys = contractResults
+    .filter((item) => item?.executionState === 'blocked')
+    .map((item) => normalizePreflightText(item?.stepKey))
+    .filter(Boolean)
+  const unavailableStepKeys = contractResults
+    .filter((item) => item?.executionState === 'unavailable')
+    .map((item) => normalizePreflightText(item?.stepKey))
+    .filter(Boolean)
+
+  const devicePlacementPreview = buildDevicePlacementExecutorAdapterPreview(submitPlan)
+  const floorplanUploadPreview = buildFloorplanUploadExecutorAdapterPreview(submitPlan)
+  const items = []
+  const signatures = new Set()
+
+  if (!Number.isFinite(Number(floorplanUpload?.zoneId))) {
+    pushPreflightItem(items, signatures, {
+      level: 'error',
+      scope: 'floorplan_upload',
+      code: 'missing_zone_mapping',
+      message: '缺少 zoneId，无法准备 floorplan 上传请求。',
+    })
+  }
+
+  blockers
+    .filter((item) => item?.type === 'missing_device_mapping')
+    .forEach((item) => {
+      pushPreflightItem(items, signatures, {
+        level: 'error',
+        scope: 'device_placement_save',
+        code: 'missing_device_mapping',
+        message: item?.message || '存在热点未映射到后端 device_id。',
+      })
+    })
+
+  blockers
+    .filter((item) => item?.type === 'floorplan_missing_upload_ref' || item?.type === 'floorplan_upload_ref_unavailable')
+    .forEach((item) => {
+      pushPreflightItem(items, signatures, {
+        level: 'error',
+        scope: 'floorplan_upload',
+        code: item?.type,
+        message: item?.message || '底图上传 fileRefToken 缺失或已失效。',
+      })
+    })
+
+  roomLayouts
+    .filter((item) => item?.status === 'unavailable')
+    .forEach((item) => {
+      pushPreflightItem(items, signatures, {
+        level: 'warning',
+        scope: 'room_layout_save',
+        code: 'room_layout_truth_unavailable',
+        message: item?.reason || 'room_layout_save 当前不可用。',
+      })
+    })
+
+  const previewSteps = Array.isArray(executionPreview?.steps) ? executionPreview.steps : []
+  previewSteps
+    .filter((step) => step?.executionState === 'blocked' || step?.executionState === 'unavailable')
+    .forEach((step) => {
+      pushPreflightItem(items, signatures, {
+        level: step.executionState === 'blocked' ? 'error' : 'warning',
+        scope: normalizePreflightScope(step?.type),
+        code: step.executionState === 'blocked' ? 'step_blocked' : 'step_unavailable',
+        message: step?.reason || `步骤 ${step?.type || 'unknown'} 当前 ${step.executionState === 'blocked' ? '被阻塞' : '不可用'}。`,
+      })
+    })
+
+  const deviceRequests = Array.isArray(devicePlacementPreview?.requests) ? devicePlacementPreview.requests : []
+  deviceRequests.forEach((request) => {
+    const requestErrors = Array.isArray(request?.errors) ? request.errors : []
+    requestErrors.forEach((error) => {
+      pushPreflightItem(items, signatures, {
+        level: 'error',
+        scope: 'device_placement_save',
+        code: normalizePreflightText(error?.code, 'device_request_error'),
+        message: normalizePreflightText(error?.message, 'device placement 请求不可执行。'),
+      })
+    })
+
+    if (!request?.requestReady && (request?.status === 'blocked' || request?.status === 'unavailable')) {
+      pushPreflightItem(items, signatures, {
+        level: request.status === 'blocked' ? 'error' : 'warning',
+        scope: 'device_placement_save',
+        code: request.status === 'blocked' ? 'device_request_blocked' : 'device_request_unavailable',
+        message: normalizePreflightText(request?.label, request?.stepKey || 'device placement request'),
+      })
+    }
+  })
+
+  const floorplanErrors = Array.isArray(floorplanUploadPreview?.errors) ? floorplanUploadPreview.errors : []
+  floorplanErrors.forEach((error) => {
+    pushPreflightItem(items, signatures, {
+      level: 'error',
+      scope: 'floorplan_upload',
+      code: normalizePreflightText(error?.code, 'floorplan_request_error'),
+      message: normalizePreflightText(error?.message, 'floorplan upload 请求不可执行。'),
+    })
+  })
+
+  if (
+    !floorplanUploadPreview?.requestReady
+    && (floorplanUploadPreview?.stepStatus === 'blocked' || floorplanUploadPreview?.stepStatus === 'unavailable')
+  ) {
+    pushPreflightItem(items, signatures, {
+      level: floorplanUploadPreview.stepStatus === 'blocked' ? 'error' : 'warning',
+      scope: 'floorplan_upload',
+      code: floorplanUploadPreview.stepStatus === 'blocked' ? 'floorplan_request_blocked' : 'floorplan_request_unavailable',
+      message: 'floorplan upload 预览请求当前不可执行。',
+    })
+  }
+
+  if (!items.length) {
+    pushPreflightItem(items, signatures, {
+      level: 'info',
+      scope: 'global',
+      code: 'preflight_clear',
+      message: '当前未发现阻塞 preflight 项。',
+    })
+  }
+
+  const summary = items.reduce(
+    (acc, item) => {
+      if (item.level === 'error') acc.errorCount += 1
+      else if (item.level === 'warning') acc.warningCount += 1
+      else acc.infoCount += 1
+      return acc
+    },
+    {
+      totalCount: items.length,
+      errorCount: 0,
+      warningCount: 0,
+      infoCount: 0,
+      blockedCount: blockedStepKeys.length,
+      unavailableCount: unavailableStepKeys.length,
+    },
+  )
+
+  return {
+    preflightSummary: summary,
+    preflightItems: items,
+    blockedStepKeys: Array.from(new Set(blockedStepKeys)),
+    unavailableStepKeys: Array.from(new Set(unavailableStepKeys)),
+  }
+}
+
+function normalizePlacementNumber(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function buildNormalizedPlacement(payload = {}) {
+  return {
+    plan_x: normalizePlacementNumber(payload?.plan_x),
+    plan_y: normalizePlacementNumber(payload?.plan_y),
+    plan_z: normalizePlacementNumber(payload?.plan_z),
+    plan_rotation: normalizePlacementNumber(payload?.plan_rotation) ?? 0,
+  }
+}
+
+function buildPlacementDiff(submittedPlacement = {}, readbackPlacement = {}) {
+  const fields = ['plan_x', 'plan_y', 'plan_z', 'plan_rotation']
+  const fieldDiffs = fields.map((field) => {
+    const submitted = submittedPlacement?.[field] ?? null
+    const readback = readbackPlacement?.[field] ?? null
+    return {
+      field,
+      submitted,
+      readback,
+      matches: submitted === readback,
+    }
+  })
+
+  return {
+    matches: fieldDiffs.every((item) => item.matches),
+    changedFields: fieldDiffs.filter((item) => !item.matches).map((item) => item.field),
+    fields: fieldDiffs,
+  }
+}
+
+function extractDevicePlacementSubmittedPayloads(executionResult = {}) {
+  const responses = Array.isArray(executionResult?.metadata?.devicePlacementResponses)
+    ? executionResult.metadata.devicePlacementResponses
+    : []
+
+  return responses
+    .map((item) => ({
+      deviceId: normalizePlacementNumber(item?.payload?.device_id),
+      submittedPlacement: buildNormalizedPlacement(item?.payload),
+      raw: item,
+    }))
+    .filter((item) => Number.isFinite(item.deviceId))
+}
+
+function findDeviceInScenePayload(scenePayload = null, deviceId = null) {
+  const normalizedDeviceId = normalizePlacementNumber(deviceId)
+  if (!Number.isFinite(normalizedDeviceId)) {
+    return null
+  }
+
+  const rooms = Array.isArray(scenePayload?.rooms) ? scenePayload.rooms : []
+  for (const room of rooms) {
+    const devices = Array.isArray(room?.devices) ? room.devices : []
+    for (const device of devices) {
+      if (normalizePlacementNumber(device?.id) === normalizedDeviceId) {
+        return {
+          roomId: normalizePlacementNumber(room?.id),
+          roomName: typeof room?.name === 'string' ? room.name : '',
+          device,
+        }
+      }
+    }
+  }
+
+  return null
+}
+
+function buildReadbackPlacementFromSceneDevice(sceneDevice = null) {
+  if (!sceneDevice || typeof sceneDevice !== 'object') {
+    return null
+  }
+
+  const effectiveLayout = sceneDevice?.effective_layout && typeof sceneDevice.effective_layout === 'object'
+    ? sceneDevice.effective_layout
+    : {}
+
+  return buildNormalizedPlacement({
+    plan_x: sceneDevice?.plan_x ?? effectiveLayout.plan_x,
+    plan_y: sceneDevice?.plan_y ?? effectiveLayout.plan_y,
+    plan_z: sceneDevice?.plan_z ?? effectiveLayout.plan_z,
+    plan_rotation: sceneDevice?.plan_rotation ?? effectiveLayout.plan_rotation,
+  })
+}
+
+async function performDevicePlacementReadback(executionResult = {}, options = {}) {
+  const readbackAfterExecution = Boolean(options.readbackAfterExecution)
+  const submittedPayloads = extractDevicePlacementSubmittedPayloads(executionResult)
+  const base = {
+    readbackPerformed: false,
+    readbackSucceeded: false,
+    readbackSource: 'none',
+    devicePlacementReadback: {
+      requestedCount: submittedPayloads.length,
+      matchedCount: 0,
+      comparisons: [],
+    },
+    readbackIssues: [],
+  }
+
+  if (!readbackAfterExecution) {
+    base.readbackIssues.push({
+      code: 'readback_disabled',
+      message: 'Readback is disabled for this debug execution.',
+    })
+    return base
+  }
+
+  if (!submittedPayloads.length) {
+    base.readbackIssues.push({
+      code: 'readback_skipped_no_successful_device_placement',
+      message: 'No successful device placement response was available for readback.',
+    })
+    return base
+  }
+
+  const query = isSubmitContextObject(options.sceneQuery) ? options.sceneQuery : {}
+
+  try {
+    const scenePayload = await getSpatialScene(query)
+    const comparisons = []
+    const issues = []
+
+    submittedPayloads.forEach((item) => {
+      const sceneMatch = findDeviceInScenePayload(scenePayload, item.deviceId)
+      if (!sceneMatch?.device) {
+        issues.push({
+          code: 'readback_device_not_found',
+          deviceId: item.deviceId,
+          message: `Unable to locate device ${item.deviceId} in scene readback payload.`,
+        })
+        return
+      }
+
+      const readbackPlacement = buildReadbackPlacementFromSceneDevice(sceneMatch.device)
+      comparisons.push({
+        deviceId: item.deviceId,
+        roomId: sceneMatch.roomId,
+        roomName: sceneMatch.roomName,
+        submittedPlacement: item.submittedPlacement,
+        readbackPlacement,
+        placementDiff: buildPlacementDiff(item.submittedPlacement, readbackPlacement),
+      })
+    })
+
+    return {
+      readbackPerformed: true,
+      readbackSucceeded: comparisons.length > 0 && issues.length === 0,
+      readbackSource: '/api/spatial/scene',
+      devicePlacementReadback: {
+        requestedCount: submittedPayloads.length,
+        matchedCount: comparisons.length,
+        comparisons,
+      },
+      readbackIssues: issues,
+    }
+  } catch (error) {
+    return {
+      readbackPerformed: true,
+      readbackSucceeded: false,
+      readbackSource: '/api/spatial/scene',
+      devicePlacementReadback: {
+        requestedCount: submittedPayloads.length,
+        matchedCount: 0,
+        comparisons: [],
+      },
+      readbackIssues: [
+        {
+          code: 'readback_request_failed',
+          message: error?.message || 'Failed to load spatial scene for readback.',
+        },
+      ],
+    }
+  }
+}
+
+function buildNormalizedFloorplanUpload(executionResult = {}) {
+  const requestMeta = executionResult?.metadata?.floorplanUploadRequestMeta ?? {}
+  const responsePayload = executionResult?.metadata?.floorplanUploadResponse?.payload ?? {}
+  const inputUpload = executionResult?.input?.submitPlan?.floorplanUpload ?? {}
+
+  return {
+    zoneId:
+      normalizePlacementNumber(responsePayload?.zone_id)
+      ?? normalizePlacementNumber(requestMeta?.zoneId)
+      ?? normalizePlacementNumber(inputUpload?.zoneId),
+    imagePath:
+      normalizePreflightText(responsePayload?.image_url)
+      || normalizePreflightText(inputUpload?.imagePath)
+      || '',
+    imageWidth:
+      normalizePlacementNumber(responsePayload?.image_width)
+      ?? normalizePlacementNumber(requestMeta?.imageWidth),
+    imageHeight:
+      normalizePlacementNumber(responsePayload?.image_height)
+      ?? normalizePlacementNumber(requestMeta?.imageHeight),
+    fileName:
+      normalizePreflightText(responsePayload?.file_name)
+      || normalizePreflightText(requestMeta?.fileName)
+      || '',
+    fileRefToken:
+      normalizePreflightText(executionResult?.metadata?.floorplanUploadFileRefToken)
+      || normalizePreflightText(inputUpload?.fileRefToken)
+      || '',
+  }
+}
+
+function buildReadbackFloorplanFromScene(scenePayload = null) {
+  const zone = scenePayload?.zone ?? {}
+  return {
+    zoneId: normalizePlacementNumber(zone?.id),
+    floorPlanImagePath: normalizePreflightText(zone?.floor_plan_image_path),
+    floorPlanImageWidth: normalizePlacementNumber(zone?.floor_plan_image_width),
+    floorPlanImageHeight: normalizePlacementNumber(zone?.floor_plan_image_height),
+  }
+}
+
+function buildFloorplanDiff(submittedUpload = {}, readbackFloorplan = {}) {
+  const fields = [
+    { submittedKey: 'zoneId', readbackKey: 'zoneId', name: 'zoneId' },
+    { submittedKey: 'imagePath', readbackKey: 'floorPlanImagePath', name: 'floorPlanImagePath' },
+    { submittedKey: 'imageWidth', readbackKey: 'floorPlanImageWidth', name: 'floorPlanImageWidth' },
+    { submittedKey: 'imageHeight', readbackKey: 'floorPlanImageHeight', name: 'floorPlanImageHeight' },
+  ]
+
+  const fieldDiffs = fields.map((field) => {
+    const submitted = submittedUpload?.[field.submittedKey] ?? null
+    const readback = readbackFloorplan?.[field.readbackKey] ?? null
+    return {
+      field: field.name,
+      submitted,
+      readback,
+      matches: submitted === readback,
+    }
+  })
+
+  return {
+    matches: fieldDiffs.every((item) => item.matches),
+    changedFields: fieldDiffs.filter((item) => !item.matches).map((item) => item.field),
+    fields: fieldDiffs,
+  }
+}
+
+async function performFloorplanUploadReadback(executionResult = {}, options = {}) {
+  const readbackAfterExecution = Boolean(options.readbackAfterExecution)
+  const submittedUpload = buildNormalizedFloorplanUpload(executionResult)
+  const adapterError = executionResult?.metadata?.floorplanUploadAdapter?.normalizedError ?? null
+  const base = {
+    readbackPerformed: false,
+    readbackSucceeded: false,
+    readbackSource: 'none',
+    floorplanUploadReadback: {
+      submittedUpload,
+      readbackFloorplan: null,
+      floorplanDiff: null,
+    },
+    readbackIssues: [],
+  }
+
+  if (!readbackAfterExecution) {
+    base.readbackIssues.push({
+      code: 'readback_disabled',
+      message: 'Readback is disabled for this debug execution.',
+    })
+    return base
+  }
+
+  if (!(executionResult?.summary?.successCount > 0) || !submittedUpload.zoneId) {
+    if (adapterError?.message) {
+      base.readbackIssues.push({
+        code: adapterError.code || 'floorplan_upload_not_ready',
+        message: adapterError.message,
+      })
+    } else {
+      base.readbackIssues.push({
+        code: 'readback_skipped_no_successful_floorplan_upload',
+        message: 'No successful floorplan upload response was available for readback.',
+      })
+    }
+    return base
+  }
+
+  const query = isSubmitContextObject(options.sceneQuery)
+    ? options.sceneQuery
+    : submittedUpload.zoneId != null
+      ? { zone_id: submittedUpload.zoneId }
+      : {}
+
+  try {
+    const scenePayload = await getSpatialScene(query)
+    const readbackFloorplan = buildReadbackFloorplanFromScene(scenePayload)
+    const issues = []
+
+    if (!readbackFloorplan.zoneId) {
+      issues.push({
+        code: 'readback_zone_missing',
+        message: 'Scene readback payload does not include a numeric zone.id.',
+      })
+    }
+
+    if (!readbackFloorplan.floorPlanImagePath) {
+      issues.push({
+        code: 'readback_floorplan_path_missing',
+        message: 'Scene readback payload does not include zone.floor_plan_image_path.',
+      })
+    }
+
+    return {
+      readbackPerformed: true,
+      readbackSucceeded: issues.length === 0,
+      readbackSource: '/api/spatial/scene',
+      floorplanUploadReadback: {
+        submittedUpload,
+        readbackFloorplan,
+        floorplanDiff: buildFloorplanDiff(submittedUpload, readbackFloorplan),
+      },
+      readbackIssues: issues,
+    }
+  } catch (error) {
+    return {
+      readbackPerformed: true,
+      readbackSucceeded: false,
+      readbackSource: '/api/spatial/scene',
+      floorplanUploadReadback: {
+        submittedUpload,
+        readbackFloorplan: null,
+        floorplanDiff: null,
+      },
+      readbackIssues: [
+        {
+          code: 'readback_request_failed',
+          message: error?.message || 'Failed to load spatial scene for floorplan readback.',
+        },
+      ],
+    }
+  }
+}
+
+function resolveDebugExecutionTarget(options = {}) {
+  const target = normalizePreflightText(options.debugExecutionTarget, 'floorplan_upload')
+  return target === 'device_placement' ? 'device_placement' : 'floorplan_upload'
+}
+
+function resolveDebugExecutorKey(target = 'floorplan_upload') {
+  return target === 'device_placement'
+    ? SETTINGS_DRAFT_DEVICE_PLACEMENT_REAL_EXECUTOR_KEY
+    : SETTINGS_DRAFT_FLOORPLAN_UPLOAD_REAL_EXECUTOR_KEY
+}
+
 export const useSettingsEditorStore = defineStore('settings-editor', () => {
   const loadedDraft = loadDraft(createDefaultSettingsDraft())
   const normalizedDraft = normalizeDraftPayload(loadedDraft.draft)
@@ -364,37 +945,176 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
     )
   }
 
-  async function runDraftSubmitExecution(options = {}) {
-    const executor = resolveSettingsDraftExecutor({
-      submitPlan: draftSubmitPlan.value,
-      executorContract: draftSubmitExecutorContract.value,
-      submitContext: options.submitContext ?? null,
+  function buildDraftSubmitExecutionArtifacts(submitContext = null) {
+    const hasSubmitContext = Boolean(submitContext && typeof submitContext === 'object')
+
+    if (!hasSubmitContext) {
+      return {
+        source: 'default_computed',
+        submitContext: null,
+        submitPlan: draftSubmitPlan.value,
+        executionPreview: draftSubmitExecutionPreview.value,
+        executorContract: draftSubmitExecutorContract.value,
+        executor: resolvedDraftSubmitExecutor.value,
+        executorKey: resolvedDraftSubmitExecutor.value?.key ?? 'unknown',
+      }
+    }
+
+    const contextualSubmitPlan = buildDraftSubmitPlan(submitContext)
+    const contextualExecutionPreview = buildSettingsDraftSubmitExecutionPreview(contextualSubmitPlan)
+    const contextualExecutorContract = buildSettingsDraftExecutorContract(
+      contextualSubmitPlan,
+      contextualExecutionPreview,
+    )
+    const contextualExecutor = resolveSettingsDraftExecutor({
+      submitPlan: contextualSubmitPlan,
+      executorContract: contextualExecutorContract,
+      submitContext,
     })
 
+    return {
+      source: 'submit_context',
+      submitContext,
+      submitPlan: contextualSubmitPlan,
+      executionPreview: contextualExecutionPreview,
+      executorContract: contextualExecutorContract,
+      executor: contextualExecutor,
+      executorKey: contextualExecutor?.key ?? 'unknown',
+    }
+  }
+
+  function buildDraftStateForSubmitContext() {
+    return {
+      roomOptions: settingsRoomOptions,
+      draftEntityLibrary: draftEntityLibrary.value,
+      activeDraftHotspots: activeDraftHotspots.value,
+    }
+  }
+
+  async function resolveDebugSubmitContext(options = {}) {
+    if (isSubmitContextObject(options.submitContext)) {
+      return {
+        source: 'external',
+        submitContext: options.submitContext,
+        issues: [],
+        warnings: [],
+      }
+    }
+
+    const shouldBuildFromScene = Boolean(options.autoBuildSubmitContextFromScene)
+    if (!shouldBuildFromScene) {
+      return {
+        source: 'none',
+        submitContext: null,
+        issues: [],
+        warnings: [],
+      }
+    }
+
+    try {
+      const query = isSubmitContextObject(options.sceneQuery) ? options.sceneQuery : {}
+      const scenePayload = await getSpatialScene(query)
+      const contextBuild = buildSubmitContextFromSpatialScene(
+        scenePayload,
+        buildDraftStateForSubmitContext(),
+      )
+
+      return {
+        source: 'scene',
+        submitContext: contextBuild.submitContext,
+        issues: Array.isArray(contextBuild.issues) ? contextBuild.issues : [],
+        warnings: Array.isArray(contextBuild.warnings) ? contextBuild.warnings : [],
+      }
+    } catch (error) {
+      return {
+        source: 'none',
+        submitContext: null,
+        issues: [
+          {
+            code: 'scene_submit_context_build_failed',
+            field: 'submitContext',
+            message: error?.message || 'Failed to load scene payload for submit context.',
+          },
+        ],
+        warnings: [],
+      }
+    }
+  }
+
+  async function runDraftSubmitExecution(options = {}) {
+    const snapshotOnly = Boolean(options.snapshotOnly)
+    const executionArtifacts = options._executionArtifacts
+      ?? buildDraftSubmitExecutionArtifacts(options.submitContext ?? null)
+    const executor = executionArtifacts.executor
+      ?? resolveSettingsDraftExecutor({
+        submitPlan: executionArtifacts.submitPlan,
+        executorContract: executionArtifacts.executorContract,
+        submitContext: executionArtifacts.submitContext,
+      })
+
     const result = await executor.run({
-      submitPlan: draftSubmitPlan.value,
-      executorContract: draftSubmitExecutorContract.value,
-      submitContext: options.submitContext ?? null,
+      submitPlan: executionArtifacts.submitPlan,
+      executorContract: executionArtifacts.executorContract,
+      submitContext: executionArtifacts.submitContext,
       logger: options.logger ?? null,
       hooks: options.hooks ?? {},
       abortSignal: options.abortSignal ?? null,
     })
 
-    const corrected = applySuccessfulDevicePlacementCorrections(result, draftFloors)
-    const floorplanCorrected = applySuccessfulFloorplanUploadCorrections(
-      result,
-      draftFloors,
-      draftAssets,
-      activeDraftFloorId,
-    )
-    if (corrected || floorplanCorrected) {
-      saveDraft(buildPersistedDraftPayload())
+    let corrected = false
+    let floorplanCorrected = false
+    let draftWriteApplied = false
+    let draftWriteSkipped = false
+    const skippedDraftWriteReasons = []
+
+    if (snapshotOnly) {
+      draftWriteSkipped = true
+      skippedDraftWriteReasons.push('snapshot_only_enabled')
+    } else {
+      corrected = applySuccessfulDevicePlacementCorrections(result, draftFloors)
+      floorplanCorrected = applySuccessfulFloorplanUploadCorrections(
+        result,
+        draftFloors,
+        draftAssets,
+        activeDraftFloorId,
+      )
+      if (corrected || floorplanCorrected) {
+        saveDraft(buildPersistedDraftPayload())
+        draftWriteApplied = true
+      }
     }
 
-    return result
+    return {
+      ...result,
+      draftWriteControl: {
+        snapshotOnly,
+        draftWriteSkipped,
+        draftWriteApplied,
+        skippedDraftWriteReasons,
+        corrected,
+        floorplanCorrected,
+      },
+    }
   }
 
   async function runDraftSubmitExecutionDebug(options = {}) {
+    const debugExecutionTarget = resolveDebugExecutionTarget(options)
+    const normalizedOptions = {
+      ...options,
+      snapshotOnly: options.snapshotOnly ?? true,
+      readbackAfterExecution: options.readbackAfterExecution ?? true,
+      autoBuildSubmitContextFromScene:
+        options.autoBuildSubmitContextFromScene
+        ?? !isSubmitContextObject(options.submitContext),
+      debugExecutionTarget,
+    }
+    const debugSubmitContext = await resolveDebugSubmitContext(normalizedOptions)
+    const closedLoopSubmitContext = {
+      ...(debugSubmitContext.submitContext ?? {}),
+      executorKey: resolveDebugExecutorKey(debugExecutionTarget),
+    }
+    const executionArtifacts = buildDraftSubmitExecutionArtifacts(closedLoopSubmitContext)
+    const preflight = buildDraftSubmitPreflight(executionArtifacts)
     const hookCounts = {
       onStepStart: 0,
       onStepResult: 0,
@@ -406,29 +1126,74 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
     const stepKeysResolved = []
 
     const result = await runDraftSubmitExecution({
-      ...options,
+      ...normalizedOptions,
+      _executionArtifacts: executionArtifacts,
       hooks: {
-        ...(options.hooks ?? {}),
+        ...(normalizedOptions.hooks ?? {}),
         onStepStart(step) {
           hookCounts.onStepStart += 1
           stepKeysStarted.push(step?.stepKey ?? 'unknown')
-          options.hooks?.onStepStart?.(step)
+          normalizedOptions.hooks?.onStepStart?.(step)
         },
         onStepResult(stepResult) {
           hookCounts.onStepResult += 1
           stepKeysResolved.push(stepResult?.stepKey ?? 'unknown')
-          options.hooks?.onStepResult?.(stepResult)
+          normalizedOptions.hooks?.onStepResult?.(stepResult)
         },
         onStepError(stepError) {
           hookCounts.onStepError += 1
-          options.hooks?.onStepError?.(stepError)
+          normalizedOptions.hooks?.onStepError?.(stepError)
         },
         onComplete(finalResult) {
           hookCounts.onComplete += 1
-          options.hooks?.onComplete?.(finalResult)
+          normalizedOptions.hooks?.onComplete?.(finalResult)
         },
       },
     })
+    const shouldReadback =
+      Boolean(normalizedOptions.readbackAfterExecution)
+      && executionArtifacts.executorKey === resolveDebugExecutorKey(debugExecutionTarget)
+      && (result?.summary?.successCount ?? 0) > 0
+    const readback = shouldReadback
+      ? debugExecutionTarget === 'device_placement'
+        ? await performDevicePlacementReadback(result, {
+          readbackAfterExecution: normalizedOptions.readbackAfterExecution,
+          sceneQuery: normalizedOptions.sceneQuery,
+        })
+        : await performFloorplanUploadReadback(result, {
+          readbackAfterExecution: normalizedOptions.readbackAfterExecution,
+          sceneQuery: normalizedOptions.sceneQuery,
+        })
+      : {
+        readbackPerformed: false,
+        readbackSucceeded: false,
+        readbackSource: 'none',
+        devicePlacementReadback:
+          debugExecutionTarget === 'device_placement'
+            ? {
+              requestedCount: extractDevicePlacementSubmittedPayloads(result).length,
+              matchedCount: 0,
+              comparisons: [],
+            }
+            : null,
+        floorplanUploadReadback:
+          debugExecutionTarget === 'floorplan_upload'
+            ? {
+              submittedUpload: buildNormalizedFloorplanUpload(result),
+              readbackFloorplan: null,
+              floorplanDiff: null,
+            }
+            : null,
+        readbackIssues: [
+          {
+            code: 'readback_not_triggered',
+            message:
+              debugExecutionTarget === 'device_placement'
+                ? 'Readback was not triggered because no successful real device placement request completed.'
+                : 'Readback was not triggered because no successful real floorplan upload request completed.',
+          },
+        ],
+      }
 
     const results = Array.isArray(result?.results) ? result.results : []
     const summary = result?.summary ?? {}
@@ -478,15 +1243,52 @@ export const useSettingsEditorStore = defineStore('settings-editor', () => {
         && hookCounts.onStepError === counted.failed
         && hookCounts.onComplete === 1,
     }
+    const networkSummaries = Array.isArray(result?.metadata?.networkSummaries)
+      ? result.metadata.networkSummaries
+      : results
+        .map((item) => (item?.networkSummary ? { stepKey: item.stepKey, ...item.networkSummary } : null))
+        .filter(Boolean)
+    const networkSummaryByStep = networkSummaries.reduce((acc, item) => {
+      const stepKey = typeof item?.stepKey === 'string' ? item.stepKey : ''
+      if (!stepKey) {
+        return acc
+      }
+      acc[stepKey] = item
+      return acc
+    }, {})
 
     return {
       ok: Object.values(checks).every(Boolean),
       result,
+      snapshotOnly: Boolean(normalizedOptions.snapshotOnly),
+      draftWriteSkipped: Boolean(result?.draftWriteControl?.draftWriteSkipped),
+      skippedDraftWriteReasons: Array.isArray(result?.draftWriteControl?.skippedDraftWriteReasons)
+        ? result.draftWriteControl.skippedDraftWriteReasons
+        : [],
       checks,
       hookCounts,
       stepKeysStarted,
       stepKeysResolved,
-      resolvedExecutorKey: resolvedDraftSubmitExecutor.value?.key ?? 'unknown',
+      submitContextSource: debugSubmitContext.source,
+      executionArtifactSource: executionArtifacts.source,
+      usedSubmitContext: executionArtifacts.submitContext,
+      submitContextIssues: debugSubmitContext.issues,
+      contextBuildWarnings: debugSubmitContext.warnings,
+      usedSubmitPlanSummary: buildSubmitPlanSummary(executionArtifacts.submitPlan),
+      usedExecutorKey: executionArtifacts.executorKey,
+      resolvedExecutorKey: executionArtifacts.executorKey,
+      preflightSummary: preflight.preflightSummary,
+      preflightItems: preflight.preflightItems,
+      blockedStepKeys: preflight.blockedStepKeys,
+      unavailableStepKeys: preflight.unavailableStepKeys,
+      networkSummaries,
+      networkSummaryByStep,
+      readbackPerformed: readback.readbackPerformed,
+      readbackSucceeded: readback.readbackSucceeded,
+      readbackSource: readback.readbackSource,
+      devicePlacementReadback: readback.devicePlacementReadback ?? null,
+      floorplanUploadReadback: readback.floorplanUploadReadback ?? null,
+      readbackIssues: readback.readbackIssues,
       scenarioSummary: {
         successCount: counted.completed,
         wouldExecuteCount: counted.wouldExecute,

@@ -87,6 +87,53 @@ function createSingleStepContract(executorContract, baseResult) {
   }
 }
 
+function buildFallbackCompositeNetworkSummary(stepResult = {}) {
+  const count = Number.isFinite(Number(stepResult?.count)) ? Number(stepResult.count) : 0
+  const executionState = stepResult?.executionState ?? 'skipped'
+  const targetNumeric = Number(stepResult?.target)
+  const targetList = Number.isFinite(targetNumeric) ? [targetNumeric] : []
+  const method =
+    stepResult?.stepKey === 'device_placement_save'
+      ? 'PUT'
+      : stepResult?.stepKey === 'floorplan_upload'
+        ? 'POST'
+        : 'GET'
+
+  return {
+    mode: 'composite',
+    method,
+    endpoint: stepResult?.endpoint ?? '',
+    requestCount: count,
+    successCount: executionState === 'completed' ? count : 0,
+    failedCount: executionState === 'failed' ? Math.max(1, count) : 0,
+    durationMs: Number.isFinite(Number(stepResult?.durationMs)) ? Number(stepResult.durationMs) : null,
+    targets: targetList,
+    status: executionState,
+  }
+}
+
+function extractStepNetworkSummary(stepResultBundle = null, finalResult = {}, stepKey = '') {
+  if (finalResult?.networkSummary && typeof finalResult.networkSummary === 'object') {
+    return finalResult.networkSummary
+  }
+
+  const directSummary = stepResultBundle?.metadata?.networkSummary
+  if (directSummary && typeof directSummary === 'object') {
+    return directSummary
+  }
+
+  const summaries = Array.isArray(stepResultBundle?.metadata?.networkSummaries)
+    ? stepResultBundle.metadata.networkSummaries
+    : []
+  const matched = summaries.find((item) => item?.stepKey === stepKey)
+  if (matched && typeof matched === 'object') {
+    const { stepKey: _ignoredStepKey, ...summary } = matched
+    return summary
+  }
+
+  return buildFallbackCompositeNetworkSummary(finalResult)
+}
+
 export const settingsDraftCompositeRealRunner = {
   key: SETTINGS_DRAFT_COMPOSITE_REAL_EXECUTOR_KEY,
   label: 'Settings Draft Composite Real Runner',
@@ -108,6 +155,7 @@ export const settingsDraftCompositeRealRunner = {
     const stepExecutors = {}
     const floorplanUploadMetadata = []
     const devicePlacementMetadata = []
+    const networkSummaries = []
 
     logDebug(normalizedLogger, '[settings-draft-composite-real] start', {
       stepCount: contractResults.length,
@@ -137,6 +185,10 @@ export const settingsDraftCompositeRealRunner = {
         : baseResult
 
       results.push(finalResult)
+      networkSummaries.push({
+        stepKey: finalResult.stepKey ?? baseResult.stepKey ?? 'unknown',
+        ...extractStepNetworkSummary(stepResultBundle, finalResult, baseResult.stepKey),
+      })
 
       if (baseResult.stepKey === 'floorplan_upload' && stepResultBundle?.metadata) {
         floorplanUploadMetadata.push(stepResultBundle.metadata)
@@ -196,6 +248,12 @@ export const settingsDraftCompositeRealRunner = {
         floorplanUploadResponse: floorplanUploadMetadata.at(-1)?.floorplanUploadResponse ?? null,
         devicePlacementAdapter: devicePlacementMetadata.at(-1)?.devicePlacementAdapter ?? null,
         devicePlacementResponses: devicePlacementMetadata.at(-1)?.devicePlacementResponses ?? [],
+        networkSummary:
+          networkSummaries.find((item) => item.stepKey === 'device_placement_save')
+          ?? networkSummaries.find((item) => item.stepKey === 'floorplan_upload')
+          ?? networkSummaries[0]
+          ?? null,
+        networkSummaries,
         unavailableCount: summaryCounts.unavailableCount,
         ...createAbortMetadata(abortSignal),
       },

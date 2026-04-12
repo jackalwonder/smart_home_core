@@ -114,10 +114,62 @@ function summarizeResults(results = []) {
   )
 }
 
+function normalizeTargetList(values = []) {
+  const list = Array.isArray(values) ? values : [values]
+  const normalized = list
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+  return Array.from(new Set(normalized))
+}
+
+function buildDevicePlacementNetworkSummary({
+  mode = 'real',
+  method = 'PUT',
+  endpoint = '/api/spatial/devices/{device_id}/placement',
+  requestCount = 0,
+  successCount = 0,
+  failedCount = 0,
+  durationMs = null,
+  targets = [],
+  status = 'skipped',
+} = {}) {
+  return {
+    mode,
+    method,
+    endpoint,
+    requestCount: Number.isFinite(Number(requestCount)) ? Number(requestCount) : 0,
+    successCount: Number.isFinite(Number(successCount)) ? Number(successCount) : 0,
+    failedCount: Number.isFinite(Number(failedCount)) ? Number(failedCount) : 0,
+    durationMs: Number.isFinite(Number(durationMs)) ? Number(durationMs) : null,
+    targets: normalizeTargetList(targets),
+    status,
+  }
+}
+
+function buildFallbackDevicePlacementNetworkSummary(stepResult = {}) {
+  const count = Number.isFinite(Number(stepResult?.count)) ? Number(stepResult.count) : 0
+  const executionState = stepResult?.executionState ?? 'skipped'
+  const isCompleted = executionState === 'completed'
+  const isFailed = executionState === 'failed'
+
+  return buildDevicePlacementNetworkSummary({
+    endpoint: stepResult?.endpoint ?? '/api/spatial/devices/{device_id}/placement',
+    requestCount: count,
+    successCount: isCompleted ? count : 0,
+    failedCount: isFailed ? Math.max(1, count) : 0,
+    durationMs: stepResult?.durationMs ?? null,
+    targets: stepResult?.target,
+    status: executionState,
+  })
+}
+
 async function runDevicePlacementStep(stepResult, submitPlan, abortSignal) {
   const adapterBundle = buildDevicePlacementExecutionAdapterBundle(submitPlan, {
     stepKey: stepResult.stepKey,
   })
+  const requestTargets = normalizeTargetList(
+    adapterBundle?.preview?.requests?.map((item) => item?.pathParams?.device_id) ?? [],
+  )
 
   if (!adapterBundle.requestReady || !adapterBundle.requestPreview) {
     const normalizedError = adapterBundle.normalizedError
@@ -142,6 +194,15 @@ async function runDevicePlacementStep(stepResult, submitPlan, abortSignal) {
       target: stepResult.target ?? null,
       adapterBundle,
       response: [],
+      networkSummary: buildDevicePlacementNetworkSummary({
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: 0,
+        failedCount: 0,
+        durationMs: 0,
+        targets: requestTargets,
+        status: blockedState,
+      }),
     }
   }
 
@@ -175,6 +236,17 @@ async function runDevicePlacementStep(stepResult, submitPlan, abortSignal) {
       target: adapterBundle.requestPreview.payload.device_id,
       adapterBundle,
       response: normalizedResponses,
+      networkSummary: buildDevicePlacementNetworkSummary({
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: normalizedResponses.length,
+        failedCount: Math.max(0, adapterBundle.count - normalizedResponses.length),
+        durationMs: Math.max(0, Date.now() - startedAt),
+        targets: normalizeTargetList(
+          normalizedResponses.map((item) => item?.payload?.device_id).filter((value) => value != null),
+        ),
+        status: 'completed',
+      }),
     }
   } catch (error) {
     const normalizedError = normalizeDevicePlacementError(error, {
@@ -193,6 +265,15 @@ async function runDevicePlacementStep(stepResult, submitPlan, abortSignal) {
       target: adapterBundle.requestPreview.payload.device_id,
       adapterBundle,
       response: [],
+      networkSummary: buildDevicePlacementNetworkSummary({
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: normalizedResponses.length,
+        failedCount: Math.max(1, adapterBundle.count - normalizedResponses.length),
+        durationMs: Math.max(0, Date.now() - startedAt),
+        targets: requestTargets,
+        status: 'failed',
+      }),
     }
   }
 }
@@ -237,6 +318,7 @@ export const settingsDraftDevicePlacementRealRunner = {
         ...outcome,
         durationMs: outcome.durationMs ?? Math.max(0, Date.now() - startedAt),
       })
+      finalResult.networkSummary = finalResult.networkSummary ?? buildFallbackDevicePlacementNetworkSummary(finalResult)
 
       results.push(finalResult)
 
@@ -251,6 +333,12 @@ export const settingsDraftDevicePlacementRealRunner = {
         executionState: finalResult.executionState,
       })
     }
+
+    const networkSummaries = results.map((item) => ({
+      stepKey: item.stepKey,
+      ...(item.networkSummary ?? buildFallbackDevicePlacementNetworkSummary(item)),
+    }))
+    const devicePlacementStepResult = results.find((item) => item.stepKey === 'device_placement_save') ?? null
 
     const summaryCounts = summarizeResults(results)
     const result = {
@@ -282,6 +370,10 @@ export const settingsDraftDevicePlacementRealRunner = {
         executorKey: SETTINGS_DRAFT_DEVICE_PLACEMENT_REAL_EXECUTOR_KEY,
         executorKind: 'real',
         unavailableCount: summaryCounts.unavailableCount,
+        networkSummary:
+          devicePlacementStepResult?.networkSummary
+          ?? (devicePlacementStepResult ? buildFallbackDevicePlacementNetworkSummary(devicePlacementStepResult) : null),
+        networkSummaries,
         devicePlacementAdapter:
           results.find((item) => item.stepKey === 'device_placement_save')?.adapterBundle ?? null,
         devicePlacementResponses:

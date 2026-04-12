@@ -105,10 +105,74 @@ function summarizeResults(results = []) {
   )
 }
 
+function normalizeNumber(value) {
+  const numeric = Number(value)
+  return Number.isFinite(numeric) ? numeric : null
+}
+
+function normalizeTargetList(values = []) {
+  const list = Array.isArray(values) ? values : [values]
+  const normalized = list
+    .map((value) => Number(value))
+    .filter((value) => Number.isFinite(value))
+  return Array.from(new Set(normalized))
+}
+
+function buildStubNetworkSummary({
+  method = 'GET',
+  endpoint = '',
+  requestCount = 0,
+  successCount = 0,
+  failedCount = 0,
+  durationMs = null,
+  targets = [],
+  status = 'skipped',
+  hasFormData = false,
+  zoneId = null,
+} = {}) {
+  return {
+    mode: 'stub',
+    method,
+    endpoint,
+    requestCount: Number.isFinite(Number(requestCount)) ? Number(requestCount) : 0,
+    successCount: Number.isFinite(Number(successCount)) ? Number(successCount) : 0,
+    failedCount: Number.isFinite(Number(failedCount)) ? Number(failedCount) : 0,
+    durationMs: Number.isFinite(Number(durationMs)) ? Number(durationMs) : null,
+    targets: normalizeTargetList(targets),
+    status,
+    hasFormData: Boolean(hasFormData),
+    zoneId: normalizeNumber(zoneId),
+  }
+}
+
+function buildFallbackStubNetworkSummary(stepResult = {}) {
+  const count = Number.isFinite(Number(stepResult?.count)) ? Number(stepResult.count) : 0
+  const status = stepResult?.outcome ?? stepResult?.executionState ?? 'skipped'
+  const isDevicePlacement = stepResult?.stepKey === 'device_placement_save'
+  const isFloorplanUpload = stepResult?.stepKey === 'floorplan_upload'
+  const target = normalizeNumber(stepResult?.target)
+
+  return buildStubNetworkSummary({
+    method: isDevicePlacement ? 'PUT' : isFloorplanUpload ? 'POST' : 'GET',
+    endpoint: stepResult?.endpoint ?? '',
+    requestCount: count,
+    successCount: 0,
+    failedCount: 0,
+    durationMs: stepResult?.durationMs ?? null,
+    targets: target != null ? [target] : [],
+    status,
+    hasFormData: false,
+    zoneId: isFloorplanUpload ? target : null,
+  })
+}
+
 function buildDevicePlacementStubOutcome(stepResult = {}, submitPlan = null) {
   const adapterBundle = buildDevicePlacementExecutionAdapterBundle(submitPlan, {
     stepKey: stepResult.stepKey,
   })
+  const targets = normalizeTargetList(
+    adapterBundle?.preview?.requests?.map((item) => item?.pathParams?.device_id) ?? [],
+  )
 
   if (stepResult.executionState === 'would_execute') {
     return {
@@ -121,6 +185,15 @@ function buildDevicePlacementStubOutcome(stepResult = {}, submitPlan = null) {
       count: adapterBundle.count,
       target: adapterBundle.requestPreview?.payload?.device_id ?? stepResult.target ?? null,
       adapterBundle,
+      networkSummary: buildStubNetworkSummary({
+        method: 'PUT',
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: 0,
+        failedCount: 0,
+        targets,
+        status: 'pending',
+      }),
     }
   }
 
@@ -133,6 +206,15 @@ function buildDevicePlacementStubOutcome(stepResult = {}, submitPlan = null) {
       count: adapterBundle.count,
       target: stepResult.target ?? null,
       adapterBundle,
+      networkSummary: buildStubNetworkSummary({
+        method: 'PUT',
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: 0,
+        failedCount: 0,
+        targets,
+        status: stepResult.executionState === 'unavailable' ? 'unavailable' : 'blocked',
+      }),
     }
   }
 
@@ -141,6 +223,15 @@ function buildDevicePlacementStubOutcome(stepResult = {}, submitPlan = null) {
     endpoint: adapterBundle.endpoint,
     count: adapterBundle.count,
     adapterBundle,
+    networkSummary: buildStubNetworkSummary({
+      method: 'PUT',
+      endpoint: adapterBundle.endpoint,
+      requestCount: adapterBundle.count,
+      successCount: 0,
+      failedCount: 0,
+      targets,
+      status: stepResult.executionState ?? 'skipped',
+    }),
   }
 }
 
@@ -148,6 +239,7 @@ function buildFloorplanUploadStubOutcome(stepResult = {}, submitPlan = null) {
   const adapterBundle = buildFloorplanUploadExecutionAdapterBundle(submitPlan, {
     stepKey: stepResult.stepKey,
   })
+  const zoneId = normalizeNumber(adapterBundle?.requestPreview?.meta?.zoneId ?? stepResult?.target)
 
   if (stepResult.executionState === 'would_execute') {
     return {
@@ -160,6 +252,17 @@ function buildFloorplanUploadStubOutcome(stepResult = {}, submitPlan = null) {
       count: adapterBundle.count,
       target: adapterBundle.requestPreview?.meta?.zoneId ?? stepResult.target ?? null,
       adapterBundle,
+      networkSummary: buildStubNetworkSummary({
+        method: 'POST',
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: 0,
+        failedCount: 0,
+        targets: zoneId != null ? [zoneId] : [],
+        status: 'pending',
+        hasFormData: false,
+        zoneId,
+      }),
     }
   }
 
@@ -172,6 +275,17 @@ function buildFloorplanUploadStubOutcome(stepResult = {}, submitPlan = null) {
       count: adapterBundle.count,
       target: stepResult.target ?? null,
       adapterBundle,
+      networkSummary: buildStubNetworkSummary({
+        method: 'POST',
+        endpoint: adapterBundle.endpoint,
+        requestCount: adapterBundle.count,
+        successCount: 0,
+        failedCount: 0,
+        targets: zoneId != null ? [zoneId] : [],
+        status: stepResult.executionState === 'unavailable' ? 'unavailable' : 'blocked',
+        hasFormData: false,
+        zoneId,
+      }),
     }
   }
 
@@ -180,6 +294,17 @@ function buildFloorplanUploadStubOutcome(stepResult = {}, submitPlan = null) {
     endpoint: adapterBundle.endpoint,
     count: adapterBundle.count,
     adapterBundle,
+    networkSummary: buildStubNetworkSummary({
+      method: 'POST',
+      endpoint: adapterBundle.endpoint,
+      requestCount: adapterBundle.count,
+      successCount: 0,
+      failedCount: 0,
+      targets: zoneId != null ? [zoneId] : [],
+      status: stepResult.executionState ?? 'skipped',
+      hasFormData: false,
+      zoneId,
+    }),
   }
 }
 
@@ -225,6 +350,7 @@ export const settingsDraftStubRunner = {
         ...outcome,
         durationMs: Math.max(0, Date.now() - startedAt),
       })
+      finalResult.networkSummary = finalResult.networkSummary ?? buildFallbackStubNetworkSummary(finalResult)
 
       results.push(finalResult)
       normalizedHooks.onStepResult?.(finalResult)
@@ -234,6 +360,16 @@ export const settingsDraftStubRunner = {
         executionState: finalResult.executionState,
       })
     }
+
+    const networkSummaries = results.map((item) => ({
+      stepKey: item.stepKey,
+      ...(item.networkSummary ?? buildFallbackStubNetworkSummary(item)),
+    }))
+    const primaryNetworkSummary =
+      networkSummaries.find((item) => item.stepKey === 'device_placement_save')
+      ?? networkSummaries.find((item) => item.stepKey === 'floorplan_upload')
+      ?? networkSummaries[0]
+      ?? null
 
     const summaryCounts = summarizeResults(results)
     const result = {
@@ -264,6 +400,8 @@ export const settingsDraftStubRunner = {
         executorKind: 'stub',
         wouldExecuteCount: summaryCounts.wouldExecuteCount,
         unavailableCount: summaryCounts.unavailableCount,
+        networkSummary: primaryNetworkSummary,
+        networkSummaries,
         floorplanUploadAdapter:
           results.find((item) => item.stepKey === 'floorplan_upload')?.adapterBundle ?? null,
         devicePlacementAdapter:

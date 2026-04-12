@@ -23,6 +23,10 @@ const coordinateFieldValues = ref({
 const isDevExecutionDebug = import.meta.env.DEV
 const draftExecutionDebugRunning = ref(false)
 const draftExecutionDebugReport = ref(null)
+const draftExecutionTarget = ref('floorplan_upload')
+const draftExecutionSnapshotOnly = ref(true)
+const draftExecutionReadbackAfterExecution = ref(true)
+const draftExecutionAutoBuildSubmitContextFromScene = ref(true)
 
 const settingsMenuLabels = {
   devices: '常用设备',
@@ -200,6 +204,96 @@ const executionSummaryNotice = computed(() => {
     detail: `共 ${preview.totalCount} 步。`,
   }
 })
+
+function normalizeDebugText(value, fallback = '—') {
+  if (value === null || value === undefined || value === '') {
+    return fallback
+  }
+  return String(value)
+}
+
+function countObjectKeys(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return 0
+  }
+  return Object.keys(value).length
+}
+
+function formatDebugJson(value) {
+  if (value === null || value === undefined) {
+    return '—'
+  }
+  if (typeof value === 'string') {
+    return value
+  }
+  try {
+    return JSON.stringify(value, null, 2)
+  } catch {
+    return String(value)
+  }
+}
+
+const draftExecutionDebugBaseInfo = computed(() => {
+  const report = draftExecutionDebugReport.value ?? {}
+  return {
+    usedExecutorKey: normalizeDebugText(report.usedExecutorKey || report.resolvedExecutorKey),
+    submitContextSource: normalizeDebugText(report.submitContextSource),
+    snapshotOnly: Boolean(report.snapshotOnly),
+    draftWriteSkipped: Boolean(report.draftWriteSkipped),
+  }
+})
+
+const draftExecutionDebugContextSummary = computed(() => {
+  const submitContext = draftExecutionDebugReport.value?.usedSubmitContext ?? {}
+  return {
+    zoneId: normalizeDebugText(submitContext.zoneId),
+    currentFloorplanPath: normalizeDebugText(submitContext.currentFloorplanPath),
+    deviceIdCount: countObjectKeys(submitContext.deviceIdByDraftEntityId),
+    roomIdCount: countObjectKeys(submitContext.roomIdByDraftRoomKey),
+  }
+})
+
+const draftExecutionDebugPreflightItems = computed(() =>
+  Array.isArray(draftExecutionDebugReport.value?.preflightItems)
+    ? draftExecutionDebugReport.value.preflightItems
+    : [],
+)
+
+const draftExecutionDebugNetworkSummaryEntries = computed(() =>
+  Object.entries(draftExecutionDebugReport.value?.networkSummaryByStep ?? {}).map(([stepKey, summary]) => ({
+    stepKey,
+    summary: summary ?? {},
+  })),
+)
+
+const draftExecutionDebugReadbackSections = computed(() => {
+  const report = draftExecutionDebugReport.value ?? {}
+  return [
+    {
+      key: 'devicePlacementReadback',
+      title: 'device placement 回读',
+      value: report.devicePlacementReadback ?? null,
+    },
+    {
+      key: 'floorplanUploadReadback',
+      title: 'floorplan upload 回读',
+      value: report.floorplanUploadReadback ?? null,
+    },
+  ].filter((item) => Boolean(item.value))
+})
+
+const draftExecutionDebugReadbackIssues = computed(() =>
+  Array.isArray(draftExecutionDebugReport.value?.readbackIssues)
+    ? draftExecutionDebugReport.value.readbackIssues
+    : [],
+)
+
+const draftExecutionDebugConfigSummary = computed(() => ({
+  target: draftExecutionTarget.value,
+  snapshotOnly: draftExecutionSnapshotOnly.value,
+  readbackAfterExecution: draftExecutionReadbackAfterExecution.value,
+  autoBuildSubmitContextFromScene: draftExecutionAutoBuildSubmitContextFromScene.value,
+}))
 
 const settingsStageModel = computed(() =>
   buildSettingsStageModel(
@@ -480,12 +574,20 @@ async function runDraftExecutionDebug() {
   try {
     const report = await settingsStore.runDraftSubmitExecutionDebug({
       logger: console,
+      debugExecutionTarget: draftExecutionTarget.value,
+      snapshotOnly: draftExecutionSnapshotOnly.value,
+      readbackAfterExecution: draftExecutionReadbackAfterExecution.value,
+      autoBuildSubmitContextFromScene: draftExecutionAutoBuildSubmitContextFromScene.value,
     })
     draftExecutionDebugReport.value = report
     console.debug('[settings-draft-debug]', report)
   } finally {
     draftExecutionDebugRunning.value = false
   }
+}
+
+function clearDraftExecutionDebugReport() {
+  draftExecutionDebugReport.value = null
 }
 
 </script>
@@ -532,57 +634,6 @@ async function runDraftExecutionDebug() {
               </button>
               <span class="settings-stage-center__hint">当前场景：{{ settingsStore.activeDraftFloor?.name || '未命名楼层' }}</span>
             </div>
-            <div class="settings-stage-submit-banner" :class="`is-${settingsStore.floorplanSubmitPresentation.tone}`">
-              <div class="settings-stage-submit-banner__copy">
-                <strong>{{ settingsStore.floorplanSubmitPresentation.title }}</strong>
-                <p>{{ settingsStore.floorplanSubmitPresentation.message }}</p>
-                <span>{{ settingsStore.floorplanSubmitPresentation.detail }}</span>
-              </div>
-              <div class="settings-stage-submit-banner__meta">
-                <span class="settings-stage-submit-banner__status">{{ settingsStore.floorplanSubmitPresentation.status }}</span>
-                <span v-if="settingsStore.draftSubmitPlan.blockers.length">{{ settingsStore.draftSubmitPlan.blockers.length }} 个 blocker</span>
-              </div>
-            </div>
-            <div class="settings-execution-summary" :class="`is-${executionSummaryNotice.tone}`">
-              <div class="settings-execution-summary__copy">
-                <strong>{{ executionSummaryNotice.title }}</strong>
-                <p>{{ executionSummaryNotice.message }}</p>
-                <span>{{ executionSummaryNotice.detail }}</span>
-              </div>
-              <div class="settings-execution-summary__meta">
-                <span>run {{ settingsStore.draftSubmitExecutionPreview.wouldRunCount }}</span>
-                <span>noop {{ settingsStore.draftSubmitExecutionPreview.noopCount }}</span>
-                <span>blocked {{ settingsStore.draftSubmitExecutionPreview.blockedCount }}</span>
-              </div>
-            </div>
-            <div v-if="isDevExecutionDebug" class="settings-dev-execution-panel">
-              <div class="settings-dev-execution-panel__head">
-                <div>
-                  <strong>开发态执行闭环验证</strong>
-                  <span>仅用于开发调试，可验证当前解析到的 executor、结果结构与执行摘要。</span>
-                </div>
-                <button type="button" class="settings-inline-button" :disabled="draftExecutionDebugRunning" @click="runDraftExecutionDebug()">
-                  {{ draftExecutionDebugRunning ? '验证中...' : '运行执行调试' }}
-                </button>
-              </div>
-              <div v-if="draftExecutionDebugReport" class="settings-dev-execution-panel__body">
-                <div class="settings-dev-execution-panel__summary">
-                  <span>executor {{ draftExecutionDebugReport.resolvedExecutorKey }}</span>
-                  <span>ok {{ draftExecutionDebugReport.ok ? 'yes' : 'no' }}</span>
-                  <span>success {{ draftExecutionDebugReport.scenarioSummary.successCount }}</span>
-                  <span>failed {{ draftExecutionDebugReport.scenarioSummary.failedCount }}</span>
-                  <span>would {{ draftExecutionDebugReport.scenarioSummary.wouldExecuteCount }}</span>
-                  <span>noop {{ draftExecutionDebugReport.scenarioSummary.skippedCount }}</span>
-                  <span>blocked {{ draftExecutionDebugReport.scenarioSummary.blockedCount }}</span>
-                  <span>unavailable {{ draftExecutionDebugReport.scenarioSummary.unavailableCount }}</span>
-                </div>
-                <div class="settings-dev-execution-panel__checks">
-                  <span>shape {{ draftExecutionDebugReport.checks.stepShapeValid ? 'ok' : 'fail' }}</span>
-                  <span>summary {{ draftExecutionDebugReport.checks.countsMatch ? 'ok' : 'fail' }}</span>
-                  <span>hooks {{ draftExecutionDebugReport.checks.hookCountsMatch ? 'ok' : 'fail' }}</span>
-                </div>
-              </div>
-            </div>
             <div class="settings-stage-stats">
               <article
                 v-for="card in stageSummaryCards"
@@ -615,6 +666,206 @@ async function runDraftExecutionDebug() {
               <div class="settings-stage-info-bar__meta">
                 <span>网格吸附 {{ snapEnabled ? '开启' : '关闭' }}</span>
                 <span>步进 {{ stepSize }}%</span>
+              </div>
+            </div>
+
+            <div class="settings-stage-execution-area">
+              <div class="settings-stage-submit-banner" :class="`is-${settingsStore.floorplanSubmitPresentation.tone}`">
+                <div class="settings-stage-submit-banner__copy">
+                  <strong>{{ settingsStore.floorplanSubmitPresentation.title }}</strong>
+                  <p>{{ settingsStore.floorplanSubmitPresentation.message }}</p>
+                  <span>{{ settingsStore.floorplanSubmitPresentation.detail }}</span>
+                </div>
+                <div class="settings-stage-submit-banner__meta">
+                  <span class="settings-stage-submit-banner__status">{{ settingsStore.floorplanSubmitPresentation.status }}</span>
+                  <span v-if="settingsStore.draftSubmitPlan.blockers.length">{{ settingsStore.draftSubmitPlan.blockers.length }} 个 blocker</span>
+                </div>
+              </div>
+              <div class="settings-execution-summary" :class="`is-${executionSummaryNotice.tone}`">
+                <div class="settings-execution-summary__copy">
+                  <strong>{{ executionSummaryNotice.title }}</strong>
+                  <p>{{ executionSummaryNotice.message }}</p>
+                  <span>{{ executionSummaryNotice.detail }}</span>
+                </div>
+                <div class="settings-execution-summary__meta">
+                  <span>run {{ settingsStore.draftSubmitExecutionPreview.wouldRunCount }}</span>
+                  <span>noop {{ settingsStore.draftSubmitExecutionPreview.noopCount }}</span>
+                  <span>blocked {{ settingsStore.draftSubmitExecutionPreview.blockedCount }}</span>
+                </div>
+              </div>
+              <div v-if="isDevExecutionDebug" class="settings-dev-debug-layout">
+                <div class="settings-dev-execution-panel">
+                  <div class="settings-dev-execution-panel__head">
+                    <div>
+                      <strong>开发态执行闭环验证</strong>
+                      <span>仅用于开发调试，可验证当前解析到的 executor、结果结构与执行摘要。</span>
+                    </div>
+                    <div class="settings-dev-execution-panel__actions">
+                      <button type="button" class="settings-inline-button" :disabled="draftExecutionDebugRunning" @click="runDraftExecutionDebug()">
+                        {{ draftExecutionDebugRunning ? '验证中...' : '运行执行调试' }}
+                      </button>
+                      <button type="button" class="settings-inline-button" @click="clearDraftExecutionDebugReport()">
+                        清空调试结果
+                      </button>
+                    </div>
+                  </div>
+
+                  <div class="settings-dev-execution-panel__controls">
+                    <label class="settings-dev-execution-panel__control">
+                      <span>debugExecutionTarget</span>
+                      <select v-model="draftExecutionTarget">
+                        <option value="device_placement">device_placement</option>
+                        <option value="floorplan_upload">floorplan_upload</option>
+                      </select>
+                    </label>
+                    <label class="settings-dev-execution-panel__toggle">
+                      <span>snapshotOnly</span>
+                      <input v-model="draftExecutionSnapshotOnly" type="checkbox" />
+                    </label>
+                    <label class="settings-dev-execution-panel__toggle">
+                      <span>readbackAfterExecution</span>
+                      <input v-model="draftExecutionReadbackAfterExecution" type="checkbox" />
+                    </label>
+                    <label class="settings-dev-execution-panel__toggle">
+                      <span>autoBuildSubmitContextFromScene</span>
+                      <input v-model="draftExecutionAutoBuildSubmitContextFromScene" type="checkbox" />
+                    </label>
+                  </div>
+                  <div v-if="draftExecutionDebugReport" class="settings-dev-execution-panel__body">
+                    <div class="settings-dev-execution-panel__summary">
+                      <span>executor {{ draftExecutionDebugBaseInfo.usedExecutorKey }}</span>
+                      <span>ok {{ draftExecutionDebugReport.ok ? 'yes' : 'no' }}</span>
+                      <span>success {{ draftExecutionDebugReport.scenarioSummary.successCount }}</span>
+                      <span>failed {{ draftExecutionDebugReport.scenarioSummary.failedCount }}</span>
+                      <span>would {{ draftExecutionDebugReport.scenarioSummary.wouldExecuteCount }}</span>
+                      <span>noop {{ draftExecutionDebugReport.scenarioSummary.skippedCount }}</span>
+                      <span>blocked {{ draftExecutionDebugReport.scenarioSummary.blockedCount }}</span>
+                      <span>unavailable {{ draftExecutionDebugReport.scenarioSummary.unavailableCount }}</span>
+                    </div>
+                    <div class="settings-dev-execution-panel__checks">
+                      <span>shape {{ draftExecutionDebugReport.checks.stepShapeValid ? 'ok' : 'fail' }}</span>
+                      <span>summary {{ draftExecutionDebugReport.checks.countsMatch ? 'ok' : 'fail' }}</span>
+                      <span>hooks {{ draftExecutionDebugReport.checks.hookCountsMatch ? 'ok' : 'fail' }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <div v-if="draftExecutionDebugReport" class="settings-dev-debug-results">
+                  <section class="settings-dev-debug-section">
+                    <div class="settings-dev-debug-section__head">
+                      <strong>本次调试配置摘要</strong>
+                      <span>直接展示页面当前传给 debug 执行链的参数。</span>
+                    </div>
+                    <div class="settings-dev-debug-pill-row">
+                      <span>target {{ draftExecutionDebugConfigSummary.target }}</span>
+                      <span>snapshotOnly {{ draftExecutionDebugConfigSummary.snapshotOnly ? 'true' : 'false' }}</span>
+                      <span>readbackAfterExecution {{ draftExecutionDebugConfigSummary.readbackAfterExecution ? 'true' : 'false' }}</span>
+                      <span>autoBuildSubmitContextFromScene {{ draftExecutionDebugConfigSummary.autoBuildSubmitContextFromScene ? 'true' : 'false' }}</span>
+                    </div>
+                  </section>
+
+                  <section class="settings-dev-debug-section">
+                    <div class="settings-dev-debug-section__head">
+                      <strong>本次调试基础信息</strong>
+                      <span>读取 store 已返回的数据，不重新计算业务逻辑。</span>
+                    </div>
+                    <div class="settings-dev-debug-pill-row">
+                      <span>usedExecutorKey {{ draftExecutionDebugBaseInfo.usedExecutorKey }}</span>
+                      <span>submitContextSource {{ draftExecutionDebugBaseInfo.submitContextSource }}</span>
+                      <span>snapshotOnly {{ draftExecutionDebugBaseInfo.snapshotOnly ? 'true' : 'false' }}</span>
+                      <span>draftWriteSkipped {{ draftExecutionDebugBaseInfo.draftWriteSkipped ? 'true' : 'false' }}</span>
+                    </div>
+                  </section>
+
+                  <section class="settings-dev-debug-section">
+                    <div class="settings-dev-debug-section__head">
+                      <strong>submitContext 摘要</strong>
+                      <span>只展示已回传字段的概览。</span>
+                    </div>
+                    <div class="settings-dev-debug-pill-row">
+                      <span>zoneId {{ draftExecutionDebugContextSummary.zoneId }}</span>
+                      <span>currentFloorplanPath {{ draftExecutionDebugContextSummary.currentFloorplanPath }}</span>
+                      <span>deviceIdByDraftEntityId {{ draftExecutionDebugContextSummary.deviceIdCount }}</span>
+                      <span>roomIdByDraftRoomKey {{ draftExecutionDebugContextSummary.roomIdCount }}</span>
+                    </div>
+                  </section>
+
+                  <section class="settings-dev-debug-section">
+                    <div class="settings-dev-debug-section__head">
+                      <strong>preflight</strong>
+                      <span>
+                        summary
+                        {{ formatDebugJson(draftExecutionDebugReport.preflightSummary) }}
+                      </span>
+                    </div>
+                    <div v-if="draftExecutionDebugPreflightItems.length" class="settings-dev-debug-list">
+                      <article v-for="item in draftExecutionDebugPreflightItems" :key="`${item.scope}-${item.code}-${item.message}`" class="settings-dev-debug-item">
+                        <div class="settings-dev-debug-item__meta">
+                          <span>{{ item.level }}</span>
+                          <span>{{ item.scope }}</span>
+                          <span>{{ item.code }}</span>
+                        </div>
+                        <p>{{ item.message }}</p>
+                      </article>
+                    </div>
+                    <div v-else class="settings-dev-debug-empty">暂无 preflight 明细。</div>
+                  </section>
+
+                  <section class="settings-dev-debug-section">
+                    <div class="settings-dev-debug-section__head">
+                      <strong>network</strong>
+                      <span>按 step 展示 networkSummary。</span>
+                    </div>
+                    <div v-if="draftExecutionDebugNetworkSummaryEntries.length" class="settings-dev-debug-list">
+                      <article v-for="item in draftExecutionDebugNetworkSummaryEntries" :key="item.stepKey" class="settings-dev-debug-item">
+                        <div class="settings-dev-debug-item__meta">
+                          <span>{{ item.stepKey }}</span>
+                          <span>{{ item.summary.mode || '—' }}</span>
+                          <span>{{ item.summary.method || '—' }}</span>
+                          <span>{{ item.summary.status || '—' }}</span>
+                        </div>
+                        <p>endpoint {{ normalizeDebugText(item.summary.endpoint) }}</p>
+                        <p>duration {{ normalizeDebugText(item.summary.durationMs) }}ms · request {{ normalizeDebugText(item.summary.requestCount) }} · success {{ normalizeDebugText(item.summary.successCount) }} · failed {{ normalizeDebugText(item.summary.failedCount) }}</p>
+                        <p v-if="item.summary.targets">targets {{ formatDebugJson(item.summary.targets) }}</p>
+                        <p v-if="item.summary.zoneId">zoneId {{ normalizeDebugText(item.summary.zoneId) }}</p>
+                        <p v-if="Object.prototype.hasOwnProperty.call(item.summary, 'hasFormData')">hasFormData {{ item.summary.hasFormData ? 'true' : 'false' }}</p>
+                      </article>
+                    </div>
+                    <div v-else class="settings-dev-debug-empty">暂无 network 摘要。</div>
+                  </section>
+
+                  <section class="settings-dev-debug-section">
+                    <div class="settings-dev-debug-section__head">
+                      <strong>readback</strong>
+                      <span>展示回读结果和对照差异。</span>
+                    </div>
+                    <div v-if="draftExecutionDebugReadbackSections.length" class="settings-dev-debug-list">
+                      <article v-for="section in draftExecutionDebugReadbackSections" :key="section.key" class="settings-dev-debug-item">
+                        <div class="settings-dev-debug-item__meta">
+                          <span>{{ section.title }}</span>
+                        </div>
+                        <pre class="settings-dev-debug-pre">{{ formatDebugJson(section.value) }}</pre>
+                      </article>
+                    </div>
+                    <div v-else class="settings-dev-debug-empty">暂无 readback 明细。</div>
+                    <div class="settings-dev-debug-section__head settings-dev-debug-section__head--spaced">
+                      <strong>readbackIssues</strong>
+                    </div>
+                    <div v-if="draftExecutionDebugReadbackIssues.length" class="settings-dev-debug-list">
+                      <article v-for="issue in draftExecutionDebugReadbackIssues" :key="`${issue.code}-${issue.message}`" class="settings-dev-debug-item">
+                        <div class="settings-dev-debug-item__meta">
+                          <span>{{ issue.code }}</span>
+                        </div>
+                        <p>{{ issue.message }}</p>
+                      </article>
+                    </div>
+                    <div v-else class="settings-dev-debug-empty">暂无 readbackIssues。</div>
+                  </section>
+                </div>
+
+                <div v-else class="settings-dev-debug-empty settings-dev-debug-empty--panel">
+                  当前还没有调试结果，先在上方选择 target 和开关，再点击“运行执行调试”。
+                </div>
               </div>
             </div>
 
@@ -738,6 +989,203 @@ async function runDraftExecutionDebug() {
     </Teleport>
   </div>
 </template>
+
+<style scoped>
+.settings-dev-debug-layout {
+  display: grid;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.settings-stage-execution-area {
+  display: grid;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.settings-dev-execution-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.55rem;
+  justify-content: flex-end;
+}
+
+.settings-dev-execution-panel__controls {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin-top: 0.95rem;
+}
+
+.settings-dev-execution-panel__control,
+.settings-dev-execution-panel__toggle {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid rgba(103, 122, 177, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.settings-dev-execution-panel__control span,
+.settings-dev-execution-panel__toggle span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.settings-dev-execution-panel__control select {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid rgba(103, 122, 177, 0.16);
+  border-radius: 12px;
+  background: rgba(8, 12, 20, 0.82);
+  color: var(--text-primary);
+}
+
+.settings-dev-execution-panel__toggle {
+  align-content: center;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+}
+
+.settings-dev-execution-panel__toggle input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.settings-dev-debug-results {
+  display: grid;
+  gap: 0.9rem;
+}
+
+.settings-dev-debug-section {
+  display: grid;
+  gap: 0.7rem;
+  padding: 0.95rem 1rem;
+  border: 1px solid rgba(103, 122, 177, 0.12);
+  border-radius: 18px;
+  background: rgba(12, 17, 28, 0.72);
+}
+
+.settings-dev-debug-section__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.8rem;
+  flex-wrap: wrap;
+}
+
+.settings-dev-debug-section__head strong {
+  font-size: 0.98rem;
+}
+
+.settings-dev-debug-section__head span {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.settings-dev-debug-section__head--spaced {
+  margin-top: 0.2rem;
+}
+
+.settings-dev-debug-pill-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.settings-dev-debug-pill-row span {
+  padding: 0.35rem 0.68rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.settings-dev-debug-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.settings-dev-debug-item {
+  display: grid;
+  gap: 0.45rem;
+  padding: 0.8rem 0.85rem;
+  border: 1px solid rgba(103, 122, 177, 0.12);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.settings-dev-debug-item__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.settings-dev-debug-item__meta span {
+  padding: 0.28rem 0.55rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.settings-dev-debug-item p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.55;
+  word-break: break-word;
+}
+
+.settings-dev-debug-pre {
+  margin: 0;
+  padding: 0.75rem 0.85rem;
+  border-radius: 14px;
+  background: rgba(8, 12, 20, 0.72);
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.settings-dev-debug-empty {
+  color: var(--text-muted);
+  font-size: 0.84rem;
+}
+
+.settings-dev-debug-empty--panel {
+  padding: 0.95rem 1rem;
+  border: 1px dashed rgba(103, 122, 177, 0.16);
+  border-radius: 18px;
+  background: rgba(12, 17, 28, 0.6);
+}
+
+@media (min-width: 1200px) {
+  .settings-dev-debug-layout {
+    grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.05fr);
+    align-items: start;
+  }
+}
+
+@media (max-width: 1100px) {
+  .settings-dev-execution-panel__controls {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  .settings-dev-execution-panel__controls {
+    grid-template-columns: 1fr;
+  }
+}
+</style>
 
 
 

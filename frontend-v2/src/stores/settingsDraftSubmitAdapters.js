@@ -42,6 +42,16 @@ function buildDeviceIdMap(context = {}) {
     : {}
 }
 
+function buildHotspotDeviceIdMap(context = {}) {
+  return context.deviceIdByDraftHotspotId && typeof context.deviceIdByDraftHotspotId === 'object'
+    ? context.deviceIdByDraftHotspotId
+    : {}
+}
+
+function hasOwnProperty(value, key) {
+  return Boolean(value && Object.prototype.hasOwnProperty.call(value, key))
+}
+
 function buildExistingPlacementMap(context = {}) {
   return context.existingDevicePlacementsByDeviceId && typeof context.existingDevicePlacementsByDeviceId === 'object'
     ? context.existingDevicePlacementsByDeviceId
@@ -89,6 +99,7 @@ export function buildSettingsDraftSubmitPlan(draftState, submitContext = {}) {
 
   const roomIdByDraftRoomKey = buildRoomIdMap(submitContext)
   const deviceIdByDraftEntityId = buildDeviceIdMap(submitContext)
+  const deviceIdByDraftHotspotId = buildHotspotDeviceIdMap(submitContext)
   const existingDevicePlacementsByDeviceId = buildExistingPlacementMap(submitContext)
   const currentFloorplanPath = normalizeString(submitContext.currentFloorplanPath, '')
   const zoneId = Number(submitContext.zoneId)
@@ -270,7 +281,11 @@ export function buildSettingsDraftSubmitPlan(draftState, submitContext = {}) {
   activeDraftHotspots.forEach((hotspot) => {
     const draftDeviceId = normalizeString(hotspot.deviceId, '')
     const draftRoomKey = normalizeString(hotspot.roomKey, '')
-    const mappedDeviceId = Number(deviceIdByDraftEntityId[draftDeviceId])
+    const mappedDeviceId = Number(
+      hasOwnProperty(deviceIdByDraftHotspotId, hotspot.id)
+        ? deviceIdByDraftHotspotId[hotspot.id]
+        : deviceIdByDraftEntityId[draftDeviceId],
+    )
     const mappedRoomId = Number(roomIdByDraftRoomKey[draftRoomKey])
     const payload = buildNormalizedPlacementPayload(hotspot)
     const fieldErrors = []

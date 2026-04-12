@@ -1,0 +1,246 @@
+- generic [ref=e490]:
+  - banner [ref=e491]:
+    - generic [ref=e492]:
+      - generic [ref=e493]: Shadow
+      - generic [ref=e494]: HA Connected
+    - navigation [ref=e495]:
+      - link "总览" [ref=e496] [cursor=pointer]:
+        - /url: /dashboard
+      - link "安防" [ref=e497] [cursor=pointer]:
+        - /url: /security
+      - link "影视" [ref=e498] [cursor=pointer]:
+        - /url: /entertainment
+    - link "settings" [ref=e500] [cursor=pointer]:
+      - /url: /settings
+      - generic [ref=e501]: ⚙
+  - main [ref=e502]:
+    - complementary [ref=e503]:
+      - generic [ref=e504]:
+        - paragraph [ref=e505]: HOME HUB
+        - heading "场景控制" [level=1] [ref=e506]
+      - generic [ref=e507]:
+        - button "常用设备" [ref=e508] [cursor=pointer]
+        - button "系统设置" [ref=e509] [cursor=pointer]
+        - button "页面设置" [ref=e510] [cursor=pointer]
+        - button "功能设置" [ref=e511] [cursor=pointer]
+      - generic [ref=e512]:
+        - button "保存界面状态" [ref=e513] [cursor=pointer]
+        - button "重置草稿" [ref=e514] [cursor=pointer]
+        - button "清空旧缓存" [ref=e515] [cursor=pointer]
+    - generic [ref=e516]:
+      - generic [ref=e517]:
+        - heading "中台页面设置" [level=2] [ref=e518]
+        - paragraph [ref=e519]: 聚焦主舞台展示、底图切换与点位调整，保持界面更接近中控屏。
+      - generic [ref=e520]:
+        - complementary [ref=e521]:
+          - generic [ref=e522]:
+            - strong [ref=e523]: 设备卡片
+            - textbox "搜索设备..." [ref=e524]
+          - generic [ref=e525]:
+            - button "all" [ref=e526] [cursor=pointer]
+            - button "light" [ref=e527] [cursor=pointer]
+            - button "climate" [ref=e528] [cursor=pointer]
+            - button "sensor" [ref=e529] [cursor=pointer]
+          - generic [ref=e530]:
+            - generic [ref=e531]:
+              - strong [ref=e532]: 素材资源
+              - button "上传素材" [ref=e533] [cursor=pointer]
+            - generic [ref=e534]:
+              - button "tmp-floorplan-debug.png" [ref=e535] [cursor=pointer]
+              - button "codex-debug-upload.png" [ref=e536] [cursor=pointer]
+              - button "lights_off.png" [ref=e537] [cursor=pointer]
+              - button "lights_on.png" [ref=e538] [cursor=pointer]
+              - button "corridor_glow.png" [ref=e539] [cursor=pointer]
+              - button "master_scene.png" [ref=e540] [cursor=pointer]
+          - generic [ref=e541]:
+            - generic [ref=e542]:
+              - strong [ref=e543]: 设备库卡片
+              - generic [ref=e544]: 10 个实体
+            - generic [ref=e545]:
+              - article [ref=e546]:
+                - generic [ref=e547]:
+                  - strong [ref=e548]: 智能灯光
+                  - paragraph [ref=e549]: lights
+                - generic [ref=e550]: "23"
+              - article [ref=e551]:
+                - generic [ref=e552]:
+                  - strong [ref=e553]: 空调温控
+                  - paragraph [ref=e554]: climate
+                - generic [ref=e555]: "6"
+              - article [ref=e556]:
+                - generic [ref=e557]:
+                  - strong [ref=e558]: 开关插座
+                  - paragraph [ref=e559]: switch
+                - generic [ref=e560]: "9"
+              - article [ref=e561]:
+                - generic [ref=e562]:
+                  - strong [ref=e563]: 环境传感
+                  - paragraph [ref=e564]: sensor
+                - generic [ref=e565]: "12"
+              - article [ref=e566]:
+                - generic [ref=e567]:
+                  - strong [ref=e568]: 其他实体追踪
+                  - paragraph [ref=e569]: other
+                - generic [ref=e570]: "0"
+              - article [ref=e571]:
+                - generic [ref=e572]:
+                  - strong [ref=e573]: 餐厅筒灯
+                  - paragraph [ref=e574]: light-1
+                - generic [ref=e575]: lights
+              - article [ref=e576]:
+                - generic [ref=e577]:
+                  - strong [ref=e578]: 客厅主灯
+                  - paragraph [ref=e579]: light-8
+                - generic [ref=e580]: lights
+              - article [ref=e581]:
+                - generic [ref=e582]:
+                  - strong [ref=e583]: 西卫照明
+                  - paragraph [ref=e584]: light-9
+                - generic [ref=e585]: lights
+              - article [ref=e586]:
+                - generic [ref=e587]:
+                  - strong [ref=e588]: 东卫照明
+                  - paragraph [ref=e589]: light-17
+                - generic [ref=e590]: lights
+              - article [ref=e591]:
+                - generic [ref=e592]:
+                  - strong [ref=e593]: 西次卧灯带
+                  - paragraph [ref=e594]: light-10
+                - generic [ref=e595]: lights
+              - article [ref=e596]:
+                - generic [ref=e597]:
+                  - strong [ref=e598]: 主卧灯带
+                  - paragraph [ref=e599]: light-19
+                - generic [ref=e600]: lights
+              - article [ref=e601]:
+                - generic [ref=e602]:
+                  - strong [ref=e603]: 东次卧灯带
+                  - paragraph [ref=e604]: light-4
+                - generic [ref=e605]: lights
+              - article [ref=e606]:
+                - generic [ref=e607]:
+                  - strong [ref=e608]: 次卧空调
+                  - paragraph [ref=e609]: climate-2
+                - generic [ref=e610]: climate
+              - article [ref=e611]:
+                - generic [ref=e612]:
+                  - strong [ref=e613]: 过道温控
+                  - paragraph [ref=e614]: climate-3
+                - generic [ref=e615]: climate
+              - article [ref=e616]:
+                - generic [ref=e617]:
+                  - strong [ref=e618]: 玄关人体
+                  - paragraph [ref=e619]: climate-5
+                - generic [ref=e620]: sensor
+        - generic [ref=e621]:
+          - generic [ref=e622]:
+            - button "保存布局 当前点击只保存草稿，底图暂不具备后续提交条件。 blocked" [ref=e623] [cursor=pointer]:
+              - generic [ref=e624]: 保存布局
+              - generic [ref=e625]: 当前点击只保存草稿，底图暂不具备后续提交条件。
+              - generic [ref=e626]: blocked
+            - generic [ref=e627]: 当前场景：主楼层
+          - generic [ref=e628]:
+            - article [ref=e629]:
+              - generic [ref=e630]: 当前舞台控件
+              - strong [ref=e631]: "11"
+              - paragraph [ref=e632]: 热点标签与控件落点
+            - article [ref=e633]:
+              - generic [ref=e634]: 已选热点
+              - strong [ref=e635]: "0"
+              - paragraph [ref=e636]: 点击点位进入编辑态
+            - article [ref=e637]:
+              - generic [ref=e638]: 可用素材
+              - strong [ref=e639]: "6"
+              - paragraph [ref=e640]: 支持上传并切换主舞台底图
+          - generic [ref=e642]:
+            - img "当前主舞台户型图" [ref=e644]
+            - button "餐厅筒灯" [ref=e646]:
+              - generic [ref=e647]: 💡
+              - generic [ref=e648]: 餐厅筒灯
+            - button "客厅主灯" [ref=e649]:
+              - generic [ref=e650]: 💡
+              - generic [ref=e651]: 客厅主灯
+            - button "西卫照明" [ref=e652]:
+              - generic [ref=e653]: 💡
+              - generic [ref=e654]: 西卫照明
+            - button "次卧风扇" [ref=e655]:
+              - generic [ref=e656]: ✿
+              - generic [ref=e657]: 次卧风扇
+            - button "次卧温控" [ref=e658]:
+              - generic [ref=e659]: 🌡
+              - generic [ref=e660]: 次卧温控
+            - button "过道温控" [ref=e661]:
+              - generic [ref=e662]: 🌡
+              - generic [ref=e663]: 过道温控
+            - button "东卫照明" [ref=e664]:
+              - generic [ref=e665]: 💡
+              - generic [ref=e666]: 东卫照明
+            - button "西次卧灯带" [ref=e667]:
+              - generic [ref=e668]: 💡
+              - generic [ref=e669]: 西次卧灯带
+            - button "主卧灯带" [ref=e670]:
+              - generic [ref=e671]: 💡
+              - generic [ref=e672]: 主卧灯带
+            - button "东次卧灯带" [ref=e673]:
+              - generic [ref=e674]: 💡
+              - generic [ref=e675]: 东次卧灯带
+            - button "玄关人体" [ref=e676]:
+              - generic [ref=e677]: ◉
+              - generic [ref=e678]: 玄关人体
+          - generic [ref=e679]:
+            - generic [ref=e680]:
+              - strong [ref=e681]: 编辑态信息
+              - text: 已简化为热点布局与主舞台素材配置
+            - generic [ref=e682]:
+              - generic [ref=e683]: 网格吸附 开启
+              - generic [ref=e684]: 步进 1%
+          - generic [ref=e685]:
+            - generic [ref=e686]:
+              - generic [ref=e687]:
+                - strong [ref=e688]: 底图暂不具备提交条件
+                - paragraph [ref=e689]: 缺少 zoneId，无法准备 floorplan 上传请求。
+                - generic [ref=e690]: 提交底图前需要注入 zoneId。
+              - generic [ref=e691]:
+                - generic [ref=e692]: blocked
+                - generic [ref=e693]: 12 个 blocker
+            - generic [ref=e694]:
+              - generic [ref=e695]:
+                - strong [ref=e696]: 未来执行预览
+                - paragraph [ref=e697]: 如果现在执行，预计有 0 步可运行，2 步会被阻塞。
+                - generic [ref=e698]: 提交底图前需要注入 zoneId。
+              - generic [ref=e699]:
+                - generic [ref=e700]: run 0
+                - generic [ref=e701]: noop 0
+                - generic [ref=e702]: blocked 2
+            - generic [ref=e703]:
+              - generic [ref=e704]:
+                - generic [ref=e705]:
+                  - generic [ref=e706]:
+                    - strong [ref=e707]: 开发态执行闭环验证
+                    - generic [ref=e708]: 仅用于开发调试，可验证当前解析到的 executor、结果结构与执行摘要。
+                  - generic [ref=e709]:
+                    - button "运行执行调试" [ref=e710] [cursor=pointer]
+                    - button "清空调试结果" [ref=e711] [cursor=pointer]
+                - generic [ref=e712]:
+                  - generic [ref=e713]:
+                    - generic [ref=e714]: debugExecutionTarget
+                    - combobox "debugExecutionTarget" [ref=e715]:
+                      - option "device_placement"
+                      - option "floorplan_upload" [selected]
+                  - generic [ref=e716]:
+                    - generic [ref=e717]: snapshotOnly
+                    - checkbox "snapshotOnly" [checked] [ref=e718]
+                  - generic [ref=e719]:
+                    - generic [ref=e720]: readbackAfterExecution
+                    - checkbox "readbackAfterExecution" [checked] [ref=e721]
+                  - generic [ref=e722]:
+                    - generic [ref=e723]: autoBuildSubmitContextFromScene
+                    - checkbox "autoBuildSubmitContextFromScene" [checked] [ref=e724]
+              - generic [ref=e725]: 当前还没有调试结果，先在上方选择 target 和开关，再点击“运行执行调试”。
+        - complementary [ref=e726]:
+          - generic [ref=e727]:
+            - strong [ref=e728]: 点位设置
+            - text: 未选中热点
+          - generic [ref=e729]:
+            - strong [ref=e730]: 未选中热点
+            - paragraph [ref=e731]: 点击主舞台上的热点可查看当前位置、旋转角度和绑定实体。

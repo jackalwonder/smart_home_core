@@ -190,7 +190,7 @@ export function buildDevicePlacementExecutionAdapterBundle(submitPlan, context =
     stepType: 'device_placement_save',
     endpoint: firstReadyRequest?.endpoint ?? preview.endpointPattern,
     count: readyRequests.length,
-    requestReady: readyRequests.length > 0 && blockedRequests.length === 0,
+    requestReady: readyRequests.length > 0,
     preview,
     requestPreview: firstReadyRequest
       ? {
